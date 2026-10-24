@@ -93,3 +93,5 @@ FB_AUTO_DELETE_DIE_ON_UPLOAD = os.environ.get('FB_AUTO_DELETE_DIE_ON_UPLOAD', 't
 FB_CHECK_LIVE_BEFORE_DELIVERY = os.environ.get('FB_CHECK_LIVE_BEFORE_DELIVERY', 'true').lower() in ('true', '1', 'yes')
 FB_AUTO_DELETE_DIE_ON_DELIVERY = os.environ.get('FB_AUTO_DELETE_DIE_ON_DELIVERY', 'true').lower() in ('true', '1', 'yes')
 FB_CATEGORY_KEYWORDS = os.environ.get('FB_CATEGORY_KEYWORDS', 'facebook, fb, clone, via, bm').strip()
+FB_CRON_CHECK_INTERVAL_MINUTES = int(os.environ.get('FB_CRON_CHECK_INTERVAL_MINUTES', '30'))
+FB_CRON_NOTIFY_ADMIN = os.environ.get('FB_CRON_NOTIFY_ADMIN', 'true').lower() in ('true', '1', 'yes')

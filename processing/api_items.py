@@ -323,3 +323,58 @@ async def list_categories_and_subcategories(request: Request, x_api_key: str = H
             "categories": [{"id": c.id, "name": c.name} for c in cats],
             "subcategories": [{"id": s.id, "name": s.name} for s in subcats]
         }
+
+
+def is_cron_authorized(request: Request, x_api_key: Optional[str] = None) -> bool:
+    """Xác thực gọi Cron từ bên ngoài thông qua query param ?token=... hoặc header."""
+    query_secret = request.query_params.get("token") or request.query_params.get("secret") or request.query_params.get("key") or ""
+    header_key = x_api_key or request.headers.get("x-api-key") or request.headers.get("authorization") or ""
+    if header_key.lower().startswith("bearer "):
+        header_key = header_key[7:].strip()
+
+    valid_keys = [
+        getattr(config, "SQLADMIN_RAW_PASSWORD", None),
+        getattr(config, "JWT_SECRET_KEY", None),
+        getattr(config, "TOKEN", None),
+        getattr(config, "WEBHOOK_SECRET_TOKEN", None),
+    ]
+    valid_keys = [str(k).strip() for k in valid_keys if k]
+
+    if query_secret and query_secret in valid_keys:
+        return True
+    if header_key and header_key in valid_keys:
+        return True
+    return is_request_authorized(request, x_api_key)
+
+
+@api_router.get("/cron/check-live")
+@api_router.post("/cron/check-live")
+async def cron_check_live_endpoint(
+    request: Request,
+    delete_die: bool = True,
+    x_api_key: Optional[str] = Header(None)
+):
+    """
+    Endpoint kích hoạt Cron quét và loại bỏ clone DIE trong kho từ bên ngoài.
+    Hỗ trợ gọi từ Cron-job.org, UptimeRobot, Vercel Cron, EasyCron.
+    Ví dụ:
+    GET https://shopcl.onrender.com/api/cron/check-live?token=<ADMIN_PASSWORD>&delete_die=true
+    """
+    if not is_cron_authorized(request, x_api_key):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized! Vui lòng truyền ?token=<admin_password> hoặc header x-api-key hợp lệ."
+        )
+
+    import time
+    from services.facebook import scan_facebook_inventory
+    start_time = time.time()
+    async with get_db_session() as session:
+        result = await scan_facebook_inventory(session, auto_delete_die=delete_die)
+        duration = round(time.time() - start_time, 2)
+        return {
+            "status": "success",
+            "message": f"Quét hoàn tất: {result['live_count']} Live, đã xóa {result['deleted_count']} nick Die khỏi kho.",
+            "duration_seconds": duration,
+            **result
+        }

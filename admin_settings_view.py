@@ -70,6 +70,10 @@ class PaymentApiConfigView(BaseView):
         fb_del_up_attr = "checked" if fb_delete_upload else ""
         fb_check_deliv_attr = "checked" if fb_check_delivery else ""
         fb_del_deliv_attr = "checked" if fb_delete_delivery else ""
+        fb_cron_interval = cur_settings.get("FB_CRON_CHECK_INTERVAL_MINUTES", 30)
+        fb_cron_notify = cur_settings.get("FB_CRON_NOTIFY_ADMIN", True)
+        fb_cron_notify_attr = "checked" if fb_cron_notify else ""
+        cron_webhook_url = f"{webhook_host}/api/cron/check-live?token={api_key}&delete_die=true"
 
         is_binance_ready = bool(binance_api_key and binance_api_secret)
         binance_badge = '<span class="badge bg-success"><i class="fa-solid fa-circle-check me-1"></i> Đang hoạt động tự động</span>' if is_binance_ready else '<span class="badge bg-warning text-dark"><i class="fa-solid fa-triangle-exclamation me-1"></i> Chưa cấu hình API Key & Secret</span>'
@@ -383,6 +387,33 @@ class PaymentApiConfigView(BaseView):
                                         <div class="form-text small">Các danh mục chứa từ khóa này sẽ tự động được áp dụng cơ chế lọc Facebook clone.</div>
                                     </div>
 
+                                    <h6 class="fw-bold text-info border-bottom pb-1 mb-3 mt-4"><i class="fa-solid fa-clock-rotate-left me-1"></i> 3. Cron Tự Động Quét Kho Theo Chu Kỳ (Sau mỗi XX phút):</h6>
+
+                                    <div class="mb-3 p-2 bg-light rounded border">
+                                        <label class="form-label fw-bold small text-dark mb-1">Chu kỳ tự động check LIVE kho (phút):</label>
+                                        <div class="input-group" style="max-width: 250px;">
+                                            <input type="number" class="form-control fw-bold" id="fb_cron_check_interval_minutes" value="{fb_cron_interval}" min="0" max="1440">
+                                            <span class="input-group-text">phút</span>
+                                        </div>
+                                        <div class="form-text small">Đặt <b>30</b> = Quét 30 phút/lần. Đặt <b>60</b> = Quét 1 tiếng/lần. Đặt <b>0</b> = Tắt cron tự động.</div>
+                                    </div>
+
+                                    <div class="form-check form-switch mb-3 p-2 bg-light rounded border">
+                                        <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="fb_cron_notify_admin" {fb_cron_notify_attr}>
+                                        <label class="form-check-label fw-bold" for="fb_cron_notify_admin">Gửi thông báo báo cáo về Telegram Admin khi quét</label>
+                                    </div>
+
+                                    <div class="mb-3 p-3 bg-light rounded border">
+                                        <label class="form-label fw-bold small text-dark mb-1"><i class="fa-solid fa-link me-1"></i> Link Webhook Cron Cho Dịch Vụ Ngoài (Cron-job.org / Vercel / UptimeRobot):</label>
+                                        <div class="input-group">
+                                            <input type="text" class="form-control font-monospace small" id="cronWebhookUrl" value="{cron_webhook_url}" readonly>
+                                            <button class="btn btn-outline-primary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('cronWebhookUrl').value); alert('Đã sao chép link Cron!')">
+                                                <i class="fa-solid fa-copy me-1"></i> Sao chép
+                                            </button>
+                                        </div>
+                                        <div class="form-text small">Dán URL này vào <b>Cron-job.org</b> hoặc <b>EasyCron</b> để kích hoạt quét kho từ bên ngoài theo đúng số phút bạn muốn!</div>
+                                    </div>
+
                                     <div id="fbSaveResult" class="mb-3" style="display:none;"></div>
 
                                     <div class="pt-2 border-top">
@@ -479,6 +510,75 @@ class PaymentApiConfigView(BaseView):
                 }}
             }} catch (err) {{
                 resDiv.innerHTML = '<div class="alert alert-danger py-2 mb-0">Lỗi kết nối: ' + err.message + '</div>';
+            }}
+        }}
+
+        function saveFacebookSettings() {{
+            const payload = {{
+                'FB_AUTO_CHECK_ON_UPLOAD': document.getElementById('fb_auto_check_on_upload').checked ? 'true' : 'false',
+                'FB_AUTO_DELETE_DIE_ON_UPLOAD': document.getElementById('fb_auto_delete_die_on_upload').checked ? 'true' : 'false',
+                'FB_CHECK_LIVE_BEFORE_DELIVERY': document.getElementById('fb_check_live_before_delivery').checked ? 'true' : 'false',
+                'FB_AUTO_DELETE_DIE_ON_DELIVERY': document.getElementById('fb_auto_delete_die_on_delivery').checked ? 'true' : 'false',
+                'FB_CATEGORY_KEYWORDS': document.getElementById('fb_category_keywords').value.trim(),
+                'FB_CRON_CHECK_INTERVAL_MINUTES': document.getElementById('fb_cron_check_interval_minutes').value.trim() || '30',
+                'FB_CRON_NOTIFY_ADMIN': document.getElementById('fb_cron_notify_admin').checked ? 'true' : 'false'
+            }};
+            saveSettingsPayload(payload, 'fbSaveResult');
+        }}
+
+        async function checkSingleUid() {{
+            const val = document.getElementById('quickUidInput').value.trim();
+            const resDiv = document.getElementById('quickUidResult');
+            if (!val) {{ alert('Vui lòng nhập UID!'); return; }}
+            resDiv.style.display = 'block';
+            resDiv.innerHTML = '<span class="text-info"><i class="fa-solid fa-spinner fa-spin me-1"></i> Đang kiểm tra Facebook Graph API...</span>';
+
+            try {{
+                const res = await fetch("{api_fb_check_uid}", {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json', 'X-API-KEY': "{api_key}" }},
+                    body: JSON.stringify({{ data: val }})
+                }});
+                const data = await res.json();
+                if (data.results && data.results.length > 0) {{
+                    const r = data.results[0];
+                    if (r.status === 'LIVE') {{
+                        resDiv.innerHTML = '<div class="text-success fw-bold"><i class="fa-solid fa-circle-check me-1"></i> UID ' + r.uid + ' -> LIVE (Hoạt động tốt)</div>';
+                    }} else {{
+                        resDiv.innerHTML = '<div class="text-danger fw-bold"><i class="fa-solid fa-circle-xmark me-1"></i> UID ' + r.uid + ' -> DIE (Bị khóa / Checkpoint)</div>';
+                    }}
+                }} else {{
+                    resDiv.innerHTML = '<div class="text-warning">Không tìm thấy UID hợp lệ trong chuỗi.</div>';
+                }}
+            }} catch(e) {{
+                resDiv.innerHTML = '<div class="text-danger">Lỗi: ' + e.message + '</div>';
+            }}
+        }}
+
+        async function scanFbStock() {{
+            const resDiv = document.getElementById('stockScanResult');
+            resDiv.style.display = 'block';
+            resDiv.innerHTML = '<span class="text-info"><i class="fa-solid fa-spinner fa-spin me-1"></i> Đang quét toàn bộ kho clone...</span>';
+            try {{
+                const res = await fetch("{api_fb_scan_stock}", {{ headers: {{ 'X-API-KEY': "{api_key}" }} }});
+                const data = await res.json();
+                resDiv.innerHTML = '<div class="alert alert-info py-2 mb-0"><b>Kết quả:</b> Quét ' + data.total_scanned + ' clone | Live: <span class="text-success fw-bold">' + data.live_count + '</span> | Die: <span class="text-danger fw-bold">' + data.die_count + '</span></div>';
+            }} catch(e) {{
+                resDiv.innerHTML = '<div class="text-danger">Lỗi: ' + e.message + '</div>';
+            }}
+        }}
+
+        async function cleanFbDieStock() {{
+            if (!confirm('Bạn có chắc chắn muốn quét và XÓA TOÀN BỘ clone DIE khỏi kho không?')) return;
+            const resDiv = document.getElementById('stockScanResult');
+            resDiv.style.display = 'block';
+            resDiv.innerHTML = '<span class="text-danger"><i class="fa-solid fa-spinner fa-spin me-1"></i> Đang quét và xóa nick DIE khỏi kho...</span>';
+            try {{
+                const res = await fetch("{api_fb_clean_die}", {{ method: 'POST', headers: {{ 'X-API-KEY': "{api_key}" }} }});
+                const data = await res.json();
+                resDiv.innerHTML = '<div class="alert alert-success py-2 mb-0"><b>Hoàn tất:</b> Đã quét ' + data.total_scanned + ' clone. Live: ' + data.live_count + ' | Đã xóa: <span class="text-danger fw-bold">' + data.deleted_count + '</span> nick DIE khỏi kho!</div>';
+            }} catch(e) {{
+                resDiv.innerHTML = '<div class="text-danger">Lỗi: ' + e.message + '</div>';
             }}
         }}
 

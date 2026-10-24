@@ -104,6 +104,58 @@ dp = Dispatcher(storage=RedisStorage(redis))
 
 binance_task = None
 keep_alive_task = None
+facebook_cron_task = None
+
+
+async def facebook_stock_cron_worker():
+    """Tu dong quet va loai bo clone Facebook DIE trong kho dinh ky sau moi XX phut."""
+    await asyncio.sleep(120)
+    from services.facebook import scan_facebook_inventory
+
+    while True:
+        try:
+            interval_minutes = int(getattr(config, "FB_CRON_CHECK_INTERVAL_MINUTES", 30) or 30)
+            if interval_minutes <= 0:
+                await asyncio.sleep(300)
+                continue
+
+            async with get_db_session() as session:
+                res = await scan_facebook_inventory(session, auto_delete_die=True)
+                total = res.get("total_scanned", 0)
+                live = res.get("live_count", 0)
+                die = res.get("die_count", 0)
+                deleted = res.get("deleted_count", 0)
+
+                logging.info(f"Cron check live: Quet {total} clone | Live: {live} | Die da xoa: {deleted}")
+
+                notify_admin = getattr(config, "FB_CRON_NOTIFY_ADMIN", True)
+                if notify_admin and total > 0 and (die > 0 or interval_minutes >= 60):
+                    alert_text = (
+                        f"🔔 <b>[CRON TỰ ĐỘNG CHECK LIVE KHO]</b>\n\n"
+                        f"⏱️ <i>Chu kỳ: Mỗi {interval_minutes} phút</i>\n"
+                        f"• Tổng clone kiểm tra: <b>{total}</b>\n"
+                        f"• Hoạt động (LIVE): <b>{live}</b> ✅\n"
+                        f"• Tài khoản DIE phát hiện: <b>{die}</b> ❌\n"
+                    )
+                    if deleted > 0:
+                        alert_text += f"⚡ <b>Đã tự động loại bỏ {deleted} nick DIE khỏi kho hàng!</b>"
+                    else:
+                        alert_text += "✨ <i>Kho hàng 100% clone Live ổn định!</i>"
+
+                    for admin_id in getattr(config, "ADMIN_ID_LIST", []):
+                        try:
+                            await bot.send_message(chat_id=admin_id, text=alert_text, parse_mode="HTML")
+                        except Exception as e:
+                            logging.debug(f"Failed to send cron check live notification to admin {admin_id}: {e}")
+
+            await asyncio.sleep(interval_minutes * 60)
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logging.warning(f"Error in facebook_stock_cron_worker: {e}")
+            await asyncio.sleep(180)
+
 
 
 async def keep_alive_background_worker():
@@ -303,10 +355,11 @@ async def _startup() -> None:
 
 
 
-    global binance_task, keep_alive_task
+    global binance_task, keep_alive_task, facebook_cron_task
 
     binance_task = asyncio.create_task(binance_pay_background_worker())
     keep_alive_task = asyncio.create_task(keep_alive_background_worker())
+    facebook_cron_task = asyncio.create_task(facebook_stock_cron_worker())
 
 
 
@@ -316,12 +369,14 @@ async def _shutdown() -> None:
 
     logging.warning('Shutting down..')
 
-    global binance_task, keep_alive_task
+    global binance_task, keep_alive_task, facebook_cron_task
 
     if binance_task:
         binance_task.cancel()
     if keep_alive_task:
         keep_alive_task.cancel()
+    if facebook_cron_task:
+        facebook_cron_task.cancel()
 
     await dp.storage.close()
 
@@ -370,6 +425,13 @@ app.add_middleware(AntiDDoSMiddleware, max_requests_per_minute=120)
 async def health_check():
 
     return {"status": "ok", "message": "AiogramShopBot is running"}
+
+
+@app.get("/cron/check-live")
+@app.post("/cron/check-live")
+async def top_level_cron_check_live(request: Request):
+    from processing.api_items import cron_check_live_endpoint
+    return await cron_check_live_endpoint(request)
 
 
 

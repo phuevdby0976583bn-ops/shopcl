@@ -22,6 +22,8 @@ SUPPORTED_SETTING_KEYS = [
     "FB_CHECK_LIVE_BEFORE_DELIVERY",
     "FB_AUTO_DELETE_DIE_ON_DELIVERY",
     "FB_CATEGORY_KEYWORDS",
+    "FB_CRON_CHECK_INTERVAL_MINUTES",
+    "FB_CRON_NOTIFY_ADMIN",
 ]
 
 BOOLEAN_KEYS = {
@@ -30,6 +32,7 @@ BOOLEAN_KEYS = {
     "FB_AUTO_DELETE_DIE_ON_UPLOAD",
     "FB_CHECK_LIVE_BEFORE_DELIVERY",
     "FB_AUTO_DELETE_DIE_ON_DELIVERY",
+    "FB_CRON_NOTIFY_ADMIN",
 }
 
 
@@ -51,6 +54,12 @@ class SettingsService:
                 if k in BOOLEAN_KEYS:
                     setattr(config, k, v.lower() in ("true", "1", "yes"))
                     loaded_count += 1
+                elif k == "FB_CRON_CHECK_INTERVAL_MINUTES":
+                    try:
+                        setattr(config, k, int(v))
+                        loaded_count += 1
+                    except ValueError:
+                        pass
                 elif hasattr(config, k):
                     setattr(config, k, v)
                     loaded_count += 1
@@ -113,6 +122,14 @@ class SettingsService:
                 or getattr(config, "FB_CATEGORY_KEYWORDS", "facebook, fb, clone, via, bm")
                 or "facebook, fb, clone, via, bm"
             ),
+            "FB_CRON_CHECK_INTERVAL_MINUTES": int(
+                db_settings.get("FB_CRON_CHECK_INTERVAL_MINUTES", getattr(config, "FB_CRON_CHECK_INTERVAL_MINUTES", 30)) or 30
+            ),
+            "FB_CRON_NOTIFY_ADMIN": (
+                db_settings.get("FB_CRON_NOTIFY_ADMIN", "true").lower() in ("true", "1", "yes")
+                if "FB_CRON_NOTIFY_ADMIN" in db_settings
+                else getattr(config, "FB_CRON_NOTIFY_ADMIN", True)
+            ),
         }
         return res
 
@@ -134,6 +151,11 @@ class SettingsService:
             # Cap nhat config in-memory ngay lap tuc
             if k in BOOLEAN_KEYS:
                 setattr(config, k, str_val.lower() in ("true", "1", "yes"))
+            elif k == "FB_CRON_CHECK_INTERVAL_MINUTES":
+                try:
+                    setattr(config, k, int(str_val))
+                except ValueError:
+                    pass
             elif hasattr(config, k):
                 setattr(config, k, str_val)
 
