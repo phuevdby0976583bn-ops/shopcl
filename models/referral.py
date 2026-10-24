@@ -51,7 +51,7 @@ class ReferralBonusDTO(BaseModel):
 
 class ReferralBonusAdmin(ModelView, model=ReferralBonus):
     name = "Hoa hồng"
-    name_plural = "Hoa hồng giới thiệu (Referral)"
+    name_plural = "Hoa hồng"
     icon = "fa-solid fa-handshake"
     column_labels = {
         "id": "Mã GD",

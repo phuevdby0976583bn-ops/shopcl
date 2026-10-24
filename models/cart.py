@@ -1,9 +1,3 @@
-# cart is a container for unsold items to collect items from different (sub-)categories
-# to be able to checkout this cart at once together with a shipment fee. Only the
-# quantity, category, subcategory is stored because the unique item is not yet sold
-#
-# note that the item is NOT reserved or blocked so that the availability of the item
-# needs to be checked again during checkout
 from pydantic import BaseModel
 from sqladmin import ModelView
 from sqlalchemy import Column, Integer, ForeignKey
@@ -31,10 +25,10 @@ class CartDTO(BaseModel):
 
 class CartAdmin(ModelView, model=Cart):
     name = "Giỏ hàng"
-    name_plural = "Giỏ hàng (Carts)"
+    name_plural = "Giỏ hàng"
     icon = "fa-solid fa-basket-shopping"
     column_labels = {
-        "id": "Mã ID",
+        "id": "ID",
         "user": "Khách hàng"
     }
     column_sortable_list = [Cart.id]

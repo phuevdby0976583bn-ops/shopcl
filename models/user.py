@@ -1,8 +1,7 @@
 from datetime import datetime
 from pydantic import BaseModel
 from sqladmin import ModelView
-from sqlalchemy import Column, Integer, DateTime, String, Boolean, Float, func, CheckConstraint, Enum, ForeignKey, \
-    BigInteger
+from sqlalchemy import Column, Integer, DateTime, String, Boolean, Float, func, CheckConstraint, Enum, ForeignKey, BigInteger
 from sqlalchemy.orm import relationship
 
 from enums.bot_entity import BotEntity
@@ -92,19 +91,19 @@ class UserDTO(BaseModel):
 
 class UserAdmin(ModelView, model=User):
     name = "Khách hàng"
-    name_plural = "Khách hàng (Users)"
+    name_plural = "Khách hàng"
     icon = "fa-solid fa-users"
     column_labels = {
-        "id": "Mã ID",
-        "telegram_username": "Tên Telegram",
+        "id": "ID",
+        "telegram_username": "Username Telegram",
         "telegram_id": "Telegram ID",
         "top_up_amount": "Tổng nạp ($)",
-        "consume_records": "Đã chi tiêu ($)",
-        "registered_at": "Ngày tham gia",
-        "can_receive_messages": "Trạng thái nhận tin",
+        "consume_records": "Đã tiêu ($)",
+        "registered_at": "Ngày đăng ký",
+        "can_receive_messages": "Nhận tin",
         "language": "Ngôn ngữ",
-        "is_banned": "Đang bị khóa",
-        "referral_code": "Mã giới thiệu",
+        "is_banned": "Bị khóa",
+        "referral_code": "Mã GT",
         "referred_at": "Ngày được mời"
     }
     column_exclude_list = [User.buys,

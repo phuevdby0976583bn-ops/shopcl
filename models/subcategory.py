@@ -27,10 +27,10 @@ class SubcategoryDTO(BaseModel):
 
 class SubcategoryAdmin(ModelView, model=Subcategory):
     name = "Danh mục con"
-    name_plural = "Danh mục con (Subcategories)"
+    name_plural = "Danh mục con"
     icon = "fa-solid fa-folder-open"
     column_labels = {
-        "id": "Mã ID",
+        "id": "ID",
         "name": "Tên danh mục con"
     }
     column_searchable_list = [Subcategory.name]

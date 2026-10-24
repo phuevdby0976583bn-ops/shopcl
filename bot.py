@@ -155,6 +155,9 @@ admin.add_model_view(CartItemAdmin)
 admin.add_model_view(ReferralBonusAdmin)
 admin.add_model_view(ReviewAdmin)
 
+from admin_settings_view import PaymentApiConfigView
+admin.add_base_view(PaymentApiConfigView)
+
 from processing.api_items import api_router
 
 app.include_router(processing_router)

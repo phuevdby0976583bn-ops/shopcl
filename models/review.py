@@ -28,7 +28,7 @@ class Review(Base):
     )
 
     def __repr__(self):
-        return self.rating * "⭐️"
+        return self.rating * "⭐"
 
 
 class ReviewDTO(BaseModel):
@@ -42,14 +42,14 @@ class ReviewDTO(BaseModel):
 
 class ReviewAdmin(ModelView, model=Review):
     name = "Đánh giá"
-    name_plural = "Đánh giá từ khách (Reviews)"
+    name_plural = "Đánh giá"
     icon = "fa-solid fa-star"
     column_labels = {
-        "id": "Mã ID",
-        "buy_item": "Mục đã mua",
-        "rating": "Số sao đánh giá",
+        "id": "ID",
+        "buy_item": "Món đã mua",
+        "rating": "Số sao",
         "text": "Nội dung nhận xét",
-        "create_datetime": "Thời gian đánh giá"
+        "create_datetime": "Thời gian"
     }
     column_exclude_list = [Review.buyItem_id,
                            Review.image_id]

@@ -43,17 +43,17 @@ class CouponDTO(BaseModel):
 
 class CouponAdmin(ModelView, model=Coupon):
     name = "Mã giảm giá"
-    name_plural = "Mã giảm giá (Coupons)"
+    name_plural = "Mã giảm giá"
     icon = "fa-solid fa-ticket"
     column_labels = {
-        "id": "Mã ID",
+        "id": "ID",
         "name": "Tên chương trình",
         "code": "Mã Coupon",
         "type": "Loại giảm giá",
         "value": "Giá trị giảm",
         "create_datetime": "Ngày tạo",
         "expire_datetime": "Ngày hết hạn",
-        "is_active": "Đang kích hoạt",
+        "is_active": "Kích hoạt",
         "usage_limit": "Giới hạn dùng",
         "usage_count": "Đã dùng"
     }

@@ -54,18 +54,18 @@ class ItemAvailabilityDTO(BaseModel):
 
 
 class ItemAdmin(ModelView, model=Item):
-    name = "Sản phẩm"
-    name_plural = "Kho sản phẩm (Items)"
+    name = "Kho hàng"
+    name_plural = "Kho hàng"
     icon = "fa-solid fa-box-archive"
     column_labels = {
-        "id": "Mã ID",
-        "item_type": "Loại mặt hàng",
-        "category": "Danh mục chính",
-        "subcategory": "Danh mục con",
-        "private_data": "Nội dung giao hàng (Account/Key)",
+        "id": "ID",
+        "item_type": "Loại hàng",
+        "category": "Danh mục",
+        "subcategory": "Mục con",
+        "private_data": "Nội dung clone (UID|Pass|2FA)",
         "price": "Giá bán ($)",
         "is_sold": "Đã bán",
-        "is_new": "Hàng mới nạp",
+        "is_new": "Hàng mới",
         "description": "Mô tả sản phẩm"
     }
     column_exclude_list = [Item.category_id, Item.subcategory_id]

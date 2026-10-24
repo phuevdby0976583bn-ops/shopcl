@@ -36,12 +36,12 @@ class BuyItemDTO(BaseModel):
 
 class BuyItemAdmin(ModelView, model=BuyItem):
     name = "Chi tiết đơn"
-    name_plural = "Chi tiết đơn hàng (Buy Items)"
+    name_plural = "Chi tiết đơn"
     icon = "fa-solid fa-receipt"
     column_labels = {
-        "id": "Mã ID",
-        "buy": "Thuộc đơn hàng",
-        "item_ids": "Danh sách mã sản phẩm",
+        "id": "ID",
+        "buy": "Đơn hàng",
+        "item_ids": "Mã các sản phẩm",
         "review": "Đánh giá từ khách"
     }
     column_exclude_list = [BuyItem.buy_id]

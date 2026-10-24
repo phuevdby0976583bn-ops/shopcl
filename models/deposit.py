@@ -48,15 +48,15 @@ class DepositDTO(BaseModel):
 
 
 class DepositAdmin(ModelView, model=Deposit):
-    name = "Nạp tiền"
-    name_plural = "Lịch sử nạp tiền (Deposits)"
+    name = "Lịch sử nạp"
+    name_plural = "Lịch sử nạp"
     icon = "fa-solid fa-money-bill-transfer"
     column_labels = {
         "id": "Mã GD",
-        "user": "Khách hàng nạp",
+        "user": "Khách hàng",
         "network": "Mạng Crypto",
-        "fiat_amount": "Số tiền quy đổi ($)",
-        "deposit_datetime": "Thời gian nạp tiền"
+        "fiat_amount": "Số tiền ($)",
+        "deposit_datetime": "Thời gian nạp"
     }
     column_sortable_list = [Deposit.id,
                             Deposit.network,

@@ -78,16 +78,16 @@ class RefundDTO(BaseModel):
 
 class BuyAdmin(ModelView, model=Buy):
     name = "Đơn mua"
-    name_plural = "Đơn hàng đã bán (Buys)"
+    name_plural = "Đơn mua"
     icon = "fa-solid fa-cart-shopping"
     column_labels = {
-        "id": "Mã đơn hàng",
-        "buyer": "Khách hàng mua",
+        "id": "Mã đơn",
+        "buyer": "Người mua",
         "total_price": "Tổng tiền ($)",
         "quantity": "Số lượng",
-        "buy_datetime": "Thời gian mua",
-        "status": "Trạng thái đơn",
-        "discount": "Mức giảm giá ($)",
+        "buy_datetime": "Ngày mua",
+        "status": "Trạng thái",
+        "discount": "Giảm giá ($)",
         "shipping_address": "Địa chỉ giao",
         "track_number": "Mã vận đơn"
     }

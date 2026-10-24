@@ -26,11 +26,11 @@ class CategoryDTO(BaseModel):
 
 
 class CategoryAdmin(ModelView, model=Category):
-    name = "Danh mục chính"
-    name_plural = "Danh mục chính (Categories)"
+    name = "Danh mục"
+    name_plural = "Danh mục"
     icon = "fa-solid fa-folder"
     column_labels = {
-        "id": "Mã ID",
+        "id": "ID",
         "name": "Tên danh mục chính"
     }
     column_searchable_list = [Category.name]
