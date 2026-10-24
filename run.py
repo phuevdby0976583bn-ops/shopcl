@@ -42,6 +42,10 @@ BUTTON_TOP_UP = {
     Language.EN: "💰 Deposit",
     Language.HI: "💰 जमा",
     Language.ZH: "💰 充值",
+    Language.FR: "💰 Dépôt",
+    Language.DE: "💰 Einzahlen",
+    Language.IT: "💰 Deposito",
+    Language.ES: "💰 Depositar",
 }
 
 BUTTON_PRODUCTS = {
@@ -49,6 +53,10 @@ BUTTON_PRODUCTS = {
     Language.EN: "🛒 Products",
     Language.HI: "🛒 उत्पाद",
     Language.ZH: "🛒 商品",
+    Language.FR: "🛒 Produits",
+    Language.DE: "🛒 Produkte",
+    Language.IT: "🛒 Prodotti",
+    Language.ES: "🛒 Productos",
 }
 
 BUTTON_ORDERS = {
@@ -56,6 +64,10 @@ BUTTON_ORDERS = {
     Language.EN: "📦 Orders",
     Language.HI: "📦 ऑर्डर",
     Language.ZH: "📦 订单",
+    Language.FR: "📦 Commandes",
+    Language.DE: "📦 Bestellungen",
+    Language.IT: "📦 Ordini",
+    Language.ES: "📦 Pedidos",
 }
 
 BUTTON_WALLET = {
@@ -63,6 +75,10 @@ BUTTON_WALLET = {
     Language.EN: "💳 Wallet",
     Language.HI: "💳 वॉलेट",
     Language.ZH: "💳 钱包",
+    Language.FR: "💳 Portefeuille",
+    Language.DE: "💳 Geldbörse",
+    Language.IT: "💳 Portafoglio",
+    Language.ES: "💳 Billetera",
 }
 
 BUTTON_SUPPORT = {
@@ -70,6 +86,10 @@ BUTTON_SUPPORT = {
     Language.EN: "💬 Support & Warranty",
     Language.HI: "💬 समर्थन और वारंटी",
     Language.ZH: "💬 客服与售后",
+    Language.FR: "💬 Support & Garantie",
+    Language.DE: "💬 Support & Garantie",
+    Language.IT: "💬 Supporto e Garanzia",
+    Language.ES: "💬 Soporte y Garantía",
 }
 
 BUTTON_WARRANTY = {
@@ -77,6 +97,10 @@ BUTTON_WARRANTY = {
     Language.EN: "🛡️ Warranty",
     Language.HI: "🛡️ वारंटी",
     Language.ZH: "🛡️ 售后",
+    Language.FR: "🛡️ Garantie",
+    Language.DE: "🛡️ Garantie",
+    Language.IT: "🛡️ Garanzia",
+    Language.ES: "🛡️ Garantía",
 }
 
 BUTTON_ADMIN = {
@@ -84,6 +108,10 @@ BUTTON_ADMIN = {
     Language.EN: "⚙️ Admin Menu",
     Language.HI: "⚙️ व्यवस्थापक",
     Language.ZH: "⚙️ 管理员",
+    Language.FR: "⚙️ Menu Admin",
+    Language.DE: "⚙️ Admin-Menü",
+    Language.IT: "⚙️ Menu Admin",
+    Language.ES: "⚙️ Menú Admin",
 }
 
 BUTTON_LANGUAGE = {
@@ -91,6 +119,10 @@ BUTTON_LANGUAGE = {
     Language.EN: "🌐 Language",
     Language.HI: "🌐 भाषा",
     Language.ZH: "🌐 语言",
+    Language.FR: "🌐 Langue",
+    Language.DE: "🌐 Sprache",
+    Language.IT: "🌐 Lingua",
+    Language.ES: "🌐 Idioma",
 }
 
 
@@ -120,7 +152,11 @@ def get_language_inline_keyboard():
     builder.button(text="🇬🇧 English", callback_data="set_lang:en")
     builder.button(text="🇮🇳 हिन्दी", callback_data="set_lang:hi")
     builder.button(text="🇨🇳 简体中文", callback_data="set_lang:zh")
-    builder.adjust(2, 2)
+    builder.button(text="🇫🇷 Français", callback_data="set_lang:fr")
+    builder.button(text="🇩🇪 Deutsch", callback_data="set_lang:de")
+    builder.button(text="🇮🇹 Italiano", callback_data="set_lang:it")
+    builder.button(text="🇪🇸 Español", callback_data="set_lang:es")
+    builder.adjust(2, 2, 2, 2)
     return builder.as_markup()
 
 
@@ -143,7 +179,7 @@ async def start(message: Message, session: AsyncSession, language: Language, com
             f"👋 Chào mừng bạn đến với **@{bot_name}** - Shop Clone Facebook tự động 24/7!\n\n"
             f"⚡ **Cam kết: Tự động Check Live UID Facebook qua Graph API ngay khi bàn giao!**\n"
             f"💳 **Nạp tiền tự động: Binance Pay (0% phí) & Crypto Blockchain.**\n\n"
-            f"👇 Vui lòng bấm vào menu bên dưới để bắt đầu mua tài khoản:"
+            f"👇 Vui lòng bấm vào menu bên dưới để bắt đầu:"
         ),
         Language.EN: (
             f"👋 Welcome to **@{bot_name}** - Automated Facebook Clone Shop 24/7!\n\n"
@@ -158,8 +194,32 @@ async def start(message: Message, session: AsyncSession, language: Language, com
         Language.ZH: (
             f"👋 欢迎来到 **@{bot_name}** - 24/7 自动发货 Facebook Clone 商城！\n\n"
             f"👇 请使用下方菜单按钮开始选购："
+        ),
+        Language.FR: (
+            f"👋 Bienvenue sur **@{bot_name}** - Boutique Clone Facebook automatique 24/7 !\n\n"
+            f"⚡ **Vérification automatique en direct de l'UID Facebook via Graph API à la livraison !**\n"
+            f"💳 **Recharge instantanée : Binance Pay (0% frais) & Crypto Blockchain.**\n\n"
+            f"👇 Utilisez les boutons ci-dessous pour commencer :"
+        ),
+        Language.DE: (
+            f"👋 Willkommen bei **@{bot_name}** - Automatisierter Facebook Clone Shop 24/7!\n\n"
+            f"⚡ **Live-Überprüfung der Facebook-UID über Graph API bei Auslieferung!**\n"
+            f"💳 **Sofortige Aufladung: Binance Pay (0% Gebühr) & Krypto-Blockchain.**\n\n"
+            f"👇 Nutzen Sie die Menütasten unten, um zu beginnen:"
+        ),
+        Language.IT: (
+            f"👋 Benvenuto su **@{bot_name}** - Negozio Facebook Clone automatico 24/7!\n\n"
+            f"⚡ **Verifica automatica Live UID Facebook tramite Graph API alla consegna!**\n"
+            f"💳 **Ricarica immediata: Binance Pay (0% commissioni) & Crypto Blockchain.**\n\n"
+            f"👇 Usa i pulsanti del menu in basso per iniziare:"
+        ),
+        Language.ES: (
+            f"👋 ¡Bienvenido a **@{bot_name}** - Tienda automática de Clones de Facebook 24/7!\n\n"
+            f"⚡ **¡Verificación Live UID automática de Facebook mediante Graph API al entregar!**\n"
+            f"💳 **Recarga inmediata: Binance Pay (0% comisión) y Criptomonedas.**\n\n"
+            f"👇 Usa los botones del menú de abajo para comenzar:"
         )
-    }.get(language, f"👋 Chào mừng bạn đến với **@{bot_name}**!")
+    }.get(language, f"👋 Welcome to **@{bot_name}**!")
 
     try:
         await message.answer(text=welcome_text, reply_markup=start_markup)
@@ -169,6 +229,7 @@ async def start(message: Message, session: AsyncSession, language: Language, com
 
 @main_router.callback_query(F.data.startswith("set_lang:"))
 async def on_language_selected(callback: CallbackQuery, session: AsyncSession):
+    from utils.localizator import Localizator
     lang_code = callback.data.split(":")[1]
     new_lang = Language.from_locale(lang_code)
 
@@ -178,16 +239,22 @@ async def on_language_selected(callback: CallbackQuery, session: AsyncSession):
         await UserRepository.update(user_dto, session)
         await session_commit(session)
 
+    Localizator.clear_cache()
+
     success_messages = {
         Language.VI: "🇻🇳 Bạn đã chọn **Tiếng Việt**. Menu bên dưới đã được cập nhật!",
         Language.EN: "🇬🇧 You selected **English**. The menu below has been updated!",
         Language.HI: "🇮🇳 आपने **हिन्दी** चुनी है। नीचे दिया गया मेनू अपडेट कर दिया गया है!",
-        Language.ZH: "🇨🇳 您已选择 **简体中文**。下方菜单已更新！"
+        Language.ZH: "🇨🇳 您已选择 **简体中文**。下方菜单已更新！",
+        Language.FR: "🇫🇷 Vous avez sélectionné **Français**. Le menu ci-dessous a été mis à jour !",
+        Language.DE: "🇩🇪 Sie haben **Deutsch** ausgewählt. Das Menü unten wurde aktualisiert!",
+        Language.IT: "🇮🇹 Hai selezionato **Italiano**. Il menu sottostante è stato aggiornato!",
+        Language.ES: "🇪🇸 Has seleccionado **Español**. ¡El menú inferior ha sido actualizado!"
     }
     msg_text = success_messages.get(new_lang, success_messages[Language.EN])
     new_start_markup = get_start_keyboard(new_lang, callback.from_user.id)
 
-    await callback.answer(f"Language: {new_lang.name}")
+    await callback.answer(f"Language: {new_lang.get_display_name()}")
     try:
         await callback.message.edit_text(text=msg_text)
     except Exception:
@@ -210,15 +277,36 @@ async def show_binance_pay_screen(callback: CallbackQuery, session: AsyncSession
 
 @main_router.callback_query(F.data == "binance_pay:check")
 async def check_binance_pay_payment(callback: CallbackQuery, session: AsyncSession, language: Language):
-    await callback.answer("🔍 Đang kiểm tra giao dịch trên Binance...")
+    checking_toast = {
+        Language.VI: "🔍 Đang kiểm tra giao dịch trên Binance...",
+        Language.EN: "🔍 Checking transaction on Binance...",
+        Language.HI: "🔍 Binance पर लेनदेन की जाँच की जा रही है...",
+        Language.ZH: "🔍 正在查询币安交易状态...",
+        Language.FR: "🔍 Vérification de la transaction sur Binance...",
+        Language.DE: "🔍 Transaktion auf Binance wird überprüft...",
+        Language.IT: "🔍 Verifica transazione su Binance in corso...",
+        Language.ES: "🔍 Verificando transacción en Binance..."
+    }.get(language, "🔍 Checking transaction on Binance...")
+    await callback.answer(checking_toast)
+
     credited = await BinancePayService.process_and_credit_transactions(bot, session, callback.from_user.id)
     if credited:
         total_credited = sum(item["amount"] for item in credited)
-        await callback.answer(f"🎉 Đã nhận được +{total_credited} USDT! Số dư đã được cộng.", show_alert=True)
+        success_toast = {
+            Language.VI: f"🎉 Đã nhận và cộng thành công +{total_credited} USDT vào tài khoản!",
+            Language.EN: f"🎉 Successfully credited +{total_credited} USDT to your balance!",
+            Language.HI: f"🎉 सफलतापूर्वक आपके खाते में +{total_credited} USDT जोड़ दिए गए!",
+            Language.ZH: f"🎉 成功到账 +{total_credited} USDT 至您的账户！",
+            Language.FR: f"🎉 +{total_credited} USDT crédités avec succès sur votre compte !",
+            Language.DE: f"🎉 +{total_credited} USDT erfolgreich Ihrem Guthaben gutgeschrieben!",
+            Language.IT: f"🎉 Accreditati con successo +{total_credited} USDT sul tuo conto!",
+            Language.ES: f"🎉 ¡Se han acreditado con éxito +{total_credited} USDT en su saldo!"
+        }.get(language, f"🎉 Successfully credited +{total_credited} USDT!")
+        await callback.answer(success_toast, show_alert=True)
         from handlers.user.my_profile import my_profile
         await my_profile(callback=callback, session=session, state=None, language=language)
     else:
-        alert_msg = {
+        no_tx_alert = {
             Language.VI: """⏳ Chưa phát hiện giao dịch mới!
 
 Nếu bạn vừa chuyển trên App Binance, vui lòng đợi 5-15 giây rồi bấm lại nút này.
@@ -236,9 +324,29 @@ If you just sent on Binance App, please wait 5-15 seconds and try again.
 
 如果您刚刚完成转账，请等待5-15秒后重试。
 
-⚠️ 注意：转账时请务必填写正确的备注 Memo！"""
+⚠️ 注意：转账时请务必填写正确的备注 Memo！""",
+            Language.FR: """⏳ Aucune nouvelle transaction détectée !
+
+Si vous venez d'effectuer le transfert, veuillez patienter 5 à 15 secondes puis réessayer.
+
+⚠️ Remarque : Vous DEVEZ indiquer le Memo correct lors du virement !""",
+            Language.DE: """⏳ Keine neue Transaktion erkannt!
+
+Wenn Sie gerade überwiesen haben, warten Sie bitte 5-15 Sekunden und versuchen Sie es erneut.
+
+⚠️ Hinweis: Sie MÜSSEN den richtigen Hinweis (Memo) angeben!""",
+            Language.IT: """⏳ Nessuna nuova transazione rilevata!
+
+Se hai appena trasferito, attendi 5-15 secondi e riprova.
+
+⚠️ Nota: DEVI inserire il Remark/Memo corretto durante il trasferimento!""",
+            Language.ES: """⏳ ¡No se ha detectado ninguna transacción nueva!
+
+Si acabas de enviar en Binance, espera entre 5 y 15 segundos e intenta de nuevo.
+
+⚠️ Nota: ¡DEBES ingresar el Remark/Memo correcto al transferir!"""
         }.get(language, "⏳ No new transaction detected!")
-        await callback.answer(alert_msg, show_alert=True)
+        await callback.answer(no_tx_alert, show_alert=True)
 
 
 @main_router.message(F.text.in_(set(BUTTON_PRODUCTS.values())))
@@ -271,7 +379,11 @@ async def handle_change_language(message: Message, session: AsyncSession, langua
         Language.VI: "🌐 **Chọn ngôn ngữ của bạn:**\nVui lòng chọn một trong các ngôn ngữ dưới đây để đổi giao diện bot:",
         Language.EN: "🌐 **Select your language:**\nPlease choose one of the languages below to switch bot interface:",
         Language.HI: "🌐 **अपनी भाषा चुनें:**\nकृपया बॉट इंटरफ़ेस बदलने के लिए नीचे दी गई भाषाओं में से एक चुनें:",
-        Language.ZH: "🌐 **选择您的语言：**\n请在下方选择一种语言以切换机器人界面："
+        Language.ZH: "🌐 **选择您的语言：**\n请在下方选择一种语言以切换机器人界面：",
+        Language.FR: "🌐 **Choisissez votre langue :**\nVeuillez choisir l'une des langues ci-dessous pour changer l'interface du bot :",
+        Language.DE: "🌐 **Wählen Sie Ihre Sprache:**\nBitte wählen Sie eine der folgenden Sprachen, um die Bot-Oberfläche zu ändern:",
+        Language.IT: "🌐 **Seleziona la tua lingua:**\nScegli una delle seguenti lingue per cambiare l'interfaccia del bot:",
+        Language.ES: "🌐 **Selecciona tu idioma:**\nPor favor, elige uno de los siguientes idiomas para cambiar la interfaz del bot:"
     }.get(language, "🌐 **Select your language:**")
     await message.answer(text=text, reply_markup=lang_markup)
 
@@ -291,6 +403,10 @@ async def handle_unified_support(message: Message, language: Language):
         Language.EN: "💬 Message Admin (@truongdvfb)",
         Language.HI: "💬 व्यवस्थापक को संदेश भेजें (@truongdvfb)",
         Language.ZH: "💬 联系管理员 (@truongdvfb)",
+        Language.FR: "💬 Contacter l'administrateur (@truongdvfb)",
+        Language.DE: "💬 Admin kontaktieren (@truongdvfb)",
+        Language.IT: "💬 Contatta l'amministratore (@truongdvfb)",
+        Language.ES: "💬 Contactar al Administrador (@truongdvfb)",
     }.get(language, "💬 Message Admin (@truongdvfb)")
 
     kb_builder.button(text=admin_btn_text, url=config.SUPPORT_LINK)
@@ -351,6 +467,62 @@ async def handle_unified_support(message: Message, language: Language):
             "• 为代理、养号/注册工具提供 REST API 接口及技术文档。\n"
             "• 大额批发享专属折扣优惠。\n\n"
             "👉 **点击下方按钮直接联系管理员:**"
+        ),
+        Language.FR: (
+            "💬 **CENTRE DE SUPPORT & GARANTIE**\n"
+            "👤 **Administrateur :** @truongdvfb\n\n"
+            "🛡️ **1. Politique de garantie :**\n"
+            "• Remplacement **1 pour 1** sous 24h en cas d'erreur système ou problème initial.\n"
+            "• Veuillez conserver le format d'origine livré et fournir votre **Numéro de commande (Order ID)**.\n\n"
+            "💳 **2. Support portefeuille & recharge :**\n"
+            "• Recharge automatique via **Binance Pay (0% de frais)** et **USDT**.\n"
+            "• En cas de problème de dépôt, envoyez la note Memo ou le TxID à l'administrateur.\n\n"
+            "🔑 **3. API & Achats en gros :**\n"
+            "• Clé API REST disponible pour outils et revendeurs avec documentation technique.\n"
+            "• Tarifs préférentiels pour les gros volumes.\n\n"
+            "👉 **Cliquez sur le bouton ci-dessous pour contacter l'administrateur :**"
+        ),
+        Language.DE: (
+            "💬 **KUNDENSERVICE & GARANTIEZENTRUM**\n"
+            "👤 **Administrator:** @truongdvfb\n\n"
+            "🛡️ **1. Garantiebestimmungen:**\n"
+            "• **1:1-Ersatz** innerhalb von 24 Stunden bei Systemfehlern oder Erstproblemen.\n"
+            "• Bitte Originalformat beibehalten und Ihre **Bestellnummer (Order ID)** bereithalten.\n\n"
+            "💳 **2. Guthaben & Aufladung:**\n"
+            "• Automatische Aufladung über **Binance Pay (0% Gebühr)** und **USDT**.\n"
+            "• Bei Verzögerungen Memo-Code oder TxID an den Administrator senden.\n\n"
+            "🔑 **3. API & Großeinkauf:**\n"
+            "• REST-API-Schlüssel für Tools und Wiederverkäufer verfügbar.\n"
+            "• Attraktive Rabatte bei Großbestellungen.\n\n"
+            "👉 **Klicken Sie unten, um den Administrator direkt zu kontaktieren:**"
+        ),
+        Language.IT: (
+            "💬 **CENTRO ASSISTENZA & GARANZIA**\n"
+            "👤 **Amministratore:** @truongdvfb\n\n"
+            "🛡️ **1. Politica di garanzia:**\n"
+            "• Sostituzione **1 a 1** entro 24 ore in caso di errori di sistema o difetti iniziali.\n"
+            "• Conservare il formato originale e fornire il proprio **ID Ordine (Order ID)**.\n\n"
+            "💳 **2. Supporto portafoglio & ricariche:**\n"
+            "• Ricarica automatica tramite **Binance Pay (0% commissioni)** e **USDT**.\n"
+            "• In caso di necessità, inviare il Memo o TxID all'amministratore.\n\n"
+            "🔑 **3. API & Acquisti all'ingrosso:**\n"
+            "• Chiavi API REST disponibili per tool e rivenditori con documentazione completa.\n"
+            "• Sconti dedicati per ordini all'ingrosso.\n\n"
+            "👉 **Clicca sul pulsante qui sotto per contattare l'amministratore:**"
+        ),
+        Language.ES: (
+            "💬 **CENTRO DE SOPORTE & GARANTÍA**\n"
+            "👤 **Administrador:** @truongdvfb\n\n"
+            "🛡️ **1. Política de garantía:**\n"
+            "• Reemplazo **1 a 1** dentro de las 24 horas por fallas del sistema o problemas iniciales.\n"
+            "• Conserve el formato de entrega original y proporcione su **ID de Pedido (Order ID)**.\n\n"
+            "💳 **2. Soporte de billetera y depósitos:**\n"
+            "• Depósito automático a través de **Binance Pay (0% comisión)** y **USDT**.\n"
+            "• Si tiene algún problema, envíe el Memo o TxID al administrador.\n\n"
+            "🔑 **3. API y compras al por mayor:**\n"
+            "• Claves API REST disponibles para herramientas y distribuidores con documentación técnica.\n"
+            "• Descuentos exclusivos para compras al por mayor.\n\n"
+            "👉 **Haz clic en el botón de abajo para contactar al administrador:**"
         )
     }.get(language, "💬 **SUPPORT CENTER & CONTACT ADMIN**")
 
@@ -358,9 +530,15 @@ async def handle_unified_support(message: Message, language: Language):
 
 
 @main_router.message(F.text.in_(set(BUTTON_TOP_UP.values())))
-async def handle_deposit_button(message: Message, state: FSMContext):
-    from handlers.user.deposit import cmd_start_deposit
-    await cmd_start_deposit(message, state)
+@main_router.message(Command("deposit"))
+@main_router.message(Command("nap"))
+@main_router.message(Command("topup"))
+async def handle_deposit_button(message: Message, state: FSMContext, session: AsyncSession, language: Language):
+    from callbacks import MyProfileCallback
+    from services.user import UserService
+    cb_data = MyProfileCallback.create(level=1)
+    msg_text, kb_builder = await UserService.get_top_up_buttons(cb_data, language)
+    await message.answer(msg_text, reply_markup=kb_builder.as_markup())
 
 @main_router.message(F.text.in_(set(BUTTON_ADMIN.values())))
 async def handle_admin(message: Message, state: FSMContext, language: Language):

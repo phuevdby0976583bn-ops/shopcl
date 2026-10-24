@@ -196,6 +196,8 @@ class UserService:
             user_dto.language = new_lang
             await UserRepository.update(user_dto, session)
             await session_commit(session)
+            from utils.localizator import Localizator
+            Localizator.clear_cache()
             msg = get_text(new_lang, BotEntity.USER, "language_edited_successfully")
             kb_builder.row(callback_data.get_back_button(new_lang, 0))
             kb_builder.adjust(1)

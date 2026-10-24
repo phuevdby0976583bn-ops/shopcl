@@ -7,7 +7,9 @@ from callbacks import AllCategoriesCallback
 from enums.entity_type import EntityType
 from enums.item_type import ItemType
 from enums.keyboard_button import KeyboardButton as KB
+from enums.bot_entity import BotEntity
 from enums.language import Language
+from utils.utils import get_text
 from handlers.common.common import enable_search
 from handlers.user.constants import UserStates
 from services.cart import CartService
@@ -77,7 +79,7 @@ async def all_categories(**kwargs):
         await state.set_state()
         media, kb_builder = await CategoryService.get_buttons(callback_data, state, session, language)
 
-    caption = getattr(media, "caption", "") or "📁 <b>Vui lòng chọn danh mục sản phẩm:</b>"
+    caption = getattr(media, "caption", None) or get_text(language, BotEntity.USER, "pick_category")
     await _send_or_edit_text(callback, caption, kb_builder.as_markup())
 
 
@@ -104,7 +106,7 @@ async def show_subcategories_in_category(**kwargs):
         await state.set_state()
         media, kb_builder = await SubcategoryService.get_buttons(callback_data, state, session, language)
 
-    caption = getattr(media, "caption", "") or "📦 <b>Chọn loại sản phẩm:</b>"
+    caption = getattr(media, "caption", None) or get_text(language, BotEntity.USER, "subcategories")
     await _send_or_edit_text(callback, caption, kb_builder.as_markup())
 
 
@@ -114,7 +116,7 @@ async def select_quantity(**kwargs):
     session: AsyncSession = kwargs.get("session")
     language: Language = kwargs.get("language")
     media, kb_builder = await SubcategoryService.get_select_quantity_buttons(callback_data, session, language)
-    caption = getattr(media, "caption", "") or "🔢 <b>Chọn số lượng cần mua:</b>"
+    caption = getattr(media, "caption", None) or get_text(language, BotEntity.USER, "select_quantity")
     await _send_or_edit_text(callback, caption, kb_builder.as_markup())
 
 
@@ -124,7 +126,7 @@ async def add_to_cart_confirmation(**kwargs):
     session: AsyncSession = kwargs.get("session")
     language: Language = kwargs.get("language")
     msg, kb_builder = await SubcategoryService.get_add_to_cart_buttons(callback_data, session, language)
-    await _send_or_edit_text(callback, msg or "🛒 <b>Xác nhận thêm vào giỏ hàng:</b>", kb_builder.as_markup())
+    await _send_or_edit_text(callback, msg or get_text(language, BotEntity.USER, "cart"), kb_builder.as_markup())
 
 
 async def add_to_cart(**kwargs):
@@ -133,7 +135,7 @@ async def add_to_cart(**kwargs):
     session: AsyncSession = kwargs.get("session")
     language: Language = kwargs.get("language")
     media, kb_builder = await CartService.add_to_cart(callback, callback_data, session, language)
-    caption = getattr(media, "caption", "") or "✅ <b>Đã thêm sản phẩm vào giỏ hàng!</b>"
+    caption = getattr(media, "caption", None) or get_text(language, BotEntity.USER, "item_added_to_cart")
     await _send_or_edit_text(callback, caption, kb_builder.as_markup())
 
 

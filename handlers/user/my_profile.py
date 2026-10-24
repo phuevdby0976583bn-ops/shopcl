@@ -240,6 +240,18 @@ async def binance_pay_view_handler(callback: CallbackQuery, session: AsyncSessio
 @my_profile_router.callback_query(F.data == "binance_pay:check", IsUserExistFilter())
 async def binance_pay_check_handler(callback: CallbackQuery, session: AsyncSession, language: Language):
     from services.binance_pay import BinancePayService
+    checking_toast = {
+        Language.VI: "🔍 Đang kiểm tra giao dịch trên Binance...",
+        Language.EN: "🔍 Checking transaction on Binance...",
+        Language.HI: "🔍 Binance पर लेनदेन की जाँच की जा रही है...",
+        Language.ZH: "🔍 正在查询币安交易状态...",
+        Language.FR: "🔍 Vérification de la transaction sur Binance...",
+        Language.DE: "🔍 Transaktion auf Binance wird überprüft...",
+        Language.IT: "🔍 Verifica transazione su Binance in corso...",
+        Language.ES: "🔍 Verificando transacción en Binance..."
+    }.get(language, "🔍 Checking transaction on Binance...")
+    await callback.answer(checking_toast)
+
     credited = await BinancePayService.process_and_credit_transactions(
         bot=callback.bot,
         session=session,
@@ -247,12 +259,59 @@ async def binance_pay_check_handler(callback: CallbackQuery, session: AsyncSessi
     )
     if credited:
         total_credited = sum(item["amount"] for item in credited)
-        await callback.answer(f"🎉 Đã nhận và cộng thành công +{total_credited} USDT vào tài khoản!", show_alert=True)
+        success_toast = {
+            Language.VI: f"🎉 Đã nhận và cộng thành công +{total_credited} USDT vào tài khoản!",
+            Language.EN: f"🎉 Successfully credited +{total_credited} USDT to your balance!",
+            Language.HI: f"🎉 सफलतापूर्वक आपके खाते में +{total_credited} USDT जोड़ दिए गए!",
+            Language.ZH: f"🎉 成功到账 +{total_credited} USDT 至您的账户！",
+            Language.FR: f"🎉 +{total_credited} USDT crédités avec succès sur votre compte !",
+            Language.DE: f"🎉 +{total_credited} USDT erfolgreich Ihrem Guthaben gutgeschrieben!",
+            Language.IT: f"🎉 Accreditati con successo +{total_credited} USDT sul tuo conto!",
+            Language.ES: f"🎉 ¡Se han acreditado con éxito +{total_credited} USDT en su saldo!"
+        }.get(language, f"🎉 Successfully credited +{total_credited} USDT!")
+        await callback.answer(success_toast, show_alert=True)
         await my_profile(callback=callback, session=session, language=language)
     else:
-        await callback.answer(
-            f"⏳ Chưa thấy giao dịch mới trên Binance!\n\n"
-            f"Nếu bạn vừa chuyển, vui lòng đợi 10-20 giây rồi bấm kiểm tra lại nhé.\n"
-            f"Lưu ý: Bắt buộc phải có nội dung Note: NAP {callback.from_user.id}",
-            show_alert=True
-        )
+        no_tx_alert = {
+            Language.VI: (
+                f"⏳ Chưa thấy giao dịch mới trên Binance!\n\n"
+                f"Nếu bạn vừa chuyển, vui lòng đợi 10-20 giây rồi bấm kiểm tra lại nhé.\n"
+                f"⚠️ Lưu ý: Bắt buộc phải có nội dung Note: NAP {callback.from_user.id}"
+            ),
+            Language.EN: (
+                f"⏳ No new transaction detected on Binance!\n\n"
+                f"If you just transferred, please wait 10-20 seconds and check again.\n"
+                f"⚠️ Note: You MUST enter Note: NAP {callback.from_user.id}"
+            ),
+            Language.HI: (
+                f"⏳ Binance पर कोई नया लेनदेन नहीं मिला!\n\n"
+                f"यदि आपने अभी ट्रांसफर किया है, तो कृपया 10-20 सेकंड प्रतीक्षा करें और पुनः प्रयास करें।\n"
+                f"⚠️ नोट: आपको Note: NAP {callback.from_user.id} दर्ज करना आवश्यक है"
+            ),
+            Language.ZH: (
+                f"⏳ 暂未在币安上检测到新交易！\n\n"
+                f"如果您刚刚完成转账，请等待 10-20 秒后重新点击检查。\n"
+                f"⚠️ 注意：转账时必须填写备注 Note: NAP {callback.from_user.id}"
+            ),
+            Language.FR: (
+                f"⏳ Aucune nouvelle transaction détectée sur Binance !\n\n"
+                f"Si vous venez d'effectuer le transfert, veuillez patienter 10-20 secondes puis réessayer.\n"
+                f"⚠️ Remarque : Vous DEVEZ indiquer dans la Note : NAP {callback.from_user.id}"
+            ),
+            Language.DE: (
+                f"⏳ Keine neue Transaktion auf Binance erkannt!\n\n"
+                f"Wenn Sie gerade überwiesen haben, warten Sie bitte 10-20 Sekunden und prüfen Sie erneut.\n"
+                f"⚠️ Hinweis: Sie MÜSSEN als Notiz angeben: NAP {callback.from_user.id}"
+            ),
+            Language.IT: (
+                f"⏳ Nessuna nuova transazione rilevata su Binance!\n\n"
+                f"Se hai appena trasferito, attendi 10-20 secondi e ricontrolla.\n"
+                f"⚠️ Nota: DEVI obbligatoriamente inserire nella Nota: NAP {callback.from_user.id}"
+            ),
+            Language.ES: (
+                f"⏳ ¡No se ha detectado ninguna transacción nueva en Binance!\n\n"
+                f"Si acabas de transferir, espera entre 10 y 20 segundos y vuelve a consultar.\n"
+                f"⚠️ Nota: DEBES ingresar obligatoriamente en Nota: NAP {callback.from_user.id}"
+            )
+        }.get(language, f"⏳ No new transaction detected!\nNote: NAP {callback.from_user.id}")
+        await callback.answer(no_tx_alert, show_alert=True)
