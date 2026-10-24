@@ -147,18 +147,9 @@ async def start(message: Message, session: AsyncSession, language: Language, com
     lang_markup = get_language_inline_keyboard()
 
     try:
-        bot_photo_id = get_bot_photo_id()
-        if bot_photo_id and bot_photo_id.strip() and bot_photo_id != "no_image_default":
-            await message.answer_photo(
-                photo=bot_photo_id,
-                caption=welcome_text,
-                reply_markup=lang_markup
-            )
-        else:
-            await message.answer(text=welcome_text, reply_markup=lang_markup)
-    except Exception as e:
-        logging.warning(f"Failed to send start photo, fallback to text: {e}")
         await message.answer(text=welcome_text, reply_markup=lang_markup)
+    except Exception as e:
+        logging.warning(f"Failed to send start text: {e}")
 
     menu_hint = {
         Language.VI: "👇 Bấm vào menu bên dưới để bắt đầu:",

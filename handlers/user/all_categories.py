@@ -19,6 +19,25 @@ from utils.custom_filters import IsUserExistFilter
 all_categories_router = Router()
 
 
+async def _send_or_edit_text(target: Message | CallbackQuery, text: str, reply_markup=None):
+    text_content = text or "..."
+    if isinstance(target, Message):
+        return await target.answer(text=text_content, reply_markup=reply_markup)
+    else:
+        callback = target
+        if callback.message.caption:
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+            return await callback.message.answer(text=text_content, reply_markup=reply_markup)
+        else:
+            try:
+                return await callback.message.edit_text(text=text_content, reply_markup=reply_markup)
+            except Exception:
+                return await callback.message.answer(text=text_content, reply_markup=reply_markup)
+
+
 @all_categories_router.message(F.text.in_(KB.get_localized_set(KB.ALL_CATEGORIES)), IsUserExistFilter())
 async def all_categories_text_message(message: Message, session: AsyncSession, state: FSMContext, language: Language):
     await all_types(callback=message, session=session, state=state, language=language)
@@ -30,11 +49,8 @@ async def all_types(**kwargs):
     session: AsyncSession = kwargs.get("session")
     language: Language = kwargs.get("language")
     media, kb_builder = await ItemService.get_all_types(callback_data, session, language)
-    if isinstance(message, Message):
-        await NotificationService.answer_media(message, media, kb_builder.as_markup())
-    else:
-        callback: CallbackQuery = message
-        await callback.message.edit_media(media=media, reply_markup=kb_builder.as_markup())
+    caption = getattr(media, "caption", "") or "📦 Chọn danh mục sản phẩm:"
+    await _send_or_edit_text(message, caption, kb_builder.as_markup())
 
 
 async def all_categories(**kwargs):
@@ -58,7 +74,8 @@ async def all_categories(**kwargs):
         await state.update_data(filter=None)
         await state.set_state()
         media, kb_builder = await CategoryService.get_buttons(callback_data, state, session, language)
-    await callback.message.edit_media(media=media, reply_markup=kb_builder.as_markup())
+    caption = getattr(media, "caption", "") or "📦 Danh mục:"
+    await _send_or_edit_text(callback, caption, kb_builder.as_markup())
 
 
 async def show_subcategories_in_category(**kwargs):
@@ -83,7 +100,8 @@ async def show_subcategories_in_category(**kwargs):
         await state.update_data(filter=None)
         await state.set_state()
         media, kb_builder = await SubcategoryService.get_buttons(callback_data, state, session, language)
-    await callback.message.edit_media(media=media, reply_markup=kb_builder.as_markup())
+    caption = getattr(media, "caption", "") or "📦 Danh mục con:"
+    await _send_or_edit_text(callback, caption, kb_builder.as_markup())
 
 
 async def select_quantity(**kwargs):
@@ -92,7 +110,8 @@ async def select_quantity(**kwargs):
     session: AsyncSession = kwargs.get("session")
     language: Language = kwargs.get("language")
     media, kb_builder = await SubcategoryService.get_select_quantity_buttons(callback_data, session, language)
-    await callback.message.edit_media(media=media, reply_markup=kb_builder.as_markup())
+    caption = getattr(media, "caption", "") or "Chọn số lượng:"
+    await _send_or_edit_text(callback, caption, kb_builder.as_markup())
 
 
 async def add_to_cart_confirmation(**kwargs):
@@ -101,7 +120,7 @@ async def add_to_cart_confirmation(**kwargs):
     session: AsyncSession = kwargs.get("session")
     language: Language = kwargs.get("language")
     msg, kb_builder = await SubcategoryService.get_add_to_cart_buttons(callback_data, session, language)
-    await callback.message.edit_caption(caption=msg, reply_markup=kb_builder.as_markup())
+    await _send_or_edit_text(callback, msg or "Xác nhận thêm vào giỏ hàng:", kb_builder.as_markup())
 
 
 async def add_to_cart(**kwargs):
@@ -110,7 +129,8 @@ async def add_to_cart(**kwargs):
     session: AsyncSession = kwargs.get("session")
     language: Language = kwargs.get("language")
     media, kb_builder = await CartService.add_to_cart(callback, callback_data, session, language)
-    await callback.message.edit_media(media=media, reply_markup=kb_builder.as_markup())
+    caption = getattr(media, "caption", "") or "Đã thêm vào giỏ hàng!"
+    await _send_or_edit_text(callback, caption, kb_builder.as_markup())
 
 
 @all_categories_router.message(IsUserExistFilter(), F.text, StateFilter(UserStates.filter_items))
@@ -122,7 +142,8 @@ async def receive_filter_message(message: Message, state: FSMContext, session: A
         media, kb_builder = await CategoryService.get_buttons(None, state, session, language)
     else:
         media, kb_builder = await SubcategoryService.get_buttons(None, state, session, language)
-    await NotificationService.answer_media(message, media, kb_builder.as_markup())
+    caption = getattr(media, "caption", "") or "..."
+    await _send_or_edit_text(message, caption, kb_builder.as_markup())
 
 
 @all_categories_router.callback_query(AllCategoriesCallback.filter(), IsUserExistFilter())

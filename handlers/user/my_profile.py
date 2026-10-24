@@ -26,6 +26,36 @@ async def my_profile_text_message(message: Message, session: AsyncSession, state
     await my_profile(message=message, session=session, state=state, language=language)
 
 
+
+async def _send_or_edit_profile(target, text: str, reply_markup=None):
+    text_content = text or "..."
+    if isinstance(target, Message):
+        return await target.answer(text=text_content, reply_markup=reply_markup)
+    else:
+        callback = target
+        if callback.message.caption:
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+            return await callback.message.answer(text=text_content, reply_markup=reply_markup)
+        else:
+            try:
+                return await callback.message.edit_text(text=text_content, reply_markup=reply_markup)
+            except Exception:
+                return await callback.message.answer(text=text_content, reply_markup=reply_markup)
+
+async def _edit_caption_or_text(message, text: str, reply_markup=None):
+    if message.caption:
+        try:
+            return await message.edit_caption(caption=text, reply_markup=reply_markup)
+        except Exception:
+            pass
+    try:
+        return await message.edit_text(text=text, reply_markup=reply_markup)
+    except Exception:
+        return await message.answer(text=text, reply_markup=reply_markup)
+
 async def my_profile(**kwargs):
     message: Message | CallbackQuery = kwargs.get("message") or kwargs.get("callback")
     session: AsyncSession = kwargs.get("session")
@@ -33,12 +63,8 @@ async def my_profile(**kwargs):
     language: Language = kwargs.get("language")
     await state.clear()
     media, kb_builder = await UserService.get_my_profile_buttons(message.from_user.id, session, language)
-    if isinstance(message, Message):
-        await NotificationService.answer_media(message, media, kb_builder.as_markup())
-    elif isinstance(message, CallbackQuery):
-        callback = message
-        await callback.message.edit_media(media=media,
-                                          reply_markup=kb_builder.as_markup())
+    caption = getattr(media, "caption", "") or "👤 Ví & Thông tin cá nhân:"
+    await _send_or_edit_profile(message, caption, kb_builder.as_markup())
 
 
 async def top_up_balance(**kwargs):
@@ -48,7 +74,7 @@ async def top_up_balance(**kwargs):
     language: Language = kwargs.get("language")
     await state.set_state()
     msg_text, kb_builder = await UserService.get_top_up_buttons(callback_data, language)
-    await callback.message.edit_caption(caption=msg_text, reply_markup=kb_builder.as_markup())
+    await _edit_caption_or_text(callback.message, msg_text, kb_builder.as_markup())
 
 
 async def purchase_history(**kwargs):
@@ -60,7 +86,7 @@ async def purchase_history(**kwargs):
     msg_text, kb_builder = await UserService.get_purchase_history_buttons(callback.from_user.id, callback_data,
                                                                           state, session, language)
     if callback.message.caption:
-        await callback.message.edit_caption(caption=msg_text, reply_markup=kb_builder.as_markup())
+        await _edit_caption_or_text(callback.message, msg_text, kb_builder.as_markup())
     else:
         await callback.message.edit_text(text=msg_text, reply_markup=kb_builder.as_markup())
 
@@ -127,7 +153,7 @@ async def edit_language(**kwargs):
     callback_data: MyProfileCallback = kwargs.get("callback_data")
     language: Language = kwargs.get("language")
     msg, kb_builder = await UserService.edit_language(callback.from_user.id, callback_data, session, language)
-    await callback.message.edit_caption(caption=msg, reply_markup=kb_builder.as_markup())
+    await _edit_caption_or_text(callback.message, msg, kb_builder.as_markup())
     if callback_data.language is not None and callback_data.confirmation is True:
         try:
             from run import get_start_keyboard
@@ -142,7 +168,7 @@ async def referral_system(**kwargs):
     callback_data: MyProfileCallback = kwargs.get("callback_data")
     language: Language = kwargs.get("language")
     msg, kb_builder = await ReferralService.view_statistics(callback, callback_data, session, language)
-    await callback.message.edit_caption(caption=msg, reply_markup=kb_builder.as_markup())
+    await _edit_caption_or_text(callback.message, msg, kb_builder.as_markup())
 
 
 @my_profile_router.message(IsUserExistFilter(), F.text, StateFilter(UserStates.filter_purchase_history))

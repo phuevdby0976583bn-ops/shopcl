@@ -48,6 +48,13 @@ class CategoryRepository:
                 .order_by(*sort_methods))
         category_names = await session_execute(stmt, session)
         categories = category_names.scalars().all()
+        if not categories:
+            fallback_stmt = select(Category).limit(config.PAGE_ENTRIES).offset(page * config.PAGE_ENTRIES)
+            if filters is not None:
+                filter_conditions = [Category.name.icontains(name) for name in filters]
+                fallback_stmt = fallback_stmt.where(or_(*filter_conditions))
+            fallback_res = await session_execute(fallback_stmt, session)
+            categories = fallback_res.scalars().all()
         return [CategoryDTO.model_validate(category, from_attributes=True) for category in categories]
 
     @staticmethod
@@ -65,6 +72,9 @@ class CategoryRepository:
         stmt = select(func.count()).select_from(sub_stmt)
         max_page = await session_execute(stmt, session)
         max_page = max_page.scalar_one()
+        if max_page == 0:
+            count_stmt = select(func.count(Category.id))
+            max_page = (await session_execute(count_stmt, session)).scalar_one()
         return calculate_max_page(max_page)
 
     @staticmethod

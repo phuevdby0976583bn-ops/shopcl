@@ -354,7 +354,9 @@ class NotificationService:
         raw_media = str(media.media) if (media and hasattr(media, 'media') and media.media) else ""
         caption_text = media.caption if (media and hasattr(media, 'caption') and media.caption) else "..."
 
-        if not raw_media or "no_image_default" in raw_media or len(raw_media) < 10:
+        # Neu khong phai file QR code dynamic (BufferedInputFile) ma la anh bot avatar tinh, bo anh va gui text thuan tuy:
+        is_dynamic_file = hasattr(media, 'media') and hasattr(media.media, 'file')
+        if not is_dynamic_file:
             return await message.answer(text=caption_text, reply_markup=reply_markup)
 
         if isinstance(media, InputMediaPhoto):
