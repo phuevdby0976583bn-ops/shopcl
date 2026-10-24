@@ -138,26 +138,33 @@ async def start(message: Message, session: AsyncSession, language: Language, com
     bot_info = await bot.get_me()
     bot_name = bot_info.username or "Shop"
 
-    welcome_text = (
-        f"👋 Chào mừng bạn đến với **@{bot_name}**! Phím tắt menu đã được gắn ở bên dưới:\n\n"
-        f"🌐 **Chọn ngôn ngữ**\n"
-        f"Vui lòng chọn ngôn ngữ trước khi vào shop."
-    )
-
-    lang_markup = get_language_inline_keyboard()
+    welcome_text = {
+        Language.VI: (
+            f"👋 Chào mừng bạn đến với **@{bot_name}** - Shop Clone Facebook tự động 24/7!\n\n"
+            f"⚡ **Cam kết: Tự động Check Live UID Facebook qua Graph API ngay khi bàn giao!**\n"
+            f"💳 **Nạp tiền tự động: Binance Pay (0% phí) & Crypto Blockchain.**\n\n"
+            f"👇 Vui lòng bấm vào menu bên dưới để bắt đầu mua tài khoản:"
+        ),
+        Language.EN: (
+            f"👋 Welcome to **@{bot_name}** - Automated Facebook Clone Shop 24/7!\n\n"
+            f"⚡ **Guarantee: Auto Live UID check via Facebook Graph API upon delivery!**\n"
+            f"💳 **Instant deposit: Binance Pay (0% Fee) & Crypto Blockchain.**\n\n"
+            f"👇 Use the menu buttons below to get started:"
+        ),
+        Language.HI: (
+            f"👋 **@{bot_name}** में आपका स्वागत है - 24/7 स्वचालित फेसबुक क्लोन शॉप!\n\n"
+            f"👇 शुरू करने के लिए नीचे दिए गए मेनू का उपयोग करें:"
+        ),
+        Language.ZH: (
+            f"👋 欢迎来到 **@{bot_name}** - 24/7 自动发货 Facebook Clone 商城！\n\n"
+            f"👇 请使用下方菜单按钮开始选购："
+        )
+    }.get(language, f"👋 Chào mừng bạn đến với **@{bot_name}**!")
 
     try:
-        await message.answer(text=welcome_text, reply_markup=lang_markup)
+        await message.answer(text=welcome_text, reply_markup=start_markup)
     except Exception as e:
         logging.warning(f"Failed to send start text: {e}")
-
-    menu_hint = {
-        Language.VI: "👇 Bấm vào menu bên dưới để bắt đầu:",
-        Language.HI: "👇 शुरू करने के लिए नीचे दिए गए मेनू पर क्लिक करें:",
-        Language.ZH: "👇 点击下方菜单开始：",
-        Language.EN: "👇 Use the menu buttons below to get started:"
-    }.get(language, "👇 Use the menu buttons below to get started:")
-    await message.answer(text=menu_hint, reply_markup=start_markup)
 
 
 @main_router.callback_query(F.data.startswith("set_lang:"))
@@ -373,7 +380,7 @@ async def support_reviews(message: Message, session: AsyncSession, language: Lan
 
 @main_router.error(F.update.message.as_("message"))
 async def error_handler(event: ErrorEvent, message: Message):
-    await message.answer("Oops, something went wrong!")
+    await message.answer("⚠️ <b>Đã có lỗi xảy ra!</b> Vui lòng thử lại sau giây lát hoặc liên hệ Admin để được hỗ trợ.")
     traceback_str = traceback.format_exc()
     admin_notification = (
         f"Critical error caused by {event.exception}\n\n"

@@ -13,7 +13,7 @@ class MessageService:
             private_data = item.private_data
             uid = extract_uid(private_data)
             if uid:
-                message += f"📦 Clone #{count} [UID: <code>{uid}</code> | LIVE ✅]\nData: <code>{private_data}</code>\n\n"
+                message += f"📦 Clone #{count} [UID: <code>{uid}</code> | LIVE ✅]\nĐịnh dạng: <code>{private_data}</code>\n\n"
             else:
                 message += get_text(language, BotEntity.USER, "purchased_item").format(count=count,
                                                                                        private_data=private_data)
