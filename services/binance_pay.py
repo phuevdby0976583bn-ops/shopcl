@@ -175,13 +175,22 @@ class BinancePayService:
                                 f"━━━━━━━━━━━━━━━━━━━━━━\n"
                                 f"🎉 Cảm ơn bạn! Hãy bấm <b>🛒 Sản phẩm</b> để mua nick ngay! 🚀"
                             )
-                            await bot.edit_message_text(
-                                chat_id=matched_order.chat_id,
-                                message_id=matched_order.message_id,
-                                text=success_text,
-                                reply_markup=None,
-                                parse_mode="HTML"
-                            )
+                            try:
+                                await bot.edit_message_caption(
+                                    chat_id=matched_order.chat_id,
+                                    message_id=matched_order.message_id,
+                                    caption=success_text,
+                                    reply_markup=None,
+                                    parse_mode="HTML"
+                                )
+                            except Exception:
+                                await bot.edit_message_text(
+                                    chat_id=matched_order.chat_id,
+                                    message_id=matched_order.message_id,
+                                    text=success_text,
+                                    reply_markup=None,
+                                    parse_mode="HTML"
+                                )
                         except Exception as e:
                             logger.debug(f"Could not edit invoice message: {e}")
 

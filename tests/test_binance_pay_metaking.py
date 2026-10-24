@@ -49,17 +49,18 @@ async def test_create_binance_invoice_text_table():
         _MockScalarResult([])
     ]
 
-    text, kb, order = await DepositFlowService.create_binance_invoice(
+    qr_file, caption, kb, order = await DepositFlowService.create_binance_invoice(
         telegram_id=999888,
         base_amount=5.0,
         session=session,
         language=Language.VI
     )
 
-    assert "HOÁ ĐƠN NẠP TIỀN (BINANCE PAY)" in text
-    assert "805398854" in text
-    assert "5.00" in text
-    assert "tỷ giá" in text
+    assert qr_file is not None
+    assert "Hoá đơn nạp USDT" in caption
+    assert "805398854" in caption
+    assert "5.00" in caption
+    assert "tỷ giá" in caption
     assert order.status == "PENDING"
     assert order.amount > 5.0
     assert order.telegram_id == 999888
@@ -124,7 +125,7 @@ async def test_binance_auto_credit_by_exact_amount():
 
     # Verify notification sent and message edited
     assert mock_bot.send_message.called
-    assert mock_bot.edit_message_text.called
+    assert mock_bot.edit_message_caption.called or mock_bot.edit_message_text.called
 
 
 @pytest.mark.asyncio

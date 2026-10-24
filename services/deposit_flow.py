@@ -1,5 +1,9 @@
+﻿import io
 import random
 import logging
+import qrcode
+from PIL import Image, ImageDraw
+from aiogram.types import BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +28,45 @@ NETWORK_DISPLAY_NAMES = {
 
 
 class DepositFlowService:
+    @staticmethod
+    def generate_binance_qr(binance_uid: str, amount: float) -> BufferedInputFile:
+        """Sinh ma QR co logo Binance o giua theo mau MetakingBot."""
+        qr = qrcode.QRCode(
+            version=None,
+            error_correction=qrcode.constants.ERROR_CORRECT_H,
+            box_size=10,
+            border=3
+        )
+        qr.add_data(f"binance://pay?receiver={binance_uid}&amount={amount:.4f}")
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+        w, h = img.size
+
+        # Ve khung vuong bo goc mau vang o giua
+        box_size = int(w * 0.22)
+        x0 = (w - box_size) // 2
+        y0 = (h - box_size) // 2
+        x1 = x0 + box_size
+        y1 = y0 + box_size
+
+        draw = ImageDraw.Draw(img)
+        pad = 6
+        draw.rounded_rectangle([x0 - pad, y0 - pad, x1 + pad, y1 + pad], radius=14, fill="white")
+        draw.rounded_rectangle([x0, y0, x1, y1], radius=10, fill="#F0B90B")
+
+        # Ve bieu tuong kim cuong Binance o giua
+        cx = (x0 + x1) // 2
+        cy = (y0 + y1) // 2
+        r = box_size // 3
+        draw.polygon([(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)], fill="black")
+        r_inner = r // 2
+        draw.polygon([(cx, cy - r_inner), (cx + r_inner, cy), (cx, cy + r_inner), (cx - r_inner, cy)], fill="#F0B90B")
+
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+        return BufferedInputFile(file=buffer.getvalue(), filename=f"binance_pay_{amount:.4f}.png")
+
     @staticmethod
     def get_method_selection_keyboard(language: Language = Language.VI) -> tuple[str, InlineKeyboardBuilder]:
         if language == Language.VI:
@@ -111,7 +154,7 @@ class DepositFlowService:
             or "805398854"
         )
 
-        # Tranh trung lap so duoi le voi cac hoa don PENDING hien tai
+        # Tránh trùng lặp số đuôi lẻ với các hoá đơn PENDING hiện tại
         stmt_pending = select(BinancePayOrder.amount).where(BinancePayOrder.status == "PENDING")
         existing_amounts = set(round(float(a), 4) for a in (await session.execute(stmt_pending)).scalars() if a)
 
@@ -133,7 +176,7 @@ class DepositFlowService:
         rate = getattr(config, "USDT_VND_RATE", USDT_VND_RATE) or USDT_VND_RATE
         vnd_amount = int(round(exact_amount * rate))
 
-        # Luu don hang vao DB
+        # Lưu đơn hàng vào DB
         order = BinancePayOrder(
             user_id=user.id,
             telegram_id=telegram_id,
@@ -145,55 +188,49 @@ class DepositFlowService:
         await session.commit()
         await session.refresh(order)
 
+        qr_file = DepositFlowService.generate_binance_qr(binance_uid, exact_amount)
+
         if language == Language.VI:
-            text = (
-                f"🧾 <b>HOÁ ĐƠN NẠP TIỀN (BINANCE PAY)</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🆔 <b>Binance Pay ID:</b> <code>{binance_uid}</code>\n"
-                f"💰 <b>Số tiền cần chuyển:</b> <code>{exact_amount:.4f}</code> USDT\n"
-                f"💵 <b>Quy đổi:</b> {vnd_amount:,}đ (tỷ giá {rate:,}đ/$)\n"
-                f"⏳ <b>Hạn thanh toán:</b> 60 phút\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"⚠️ <b>HƯỚNG DẪN CHUYỂN TIỀN:</b>\n"
-                f"1️⃣ Mở app <b>Binance</b> ➔ Chọn mục <b>Pay</b>\n"
-                f"2️⃣ Chọn <b>Gửi (Send)</b> tới Binance Pay ID: <code>{binance_uid}</code>\n"
-                f"3️⃣ Nhập <b>CHÍNH XÁC</b> số tiền: <code>{exact_amount:.4f}</code> USDT\n"
-                f"4️⃣ Xác nhận chuyển ➔ <b>Hệ thống tự động cộng tiền trong 1-5 giây!</b>\n\n"
-                f"💡 <i>Con số lẻ {decimal_suffix} giúp hệ thống tự động nhận diện giao dịch của bạn, bạn vẫn nhận đủ 100% số tiền đã chuyển.</i>"
+            caption = (
+                f"🧾 <b>Hoá đơn nạp USDT</b>\n\n"
+                f"Binance Pay ID: <code>{binance_uid}</code>\n"
+                f"Số tiền chuyển: <code>{exact_amount:.4f}</code> USDT\n"
+                f"Tiền nạp quy đổi: {vnd_amount:,}đ\n"
+                f"Tổng dự kiến nhận: {vnd_amount:,}đ (tỷ giá {rate:,}đ/USDT)\n"
+                f"Hết hạn: 60 phút\n\n"
+                f"⚠️ Chuyển ĐÚNG <code>{exact_amount:.4f}</code> USDT qua Binance Pay tới ID trên. "
+                f"Hệ thống tự cộng tiền trong 1-2 phút.\n"
+                f"Con số lẻ {decimal_suffix} không phải là phí, bạn vẫn nhận được đủ số tiền đã chuyển."
             )
             btn_cp_id = "📋 Sao chép Pay ID"
             btn_cp_amt = "📋 Sao chép số tiền"
-            btn_check = "🔄 Kiểm tra giao dịch"
             btn_cancel = "❌ Huỷ hoá đơn"
+            btn_check = "🔄 Kiểm tra giao dịch"
         else:
-            text = (
-                f"🧾 <b>USDT INVOICE (BINANCE PAY)</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🆔 <b>Binance Pay ID:</b> <code>{binance_uid}</code>\n"
-                f"💰 <b>Transfer Amount:</b> <code>{exact_amount:.4f}</code> USDT\n"
-                f"💵 <b>Approx. VND:</b> {vnd_amount:,}đ (rate {rate:,}đ/$)\n"
-                f"⏳ <b>Expires in:</b> 60 minutes\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"⚠️ <b>TRANSFER INSTRUCTIONS:</b>\n"
-                f"1️⃣ Open <b>Binance App</b> ➔ Tap <b>Pay</b>\n"
-                f"2️⃣ Choose <b>Send</b> to Binance Pay ID: <code>{binance_uid}</code>\n"
-                f"3️⃣ Enter <b>EXACTLY</b> the amount: <code>{exact_amount:.4f}</code> USDT\n"
-                f"4️⃣ Confirm transfer ➔ <b>Your balance will be credited automatically in 1-5s!</b>\n\n"
-                f"💡 <i>The decimal suffix {decimal_suffix} helps identify your payment automatically; you receive 100% of the funds.</i>"
+            caption = (
+                f"🧾 <b>USDT Invoice</b>\n\n"
+                f"Binance Pay ID: <code>{binance_uid}</code>\n"
+                f"Transfer amount: <code>{exact_amount:.4f}</code> USDT\n"
+                f"Approx. VND: {vnd_amount:,}đ\n"
+                f"Expected received: {vnd_amount:,}đ (rate {rate:,}đ/USDT)\n"
+                f"Expires: 60 minutes\n\n"
+                f"⚠️ Transfer EXACTLY <code>{exact_amount:.4f}</code> USDT via Binance Pay to the ID above. "
+                f"System will auto-credit in 1-2 minutes.\n"
+                f"The decimal {decimal_suffix} is not a fee, you still receive the full amount."
             )
             btn_cp_id = "📋 Copy Pay ID"
             btn_cp_amt = "📋 Copy Amount"
-            btn_check = "🔄 Check Transaction"
             btn_cancel = "❌ Cancel Invoice"
+            btn_check = "🔄 Check Transaction"
 
         kb = InlineKeyboardBuilder()
         kb.button(text=btn_cp_id, callback_data=f"dep_cp:id:{binance_uid}")
         kb.button(text=btn_cp_amt, callback_data=f"dep_cp:amt:{exact_amount:.4f}")
-        kb.button(text=btn_check, callback_data=f"dep_chk:{order.id}")
         kb.button(text=btn_cancel, callback_data=f"dep_cancel:{order.id}")
-        kb.adjust(2, 1, 1)
+        kb.button(text=btn_check, callback_data=f"dep_chk:{order.id}")
+        kb.adjust(2, 2)
 
-        return text, kb, order
+        return qr_file, caption, kb, order
 
     @staticmethod
     async def create_onchain_invoice(telegram_id: int, network_code: str, base_amount: float, session: AsyncSession, language: Language = Language.VI):
@@ -217,7 +254,7 @@ class DepositFlowService:
                 f"🧾 <b>HOÁ ĐƠN NẠP TIỀN (ON-CHAIN)</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"🌐 <b>Mạng:</b> <b>{network_name}</b>\n"
-                f"📫 <b>Địa chỉ ví:</b> <code>{wallet_address}</code>\n"
+                f"📬 <b>Địa chỉ ví:</b> <code>{wallet_address}</code>\n"
                 f"💰 <b>Số tiền cần chuyển:</b> <code>{exact_amount:.4f}</code> USDT\n"
                 f"💵 <b>Quy đổi:</b> {vnd_amount:,}đ (tỷ giá {rate:,}đ/$)\n"
                 f"⏳ <b>Hạn thanh toán:</b> 60 phút\n"
@@ -235,7 +272,7 @@ class DepositFlowService:
                 f"🧾 <b>USDT INVOICE (ON-CHAIN)</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"🌐 <b>Network:</b> <b>{network_name}</b>\n"
-                f"📫 <b>Wallet Address:</b> <code>{wallet_address}</code>\n"
+                f"📬 <b>Wallet Address:</b> <code>{wallet_address}</code>\n"
                 f"💰 <b>Transfer Amount:</b> <code>{exact_amount:.4f}</code> USDT\n"
                 f"💵 <b>Approx. VND:</b> {vnd_amount:,}đ (rate {rate:,}đ/$)\n"
                 f"⏳ <b>Expires in:</b> 60 minutes\n"

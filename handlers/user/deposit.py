@@ -131,17 +131,26 @@ async def receive_binance_amount(message: Message, state: FSMContext, session: A
         return
 
     try:
-        text, kb, order = await DepositFlowService.create_binance_invoice(
+        qr_file, caption, kb, order = await DepositFlowService.create_binance_invoice(
             telegram_id=message.from_user.id,
             base_amount=amount,
             session=session,
             language=language
         )
-        sent_msg = await message.answer(
-            text=text,
-            reply_markup=kb.as_markup(),
-            parse_mode="HTML"
-        )
+        try:
+            sent_msg = await message.answer_photo(
+                photo=qr_file,
+                caption=caption,
+                reply_markup=kb.as_markup(),
+                parse_mode="HTML"
+            )
+        except Exception as pe:
+            logger.warning(f"Failed to send Binance QR photo, falling back to text: {pe}")
+            sent_msg = await message.answer(
+                text=caption,
+                reply_markup=kb.as_markup(),
+                parse_mode="HTML"
+            )
         # Luu message_id va chat_id de background worker tu dong cap nhat khi co giao dich
         order.chat_id = sent_msg.chat.id
         order.message_id = sent_msg.message_id
@@ -186,7 +195,10 @@ async def handle_check_invoice(callback: CallbackQuery, session: AsyncSession, l
             f"🎉 Cảm ơn bạn! Hãy bấm <b>🛒 Sản phẩm</b> để mua nick ngay nhé! 🚀"
         )
         try:
-            await callback.message.edit_text(text=success_text, reply_markup=None, parse_mode="HTML")
+            if callback.message.photo:
+                await callback.message.edit_caption(caption=success_text, reply_markup=None, parse_mode="HTML")
+            else:
+                await callback.message.edit_text(text=success_text, reply_markup=None, parse_mode="HTML")
         except Exception:
             pass
         await callback.answer(f"🎉 Nạp tiền thành công! Đã cộng +{order.amount:.4f} USDT.", show_alert=True)
@@ -329,14 +341,18 @@ async def handle_cancel_invoice(callback: CallbackQuery, state: FSMContext, sess
         await session.execute(stmt)
         await session.commit()
 
+    cancel_text = "❌ <b>Hoá đơn nạp tiền đã được huỷ.</b>"
     try:
-        await callback.message.edit_text("❌ <b>Hoá đơn nạp tiền đã được huỷ.</b>", parse_mode="HTML")
+        if callback.message.photo:
+            await callback.message.edit_caption(caption=cancel_text, reply_markup=None, parse_mode="HTML")
+        else:
+            await callback.message.edit_text(text=cancel_text, parse_mode="HTML")
     except Exception:
         try:
             await callback.message.delete()
         except Exception:
             pass
-        await callback.message.answer("❌ <b>Hoá đơn nạp tiền đã được huỷ.</b>", parse_mode="HTML")
+        await callback.message.answer(text=cancel_text, parse_mode="HTML")
     await callback.answer("Đã huỷ hoá đơn thành công!")
 
 

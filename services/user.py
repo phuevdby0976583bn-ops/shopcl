@@ -95,7 +95,24 @@ class UserService:
 
         kb_builder = InlineKeyboardBuilder()
 
-        # N?t n?p t? ??ng qua Binance Pay (0% ph?)
+        # Nut nap ngan hang Viet Nam (VietQR / BIDV)
+        bank_btn_text = {
+            Language.VI: '🏦 Chuyển khoản Ngân hàng (VietQR / BIDV)',
+            Language.EN: '🏦 Vietnam Bank Transfer (VietQR / BIDV)',
+            Language.HI: '🏦 वियतनाम बैंक (VietQR / BIDV)',
+            Language.ZH: '🏦 越南银行转账 (VietQR / BIDV)',
+            Language.FR: '🏦 Virement bancaire Vietnam (VietQR / BIDV)',
+            Language.DE: '🏦 Banküberweisung Vietnam (VietQR / BIDV)',
+            Language.IT: '🏦 Bonifico Vietnam (VietQR / BIDV)',
+            Language.ES: '🏦 Transferencia bancaria Vietnam (VietQR / BIDV)'
+        }.get(language, '🏦 Vietnam Bank Transfer (VietQR / BIDV)')
+
+        kb_builder.button(
+            text=bank_btn_text,
+            callback_data="dep_method:bank"
+        )
+
+        # Nut nap tu dong qua Binance Pay (0% phi)
         binance_btn_text = {
             Language.VI: '\U0001f7e1 Binance Pay (0% Ph\u00ed - Nh\u1eadn 1s)',
             Language.EN: '\U0001f7e1 Binance Pay (0% Fee - Instant 1s)',
