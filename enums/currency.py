@@ -2,7 +2,7 @@ from enum import Enum
 
 from enums.bot_entity import BotEntity
 from enums.language import Language
-from utils.utils import get_text
+from utils.localizator import Localizator
 
 
 class Currency(Enum):
@@ -55,7 +55,7 @@ class Currency(Enum):
     NZD = "NZD"
 
     def get_localized_symbol(self):
-        return get_text(Language.EN, BotEntity.COMMON, f"{self.value.lower()}_symbol")
+        return Localizator.get_text(Language.EN, BotEntity.COMMON, f"{self.value.lower()}_symbol")
 
     def get_localized_text(self):
-        return get_text(Language.EN, BotEntity.COMMON, f"{self.value.lower()}_text")
+        return Localizator.get_text(Language.EN, BotEntity.COMMON, f"{self.value.lower()}_text")

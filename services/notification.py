@@ -211,7 +211,7 @@ class NotificationService:
         )
         await NotificationService.send_to_user(user_notification_msg, user_dto.telegram_id)
         if referral_bonus_dto.referrer_user_dto:
-            referrer_notification_msg = get_text(Language.EN, BotEntity.USER, "referrer_notification").format(
+            referrer_notification_msg = get_text(referral_bonus_dto.referrer_user_dto.language, BotEntity.USER, "referrer_notification").format(
                 currency_sym=currency_sym,
                 referrer_bonus=referral_bonus_dto.applied_referrer_bonus
             )

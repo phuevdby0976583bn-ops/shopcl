@@ -10,7 +10,7 @@ from pathlib import Path
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-import config
+# import config moved into functions
 from enums.bot_entity import BotEntity
 from enums.language import Language
 from utils.localizator import Localizator
@@ -64,6 +64,7 @@ def remove_html_tags(text: str):
 
 
 def calculate_max_page(records_qty: int):
+    import config
     if records_qty % config.PAGE_ENTRIES == 0:
         return records_qty / config.PAGE_ENTRIES - 1
     else:
@@ -136,6 +137,7 @@ def validate_i18n(reference_file: str = "en.json") -> None:
 
 
 def create_access_token(data: dict) -> str:
+    import config
     to_encode = data.copy()
     expire = datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=config.JWT_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
@@ -143,6 +145,7 @@ def create_access_token(data: dict) -> str:
 
 
 def decode_token(token: str) -> dict | None:
+    import config
     if not token or not isinstance(token, str):
         return None
     try:

@@ -331,7 +331,6 @@
     "subcategory_button": "📦 {subcategory_name}| Prezzo: {currency_sym}{subcategory_price:.2f} | Disp.: {available_quantity}",
     "subcategories": "📦 <b>Sottocategorie:</b>",
     "top_up_balance_button": "➕ Ricarica saldo",
-    "top_up_balance_msg": "💵 <b>Invia l’importo desiderato in {crypto_name} all’indirizzo indicato per ricaricare il saldo.</b>\n\nStato pagamento: {status}\n\n<b>Importante</b>\n<i>Per ogni deposito viene generato un indirizzo unico BTC/LTC/SOL/ETH.\nL’accredito avviene in circa 5 minuti.\nRiceverai una notifica una volta completato.</i>\n\n<b>Il tuo indirizzo {crypto_name}:\n</b><code>{addr}</code>",
     "usdc_erc20_top_up": "USDC ERC-20",
     "usdt_erc20_top_up": "USDT ERC-20",
     "checkout": "🛍️ Conferma acquisto",

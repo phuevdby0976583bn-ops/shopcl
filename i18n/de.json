@@ -331,7 +331,6 @@
     "subcategory_button": "📦 {subcategory_name}| Preis: {currency_sym}{subcategory_price:.2f} | Verfügbar: {available_quantity}",
     "subcategories": "📦 <b>Unterkategorien:</b>",
     "top_up_balance_button": "➕ Guthaben aufladen",
-    "top_up_balance_msg": "💵 <b>Sende den gewünschten Betrag in {crypto_name} an die angegebene Adresse, um das Guthaben aufzuladen.</b>\n\nStatus der Zahlung: {status}\n\n<b>Wichtig</b>\n<i>Für jede Einzahlung wird eine einzigartige BTC/LTC/SOL/ETH-Adresse generiert.\nDie Gutschrift erfolgt innerhalb von 5 Minuten nach der Überweisung.\nNach erfolgreicher Aufladung erhältst du eine Benachrichtigung.</i>\n\n<b>Deine {crypto_name}-Adresse:\n</b><code>{addr}</code>",
     "usdc_erc20_top_up": "USDC ERC-20",
     "usdt_erc20_top_up": "USDT ERC-20",
     "checkout": "🛍️ Bestellung abschließen",

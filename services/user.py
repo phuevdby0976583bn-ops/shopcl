@@ -89,15 +89,15 @@ class UserService:
 
         # N?t n?p t? ??ng qua Binance Pay (0% ph?)
         binance_btn_text = {
-            Language.VI: "?? Binance Pay (0% Ph? - Nh?n 1s)",
-            Language.EN: "?? Binance Pay (0% Fee - Instant 1s)",
-            Language.HI: "?? Binance Pay (0% ????? - ?????)",
-            Language.ZH: "?? ???? Binance Pay (0??? - ??)",
-            Language.FR: "?? Binance Pay (0% Frais - Instant 1s)",
-            Language.DE: "?? Binance Pay (0% Geb?hr - Sofort 1s)",
-            Language.IT: "?? Binance Pay (0% Commissioni - Immediato 1s)",
-            Language.ES: "?? Binance Pay (0% Comisi?n - Instant?neo 1s)"
-        }.get(language, "?? Binance Pay (0% Fee - Instant 1s)")
+            Language.VI: '\U0001f7e1 Binance Pay (0% Ph\u00ed - Nh\u1eadn 1s)',
+            Language.EN: '\U0001f7e1 Binance Pay (0% Fee - Instant 1s)',
+            Language.HI: '\U0001f7e1 Binance Pay (0% \u0936\u0941\u0932\u094d\u0915 - \u0924\u0941\u0930\u0902\u0924 1s)',
+            Language.ZH: '\U0001f7e1 \u5e01\u5b89\u652f\u4ed8 Binance Pay (0\u624b\u7eed\u8d39 - \u79d2\u5230)',
+            Language.FR: '\U0001f7e1 Binance Pay (0% Frais - Instant 1s)',
+            Language.DE: '\U0001f7e1 Binance Pay (0% Geb\u00fchr - Sofort 1s)',
+            Language.IT: '\U0001f7e1 Binance Pay (0% Commissioni - Immediato 1s)',
+            Language.ES: '\U0001f7e1 Binance Pay (0% Comisi\u00f3n - Instant\u00e1neo 1s)'
+        }.get(language, '\U0001f7e1 Binance Pay (0% Fee - Instant 1s)')
 
         kb_builder.button(
             text=binance_btn_text,

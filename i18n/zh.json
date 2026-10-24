@@ -331,7 +331,6 @@
     "subcategory_button": "📦 {subcategory_name} | 价格：{currency_sym}{subcategory_price:.2f} | 库存：{available_quantity}",
     "subcategories": "📦 <b>子分类：</b>",
     "top_up_balance_button": "➕ 充值余额",
-    "top_up_balance_msg": "💵 <b>请将金额发送至以下 {crypto_name} 地址，以完成余额充值。</b>\n\n支付状态：{status}\n\n<b>重要说明：</b>\n<i>每次充值都会生成独立的 BTC/LTC/SOL/ETH 地址。\n充值通常在 5 分钟内到账。\n完成后您将收到通知。</i>\n\n<b>您的 {crypto_name} 地址：</b>\n<code>{addr}</code>",
     "usdc_erc20_top_up": "USDC ERC-20",
     "usdt_erc20_top_up": "USDT ERC-20",
     "checkout": "🛍️ 结算",

@@ -331,7 +331,6 @@
     "subcategory_button": "📦 {subcategory_name}| Prix : {currency_sym}{subcategory_price:.2f} | Disp. : {available_quantity}",
     "subcategories": "📦 <b>Sous-catégories :</b>",
     "top_up_balance_button": "➕ Recharger le solde",
-    "top_up_balance_msg": "💵 <b>Envoyez le montant souhaité en {crypto_name} à l’adresse indiquée pour recharger votre solde.</b>\n\nStatut du paiement : {status}\n\n<b>Important</b>\n<i>Une adresse unique BTC/LTC/SOL/ETH est générée pour chaque dépôt.\nLa recharge est effectuée dans un délai de 5 minutes.\nVous recevrez une notification une fois complétée.</i>\n\n<b>Votre adresse {crypto_name} :\n</b><code>{addr}</code>",
     "usdc_erc20_top_up": "USDC ERC-20",
     "usdt_erc20_top_up": "USDT ERC-20",
     "checkout": "🛍️ Passer la commande",

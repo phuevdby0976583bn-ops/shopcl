@@ -20,6 +20,7 @@ from middleware.throttling_middleware import ThrottlingMiddleware
 from models.user import UserDTO
 from multibot import main as main_multibot
 from handlers.user.cart import cart_router
+from handlers.user.deposit import deposit_router
 from handlers.admin.admin import admin_router, admin
 from handlers.user.all_categories import all_categories_router, all_types
 from handlers.user.my_profile import my_profile_router, my_profile
@@ -35,6 +36,13 @@ from utils.utils import get_bot_photo_id, get_text
 
 logging.basicConfig(level=logging.INFO)
 main_router = Router()
+
+BUTTON_TOP_UP = {
+    Language.VI: "💰 Nạp tiền",
+    Language.EN: "💰 Deposit",
+    Language.HI: "💰 जमा",
+    Language.ZH: "💰 充值",
+}
 
 BUTTON_PRODUCTS = {
     Language.VI: "🛒 Sản phẩm",
@@ -350,6 +358,11 @@ async def handle_unified_support(message: Message, language: Language):
 
     await message.answer(support_info, reply_markup=kb_builder.as_markup())
 
+
+@main_router.message(F.text.in_(set(BUTTON_TOP_UP.values())))
+async def handle_deposit_button(message: Message, state: FSMContext):
+    from handlers.user.deposit import cmd_start_deposit
+    await cmd_start_deposit(message, state)
 
 @main_router.message(F.text.in_(set(BUTTON_ADMIN.values())))
 async def handle_admin(message: Message, state: FSMContext, language: Language):

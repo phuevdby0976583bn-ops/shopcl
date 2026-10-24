@@ -331,7 +331,6 @@
     "subcategory_button": "📦 {subcategory_name}| Precio: {currency_sym}{subcategory_price:.2f} | Disp.: {available_quantity}",
     "subcategories": "📦 <b>Subcategorías:</b>",
     "top_up_balance_button": "➕ Recargar saldo",
-    "top_up_balance_msg": "💵 <b>Envía la cantidad deseada en {crypto_name} a la dirección indicada para recargar el saldo del bot.</b>\n\nEstado del pago: {status}\n\n<b>Importante</b>\n<i>Se asigna una dirección única BTC/LTC/SOL/ETH para cada depósito.\nLa recarga se procesa en un plazo de 5 minutos después de la transferencia.\nRecibirás una notificación al completarse.</i>\n\n<b>Tu dirección {crypto_name}:\n</b><code>{addr}</code>",
     "usdc_erc20_top_up": "USDC ERC-20",
     "usdt_erc20_top_up": "USDT ERC-20",
     "checkout": "🛍️ Finalizar compra",
