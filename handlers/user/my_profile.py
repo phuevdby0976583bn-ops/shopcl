@@ -140,11 +140,40 @@ async def create_payment(**kwargs):
     callback_data: MyProfileCallback = kwargs.get("callback_data")
     state: FSMContext = kwargs.get("state")
     language: Language = kwargs.get("language")
-    response, kb_builder = await PaymentService.create(callback, callback_data, state, session, language)
-    if isinstance(response, str):
-        await callback.message.edit_caption(caption=response, reply_markup=kb_builder.as_markup())
-    else:
-        await callback.message.edit_media(media=response, reply_markup=kb_builder.as_markup())
+    try:
+        await callback.answer()
+    except Exception:
+        pass
+
+    try:
+        response, kb_builder = await PaymentService.create(callback, callback_data, state, session, language)
+        if isinstance(response, str):
+            if callback.message.caption:
+                await callback.message.edit_caption(caption=response, reply_markup=kb_builder.as_markup())
+            else:
+                await callback.message.edit_text(text=response, reply_markup=kb_builder.as_markup())
+        else:
+            if callback.message.photo or callback.message.caption:
+                try:
+                    await callback.message.edit_media(media=response, reply_markup=kb_builder.as_markup())
+                    return
+                except Exception:
+                    pass
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+            await callback.message.answer_photo(
+                photo=response.media,
+                caption=response.caption,
+                reply_markup=kb_builder.as_markup()
+            )
+    except Exception as e:
+        logger.error(f"Error in create_payment: {e}", exc_info=True)
+        try:
+            await callback.answer(f"Lỗi: {e}", show_alert=True)
+        except Exception:
+            await callback.message.answer(f"⚠️ Có lỗi xảy ra khi tạo giao dịch: {e}")
 
 
 async def edit_language(**kwargs):
@@ -191,12 +220,15 @@ async def receive_top_up_amount(message: Message,
                                                         language)
         state_data = await state.get_data()
         if state_data.get("chat_id") and state_data.get("msg_id"):
-            await message.bot.edit_message_media(chat_id=state_data.get("chat_id"),
-                                                 message_id=state_data.get("msg_id"),
-                                                 media=media,
-                                                 reply_markup=kb_builder.as_markup())
-        else:
-            await NotificationService.answer_media(message, media, kb_builder.as_markup())
+            try:
+                await message.bot.edit_message_media(chat_id=state_data.get("chat_id"),
+                                                     message_id=state_data.get("msg_id"),
+                                                     media=media,
+                                                     reply_markup=kb_builder.as_markup())
+                return
+            except Exception:
+                pass
+        await NotificationService.answer_media(message, media, kb_builder.as_markup())
     except Exception as e:
         logger.error(f"Error in receive_top_up_amount: {e}")
         await state.clear()

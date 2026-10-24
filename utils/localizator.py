@@ -1,5 +1,6 @@
-import json
+﻿import json
 from pathlib import Path
+from typing import Any
 
 from enums.bot_entity import BotEntity
 from enums.language import Language
@@ -10,23 +11,36 @@ class Localizator:
     _cache: dict[Language, dict] = {}
 
     @classmethod
-    def _load_language(cls, language: Language) -> dict:
-        cached = cls._cache.get(language)
+    def _normalize_language(cls, language: Any) -> Language:
+        if isinstance(language, Language):
+            return language
+        if isinstance(language, str):
+            try:
+                return Language(language.lower())
+            except ValueError:
+                return Language.from_locale(language)
+        return Language.VI
+
+    @classmethod
+    def _load_language(cls, language: Any) -> dict:
+        lang_enum = cls._normalize_language(language)
+        cached = cls._cache.get(lang_enum)
         if cached is not None:
             return cached
-        path = cls._i18n_dir / f"{language.value}.json"
+        path = cls._i18n_dir / f"{lang_enum.value}.json"
         with path.open("r", encoding="utf-8") as file:
             data = json.load(file)
-        cls._cache[language] = data
+        cls._cache[lang_enum] = data
         return data
 
     @classmethod
-    def get_text(cls, language: Language, entity: BotEntity, key: str) -> str:
+    def get_text(cls, language: Any, entity: BotEntity, key: str) -> str:
+        lang_enum = cls._normalize_language(language)
         try:
-            language_payload = cls._load_language(language)
+            language_payload = cls._load_language(lang_enum)
             return language_payload[entity.name.lower()][key]
-        except KeyError:
-            if language == Language.EN:
+        except (KeyError, Exception):
+            if lang_enum == Language.EN:
                 raise
             return cls.get_text(Language.EN, entity, key)
 

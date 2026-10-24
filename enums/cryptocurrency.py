@@ -94,17 +94,20 @@ class Cryptocurrency(str, Enum):
 
     @staticmethod
     def get_hidden() -> set['Cryptocurrency']:
+        # Luon loai bo BNB (Binance Coin) theo yeu cau cua Admin de tranh nham voi Binance Pay
+        hidden = {Cryptocurrency.BNB}
         if getattr(config, 'ONLY_USDT_MODE', False):
-            return {
+            hidden.update({
                 Cryptocurrency.BTC,
                 Cryptocurrency.LTC,
                 Cryptocurrency.DOGE,
                 Cryptocurrency.ETH,
+                Cryptocurrency.SOL,
                 Cryptocurrency.USDC_SOL,
                 Cryptocurrency.USDC_ERC20,
                 Cryptocurrency.USDC_BEP20
-            }
-        return set()
+            })
+        return hidden
 
     @staticmethod
     def get_visible() -> list['Cryptocurrency']:

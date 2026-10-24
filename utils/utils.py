@@ -49,8 +49,9 @@ def start_ngrok():
 def get_text(language: Language, entity: BotEntity, key: str) -> str:
     try:
         return Localizator.get_text(language, entity, key)
-    except Exception as e:
-        if language == Language.EN:
+    except Exception:
+        lang_str = getattr(language, "value", str(language))
+        if lang_str == "en":
             return f"[{key}]"
         try:
             return Localizator.get_text(Language.EN, entity, key)

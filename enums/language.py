@@ -16,14 +16,13 @@ class Language(str, Enum):
         try:
             if not locale:
                 return Language.VI
-            prefix = locale.lower().split('-')[0].split('_')[0]
+            prefix = str(locale).lower().split('-')[0].split('_')[0]
             if prefix in ('vi', 'vn'):
                 return Language.VI
-            if prefix in ('hi', 'zh', 'fr', 'de', 'it', 'es'):
+            if prefix in ('en', 'hi', 'zh', 'fr', 'de', 'it', 'es'):
                 return Language(prefix)
-            # Mặc định ưu tiên Tiếng Việt cho shop Clone Facebook
             return Language.VI
-        except (ValueError, AttributeError):
+        except (ValueError, AttributeError, Exception):
             return Language.VI
 
     def get_country_code(self):

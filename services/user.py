@@ -85,6 +85,14 @@ class UserService:
     @staticmethod
     async def get_top_up_buttons(callback_data: MyProfileCallback,
                                  language: Language) -> tuple[str, InlineKeyboardBuilder]:
+        from services.settings import SettingsService
+        from db import get_db_session
+        try:
+            async with get_db_session() as s:
+                await SettingsService.load_settings_into_config(s)
+        except Exception:
+            pass
+
         kb_builder = InlineKeyboardBuilder()
 
         # N?t n?p t? ??ng qua Binance Pay (0% ph?)

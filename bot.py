@@ -42,10 +42,6 @@ from models.buy import BuyAdmin
 
 from models.buyItem import BuyItemAdmin
 
-from models.cart import CartAdmin
-
-from models.cartItem import CartItemAdmin
-
 from models.category import CategoryAdmin
 
 from models.coupon import CouponAdmin
@@ -499,10 +495,6 @@ admin.add_model_view(DepositAdmin)
 admin.add_model_view(BuyItemAdmin)
 
 admin.add_model_view(PaymentAdmin)
-
-admin.add_model_view(CartAdmin)
-
-admin.add_model_view(CartItemAdmin)
 
 admin.add_model_view(ReferralBonusAdmin)
 

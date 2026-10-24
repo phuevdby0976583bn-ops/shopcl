@@ -25,9 +25,11 @@ class CryptoApiWrapper:
 
     @staticmethod
     def _build_client() -> AsyncKryptoExpressClient:
+        api_key = (getattr(config, "KRYPTO_EXPRESS_API_KEY", "") or "").strip().strip("'").strip('"')
+        base_url = (getattr(config, "KRYPTO_EXPRESS_API_URL", "") or "https://kryptoexpress.pro/api").strip().strip("'").strip('"')
         return AsyncKryptoExpressClient(
-            api_key=config.KRYPTO_EXPRESS_API_KEY,
-            base_url=config.KRYPTO_EXPRESS_API_URL,
+            api_key=api_key,
+            base_url=base_url,
         )
 
     @staticmethod

@@ -129,10 +129,16 @@ class PaymentService:
                 cryptoCurrency=cryptocurrency,
                 fiatAmount=float(fiat_amount)
             )
-            message = await message.answer(text=get_text(language, BotEntity.USER, "loading"))
-            await state.update_data(msg_id=message.message_id, chat_id=message.chat.id)
-            payment_dto = await PaymentService.__create_invoice(payment_dto)
-            await PaymentRepository.create(payment_dto.id, user.id, message.message_id, session)
+            loading_msg = await message.answer(text=get_text(language, BotEntity.USER, "loading"))
+            try:
+                payment_dto = await PaymentService.__create_invoice(payment_dto)
+            finally:
+                try:
+                    await loading_msg.delete()
+                except Exception:
+                    pass
+            msg_id = getattr(message, "message_id", 0)
+            await PaymentRepository.create(payment_dto.id, user.id, msg_id, session)
             await session_commit(session)
             timestamp_s = payment_dto.expireDatetime / 1000
             dt = datetime.fromtimestamp(timestamp_s, tz=timezone.utc)
@@ -146,17 +152,21 @@ class PaymentService:
                 status=get_text(language, BotEntity.USER, "status_pending"),
                 payment_lifetime=formatted
             )
+            kb_builder.button(
+                text=get_text(language, BotEntity.COMMON, "back_button"),
+                callback_data=MyProfileCallback.create(level=1)
+            )
             qr_code_file = PaymentService.__create_qr_code(payment_dto)
             return InputMediaPhoto(media=qr_code_file, caption=caption), kb_builder
         else:
-            message = await callback.message.edit_caption(caption=get_text(language, BotEntity.USER, "loading"))
             payment_dto = ProcessingPaymentDTO(
                 paymentType=PaymentType.DEPOSIT,
                 fiatCurrency=config.CURRENCY,
                 cryptoCurrency=cryptocurrency
             )
             payment_dto = await PaymentService.__create_invoice(payment_dto)
-            await PaymentRepository.create(payment_dto.id, user.id, message.message_id, session)
+            msg_id = getattr(callback.message, "message_id", 0) if hasattr(callback, "message") else getattr(callback, "message_id", 0)
+            await PaymentRepository.create(payment_dto.id, user.id, msg_id, session)
             await session_commit(session)
             timestamp_s = payment_dto.expireDatetime / 1000
             dt = datetime.fromtimestamp(timestamp_s, tz=timezone.utc)
