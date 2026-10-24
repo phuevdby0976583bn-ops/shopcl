@@ -245,6 +245,7 @@ async def _startup() -> None:
         await SettingsService.load_settings_into_config(db_sess)
         try:
             from sqlalchemy import update, or_
+            from enums.language import Language
             from models.user import User
             await db_sess.execute(
                 update(User)
@@ -489,12 +490,9 @@ app.add_middleware(AntiDDoSMiddleware, max_requests_per_minute=120)
 
 
 
-@app.get("/")
-
-@app.get("/health")
-
+@app.api_route("/", methods=["GET", "HEAD"])
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
-
     return {"status": "ok", "message": "AiogramShopBot is running"}
 
 
