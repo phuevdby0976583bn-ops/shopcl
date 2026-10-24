@@ -829,43 +829,43 @@ class PaymentApiConfigView(BaseView):
             }}
         }}
 
-function saveBankSettings() {
-            const payload = {
+function saveBankSettings() {{
+            const payload = {{
                 'BANK_BIDV_TOKEN': document.getElementById('bank_token').value.trim(),
                 'BANK_ACCOUNT_NUMBER': document.getElementById('bank_account_number').value.trim(),
                 'BANK_ACCOUNT_NAME': document.getElementById('bank_account_name').value.trim(),
                 'BANK_CODE': document.getElementById('bank_code').value.trim(),
                 'BANK_EXCHANGE_RATE': parseFloat(document.getElementById('bank_exchange_rate').value) || 26000,
                 'BANK_AUTO_CHECK': document.getElementById('bank_auto_check').checked
-            };
+            }};
             saveSettingsPayload(payload, 'bankSaveResult');
-        }
+        }}
 
-        async function checkBankTransactionsNow() {
-            try {
+        async function checkBankTransactionsNow() {{
+            try {{
                 showToast('Đang kết nối ThueApi.pro để quét giao dịch ngân hàng BIDV...', 'info');
-                const res = await fetch('/api/bank/check-now', {
+                const res = await fetch('/api/bank/check-now', {{
                     method: 'POST',
-                    headers: {
+                    headers: {{
                         'Content-Type': 'application/json',
                         'x-api-key': '{api_key}',
                         'Authorization': 'Bearer {admin_token}'
-                    }
-                });
+                    }}
+                }});
                 const data = await res.json();
-                if (data.status === 'success') {
-                    if (data.credited_count > 0) {
-                        showToast(`Thành công! Đã phát hiện và cộng tiền cho ${data.credited_count} giao dịch mới!`, 'success');
-                    } else {
+                if (data.status === 'success') {{
+                    if (data.credited_count > 0) {{
+                        showToast('Thành công! Đã phát hiện và cộng tiền cho ' + data.credited_count + ' giao dịch mới!', 'success');
+                    }} else {{
                         showToast('Kết nối ThueApi.pro thành công! Hiện chưa có giao dịch chuyển khoản mới.', 'info');
-                    }
-                } else {
+                    }}
+                }} else {{
                     showToast('Lỗi: ' + (data.detail || data.message || 'Không thể quét giao dịch'), 'danger');
-                }
-            } catch (err) {
+                }}
+            }} catch (err) {{
                 showToast('Lỗi mạng khi gọi API quét ngân hàng: ' + err, 'danger');
-            }
-        }
+            }}
+        }}
 
         function saveBinanceSettings() {{
             const payload = {{
