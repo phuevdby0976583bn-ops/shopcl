@@ -38,7 +38,23 @@ BOOLEAN_KEYS = {
 
 class SettingsService:
     @staticmethod
+    async def ensure_table_exists(session: AsyncSession):
+        """Dam bao bang system_settings luon ton tai trong Supabase Postgres."""
+        try:
+            await session.execute(text("""
+                CREATE TABLE IF NOT EXISTS system_settings (
+                    key VARCHAR(100) PRIMARY KEY,
+                    value TEXT,
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """))
+            await session.commit()
+        except Exception as e:
+            logger.warning(f"Note ensure system_settings table: {e}")
+
+    @staticmethod
     async def load_settings_into_config(session: AsyncSession):
+        await SettingsService.ensure_table_exists(session)
         """Doc tat ca cai dat tu database Supabase va cap nhat vao in-memory config."""
         try:
             stmt = select(SystemSetting)
@@ -72,6 +88,7 @@ class SettingsService:
     @staticmethod
     async def get_all_settings(session: AsyncSession) -> dict:
         """Lay gia tri hien tai cua tat ca cai dat tu database (hoac fallback config)."""
+        await SettingsService.ensure_table_exists(session)
         db_settings = {}
         try:
             stmt = select(SystemSetting)
@@ -136,6 +153,7 @@ class SettingsService:
     @staticmethod
     async def save_settings(data: dict, session: AsyncSession) -> dict:
         """Luu cac cai dat vao Supabase va cap nhat config ngay lap tuc."""
+        await SettingsService.ensure_table_exists(session)
         saved_keys = []
         for k, v in data.items():
             if k not in SUPPORTED_SETTING_KEYS:

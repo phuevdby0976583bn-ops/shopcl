@@ -35,12 +35,14 @@ class PaymentApiConfigView(BaseView):
             return RedirectResponse(url="/admin/login", status_code=302)
 
         webhook_host = config.WEBHOOK_HOST or "https://shopcl.onrender.com"
-        api_binance_check = f"{webhook_host}/api/binancepay/check-now"
-        api_settings_save = f"{webhook_host}/api/settings/save"
-        api_fb_check_uid = f"{webhook_host}/api/facebook/check-uid"
-        api_fb_scan_stock = f"{webhook_host}/api/facebook/scan-stock"
-        api_fb_clean_die = f"{webhook_host}/api/facebook/clean-die"
+        webhook_host = (config.WEBHOOK_HOST or "https://shopcl.onrender.com").rstrip("/")
+        api_binance_check = "/api/binancepay/check-now"
+        api_settings_save = "/api/settings/save"
+        api_fb_check_uid = "/api/facebook/check-uid"
+        api_fb_scan_stock = "/api/facebook/scan-stock"
+        api_fb_clean_die = "/api/facebook/clean-die"
         api_key = config.SQLADMIN_RAW_PASSWORD or "MatKhauAdminCuaBan123"
+        admin_token = token or ""
 
         from db import get_db_session
         from services.settings import SettingsService
@@ -495,21 +497,24 @@ class PaymentApiConfigView(BaseView):
             try {{
                 const res = await fetch("{api_settings_save}", {{
                     method: 'POST',
+                    credentials: 'same-origin',
                     headers: {{
                         'Content-Type': 'application/json',
-                        'X-API-KEY': "{api_key}"
+                        'X-API-KEY': "{api_key}",
+                        'Authorization': "Bearer {admin_token}"
                     }},
                     body: JSON.stringify({{ settings: payload }})
                 }});
                 const data = await res.json();
                 if (res.ok) {{
-                    resDiv.innerHTML = '<div class="alert alert-success py-2 mb-0"><i class="fa-solid fa-circle-check me-1"></i> <b>Lưu thành công!</b> Cấu hình đã được lưu vĩnh viễn vào Supabase và kích hoạt ngay lập tức mà KHÔNG CẦN sửa gì trên Render.</div>';
+                    resDiv.innerHTML = '<div class="alert alert-success py-2 mb-0"><i class="fa-solid fa-circle-check me-1"></i> <b>Lưu thành công!</b> ' + (data.message || 'Cấu hình đã được lưu vĩnh viễn vào Supabase và kích hoạt ngay lập tức.') + '</div>';
                     setTimeout(() => {{ location.reload(); }}, 1500);
                 }} else {{
-                    resDiv.innerHTML = '<div class="alert alert-danger py-2 mb-0">Lỗi: ' + (data.detail || 'Không thể lưu cài đặt') + '</div>';
+                    const errDetail = data.detail || data.message || ('Không thể lưu cài đặt (Mã lỗi: ' + res.status + ')');
+                    resDiv.innerHTML = '<div class="alert alert-danger py-2 mb-0"><i class="fa-solid fa-circle-exclamation me-1"></i> Lỗi: ' + errDetail + '</div>';
                 }}
             }} catch (err) {{
-                resDiv.innerHTML = '<div class="alert alert-danger py-2 mb-0">Lỗi kết nối: ' + err.message + '</div>';
+                resDiv.innerHTML = '<div class="alert alert-danger py-2 mb-0"><i class="fa-solid fa-circle-exclamation me-1"></i> Lỗi kết nối: ' + err.message + '</div>';
             }}
         }}
 
@@ -536,7 +541,12 @@ class PaymentApiConfigView(BaseView):
             try {{
                 const res = await fetch("{api_fb_check_uid}", {{
                     method: 'POST',
-                    headers: {{ 'Content-Type': 'application/json', 'X-API-KEY': "{api_key}" }},
+                    credentials: 'same-origin',
+                    headers: {{
+                        'Content-Type': 'application/json',
+                        'X-API-KEY': "{api_key}",
+                        'Authorization': "Bearer {admin_token}"
+                    }},
                     body: JSON.stringify({{ data: val }})
                 }});
                 const data = await res.json();
@@ -560,7 +570,13 @@ class PaymentApiConfigView(BaseView):
             resDiv.style.display = 'block';
             resDiv.innerHTML = '<span class="text-info"><i class="fa-solid fa-spinner fa-spin me-1"></i> Đang quét toàn bộ kho clone...</span>';
             try {{
-                const res = await fetch("{api_fb_scan_stock}", {{ headers: {{ 'X-API-KEY': "{api_key}" }} }});
+                const res = await fetch("{api_fb_scan_stock}", {{
+                    credentials: 'same-origin',
+                    headers: {{
+                        'X-API-KEY': "{api_key}",
+                        'Authorization': "Bearer {admin_token}"
+                    }}
+                }});
                 const data = await res.json();
                 resDiv.innerHTML = '<div class="alert alert-info py-2 mb-0"><b>Kết quả:</b> Quét ' + data.total_scanned + ' clone | Live: <span class="text-success fw-bold">' + data.live_count + '</span> | Die: <span class="text-danger fw-bold">' + data.die_count + '</span></div>';
             }} catch(e) {{
@@ -574,7 +590,14 @@ class PaymentApiConfigView(BaseView):
             resDiv.style.display = 'block';
             resDiv.innerHTML = '<span class="text-danger"><i class="fa-solid fa-spinner fa-spin me-1"></i> Đang quét và xóa nick DIE khỏi kho...</span>';
             try {{
-                const res = await fetch("{api_fb_clean_die}", {{ method: 'POST', headers: {{ 'X-API-KEY': "{api_key}" }} }});
+                const res = await fetch("{api_fb_clean_die}", {{
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {{
+                        'X-API-KEY': "{api_key}",
+                        'Authorization': "Bearer {admin_token}"
+                    }}
+                }});
                 const data = await res.json();
                 resDiv.innerHTML = '<div class="alert alert-success py-2 mb-0"><b>Hoàn tất:</b> Đã quét ' + data.total_scanned + ' clone. Live: ' + data.live_count + ' | Đã xóa: <span class="text-danger fw-bold">' + data.deleted_count + '</span> nick DIE khỏi kho!</div>';
             }} catch(e) {{
@@ -617,7 +640,11 @@ class PaymentApiConfigView(BaseView):
             try {{
                 const res = await fetch("{api_binance_check}", {{
                     method: "POST",
-                    headers: {{ "X-API-KEY": "{api_key}" }}
+                    credentials: 'same-origin',
+                    headers: {{
+                        'X-API-KEY': "{api_key}",
+                        'Authorization': "Bearer {admin_token}"
+                    }}
                 }});
                 const data = await res.json();
                 if (res.ok) {{

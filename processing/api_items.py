@@ -13,28 +13,47 @@ api_router = APIRouter(prefix="/api", tags=["API Upload Hàng Tự Động & Che
 
 
 def is_request_authorized(request: Request, x_api_key: Optional[str] = None) -> bool:
-    """Xác thực request qua X-API-KEY header hoặc qua Cookie Session của Admin."""
-    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
-    if x_api_key and x_api_key in valid_keys:
+    """Xác thực request qua Authorization Bearer, X-API-KEY header, hoặc qua Cookie Session của Admin."""
+    from utils.utils import decode_token
+
+    # 1. Kiem tra Authorization: Bearer <jwt_token>
+    auth_header = request.headers.get("authorization") or ""
+    if auth_header.lower().startswith("bearer "):
+        bearer_token = auth_header[7:].strip()
+        if bearer_token and decode_token(bearer_token):
+            return True
+
+    # 2. Kiem tra API key hop le
+    valid_keys = [
+        str(getattr(config, "SQLADMIN_RAW_PASSWORD", "") or "").strip(),
+        str(getattr(config, "JWT_SECRET_KEY", "") or "").strip(),
+        str(getattr(config, "TOKEN", "") or "").strip(),
+        str(getattr(config, "WEBHOOK_SECRET_TOKEN", "") or "").strip()
+    ]
+    valid_keys = [k for k in valid_keys if k]
+
+    actual_key = (x_api_key or request.headers.get("x-api-key") or "").strip()
+    if actual_key and actual_key in valid_keys:
         return True
 
+    # 3. Kiem tra Query Param (?token=... hoac ?secret=...)
+    q_token = (request.query_params.get("token") or request.query_params.get("secret") or "").strip()
+    if q_token and (q_token in valid_keys or decode_token(q_token)):
+        return True
+
+    # 4. Kiem tra Session Cookie
     token = None
     try:
         session_dict = request.scope.get("session")
         if isinstance(session_dict, dict):
             token = session_dict.get("token")
         if not token:
-            try:
-                token = request.session.get("token")
-            except (AssertionError, AttributeError, Exception):
-                token = None
+            token = request.session.get("token")
     except Exception:
         token = None
 
-    if token:
-        from utils.utils import decode_token
-        if decode_token(token):
-            return True
+    if token and decode_token(token):
+        return True
 
     return False
 
@@ -291,13 +310,17 @@ async def save_settings_endpoint(payload: SettingsUpdateRequest, request: Reques
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chưa đăng nhập Admin hoặc sai API Key!")
 
     from services.settings import SettingsService
-    async with get_db_session() as session:
-        result = await SettingsService.save_settings(payload.settings, session)
-        return {
-            "status": "success",
-            "message": "Đã lưu cài đặt thành công vào Database Supabase! Cấu hình có hiệu lực ngay lập tức.",
-            "saved_keys": result.get("saved_keys", [])
-        }
+    try:
+        async with get_db_session() as session:
+            result = await SettingsService.save_settings(payload.settings, session)
+            return {
+                "status": "success",
+                "message": "Đã lưu cài đặt thành công vào Database Supabase! Cấu hình có hiệu lực ngay lập tức.",
+                "saved_keys": result.get("saved_keys", [])
+            }
+    except Exception as e:
+        logger.error(f"Error in save_settings_endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Lỗi lưu Supabase: {str(e)}")
 
 
 @api_router.get("/settings/current")

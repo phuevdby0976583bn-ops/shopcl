@@ -33,9 +33,10 @@ class BulkUploadAdminView(BaseView):
         if not token or not decode_token(token):
             return RedirectResponse(url="/admin/login", status_code=302)
 
-        webhook_host = config.WEBHOOK_HOST or "https://shopcl.onrender.com"
-        api_upload = f"{webhook_host}/api/items/bulk-upload"
+        webhook_host = (config.WEBHOOK_HOST or "https://shopcl.onrender.com").rstrip("/")
+        api_upload = "/api/items/bulk-upload"
         api_key = config.SQLADMIN_RAW_PASSWORD or "MatKhauAdminCuaBan123"
+        admin_token = token or ""
 
         from db import get_db_session
         from models.category import Category
@@ -487,7 +488,8 @@ print(r.json())
                     method: 'POST',
                     headers: {{
                         'Content-Type': 'application/json',
-                        'X-API-KEY': API_KEY
+                        'X-API-KEY': API_KEY,
+                        'Authorization': "Bearer {admin_token}"
                     }},
                     credentials: 'include',
                     body: JSON.stringify(payload)

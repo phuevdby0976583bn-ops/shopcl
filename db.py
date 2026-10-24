@@ -135,6 +135,31 @@ async def check_all_tables_exist(session: AsyncSession | Session, schema: str = 
 
 async def create_db_and_tables():
     async with get_db_session() as session:
+        try:
+            await session.execute(text("""
+                CREATE TABLE IF NOT EXISTS system_settings (
+                    key VARCHAR(100) PRIMARY KEY,
+                    value TEXT,
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE TABLE IF NOT EXISTS binance_pay_orders (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    telegram_id BIGINT NOT NULL,
+                    memo VARCHAR(64) NOT NULL,
+                    amount DOUBLE PRECISION DEFAULT 0.0,
+                    transaction_id VARCHAR(128) UNIQUE,
+                    status VARCHAR(32) DEFAULT 'PENDING',
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS ix_binance_pay_orders_memo ON binance_pay_orders(memo);
+                CREATE INDEX IF NOT EXISTS ix_binance_pay_orders_status ON binance_pay_orders(status);
+            """))
+            await session.commit()
+        except Exception:
+            pass
+
         if await check_all_tables_exist(session):
             pass
         else:
