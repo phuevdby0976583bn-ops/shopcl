@@ -6,7 +6,7 @@ import config
 
 
 class PaymentApiConfigView(BaseView):
-    name = "Nạp USDT & API"
+    name = "Nạp USDT & Binance"
     icon = "fa-solid fa-sliders"
 
     def is_accessible(self, request: Request) -> bool:
@@ -74,8 +74,8 @@ class PaymentApiConfigView(BaseView):
         <!-- Header -->
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom">
             <div>
-                <h3 class="fw-bold mb-1 text-dark"><i class="fa-solid fa-sliders text-primary me-2"></i>Cấu Hình Nạp USDT, Binance Pay & Tool API</h3>
-                <p class="text-muted mb-0">Hệ thống nạp hàng tự động bằng Tool / API, Nạp 0% phí qua Binance Pay và Cổng USDT Blockchain</p>
+                <h3 class="fw-bold mb-1 text-dark"><i class="fa-solid fa-coins text-warning me-2"></i>Cấu Hình Cổng Nạp USDT & Binance Pay</h3>
+                <p class="text-muted mb-0">Hệ thống nhận tiền tự động 100% qua Binance Pay (0% phí, 1s) và Cổng USDT Blockchain</p>
             </div>
             <div class="mt-2 mt-md-0">
                 <a href="/admin" class="btn btn-outline-secondary"><i class="fa-solid fa-arrow-left me-1"></i> Quay lại Dashboard</a>
@@ -85,137 +85,20 @@ class PaymentApiConfigView(BaseView):
         <!-- Navigation Tabs -->
         <ul class="nav nav-pills mb-4" id="pills-tab" role="tablist">
             <li class="nav-item">
-                <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tab-fast-upload">
-                    <i class="fa-solid fa-bolt text-warning me-1"></i> 1. Nạp Hàng Nhanh & Tool API
-                </button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-binance">
-                    <i class="fa-brands fa-bitcoin text-warning me-1"></i> 2. Nạp Binance Pay (0% Phí - Nhận 1s)
+                <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tab-binance">
+                    <i class="fa-brands fa-bitcoin text-warning me-1"></i> 1. Quét Mã App Binance & Binance Pay (0% Phí)
                 </button>
             </li>
             <li class="nav-item">
                 <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-usdt">
-                    <i class="fa-solid fa-coins text-success me-1"></i> 3. Nạp USDT Tự Động (KryptoExpress)
-                </button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-inventory">
-                    <i class="fa-solid fa-boxes-stacked text-info me-1"></i> 4. Xem Tồn Kho & Test API
+                    <i class="fa-solid fa-wallet text-success me-1"></i> 2. Cổng Nạp USDT Tự Động (KryptoExpress)
                 </button>
             </li>
         </ul>
 
         <div class="tab-content" id="pills-tabContent">
-            <!-- TAB 1: FORM NẠP HÀNG & API TOOL -->
-            <div class="tab-pane fade show active" id="tab-fast-upload">
-                <div class="row g-4">
-                    <!-- Form nạp trực tiếp -->
-                    <div class="col-lg-5">
-                        <div class="card border-primary h-100">
-                            <div class="card-header bg-primary text-white py-3">
-                                <h5 class="card-title mb-0 fw-bold"><i class="fa-solid fa-file-arrow-up me-2"></i>Form Nạp Hàng Nhanh Vào Kho</h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="info-pill small">
-                                    Dán danh sách clone Facebook vào đây, hệ thống sẽ tự động tạo danh mục và nạp trực tiếp vào cơ sở dữ liệu Supabase!
-                                </div>
-                                <form id="fastUploadForm">
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Danh Mục Chính (Category):</label>
-                                        <input type="text" class="form-control" id="formCat" value="Facebook" required>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Danh Mục Con (Subcategory):</label>
-                                        <input type="text" class="form-control" id="formSubcat" value="Clone US 2FA Cổ" placeholder="VD: Clone US 2FA, Clone Seeding, BM Ads..." required>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Giá bán mỗi tài khoản ($ USD):</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text">$</span>
-                                            <input type="number" step="0.01" class="form-control" id="formPrice" value="1.50" required>
-                                        </div>
-                                    </div>
-                                    <div class="mb-3">
-                                        <div class="d-flex justify-content-between align-items-center mb-1">
-                                            <label class="form-label fw-bold mb-0">Danh sách tài khoản (Mỗi dòng 1 con):</label>
-                                            <span class="badge bg-secondary" id="lineCounter">0 tài khoản</span>
-                                        </div>
-                                        <textarea class="form-control font-monospace" id="formItems" rows="8" placeholder="100088881|matkhau1|2FA_KEY_1|Cookie_1&#10;100088882|matkhau2|2FA_KEY_2|Cookie_2" oninput="updateLineCount()"></textarea>
-                                        <small class="text-muted">Định dạng khuyên dùng: <code>UID|Pass|2FA|Cookie|Email</code></small>
-                                    </div>
-                                    <button type="button" class="btn btn-success w-100 py-2 fw-bold shadow-sm" onclick="submitUpload()">
-                                        <i class="fa-solid fa-bolt me-1"></i> NẠP NGAY VÀO KHO
-                                    </button>
-                                </form>
-                                <div id="uploadResult" class="mt-3" style="display:none;"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Hướng dẫn REST API cho Tool Reg/Nuôi Clone -->
-                    <div class="col-lg-7">
-                        <div class="card h-100">
-                            <div class="card-header py-3 text-primary d-flex justify-content-between align-items-center">
-                                <span class="fw-bold"><i class="fa-solid fa-code me-2"></i>Kết Nối REST API Cho Tool Tự Động Nạp Hàng</span>
-                                <span class="badge bg-primary">HTTP POST</span>
-                            </div>
-                            <div class="card-body">
-                                <h6 class="fw-bold text-dark mb-2"><i class="fa-solid fa-key text-warning me-1"></i> 1. Cách Lấy Thông Tin API:</h6>
-                                <ul>
-                                    <li><b>API Endpoint:</b> <code>{api_upload_url}</code></li>
-                                    <li><b>Mã X-API-KEY:</b> Chính là mật khẩu đăng nhập Admin của bạn (cấu hình trong biến môi trường Render: <code>SQLADMIN_RAW_PASSWORD</code>).</li>
-                                </ul>
-
-                                <div class="mb-3">
-                                    <label class="form-label fw-bold small text-muted">URL Endpoint:</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control font-monospace" value="{api_upload_url}" readonly id="inputUrl">
-                                        <button class="btn btn-outline-primary" onclick="copyId('inputUrl')"><i class="fa-regular fa-copy"></i> Copy</button>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label class="form-label fw-bold small text-muted">X-API-KEY Header:</label>
-                                    <div class="input-group">
-                                        <input type="password" class="form-control font-monospace" value="{api_key}" readonly id="inputKey">
-                                        <button class="btn btn-outline-secondary" type="button" onclick="toggleKeyVisibility()" title="Hi?n/?n"><i class="fa-solid fa-eye" id="eyeIcon"></i></button>
-                                        <button class="btn btn-outline-primary" onclick="copyId('inputKey')"><i class="fa-regular fa-copy"></i> Copy</button>
-                                    </div>
-                                </div>
-
-                                <h6 class="fw-bold text-dark mt-4 mb-2"><i class="fa-solid fa-terminal text-info me-1"></i> 2. Code Python Mẫu (Chạy Trực Tiếp Trong Tool Nuôi/Reg):</h6>
-                                <div class="code-box">
-                                    <button class="btn btn-sm btn-outline-light btn-copy" onclick="copyPyCode()"><i class="fa-regular fa-copy"></i> Copy Code</button>
-                                    <pre style="margin:0; color:#38bdf8;" id="pyCodeText">import requests
-
-url = "{api_upload_url}"
-headers = {{
-    "Content-Type": "application/json",
-    "X-API-KEY": "{api_key}"
-}}
-payload = {{
-    "category_name": "Facebook",
-    "subcategory_name": "Clone US 2FA Nuôi Seeding",
-    "price": 1.5,
-    "description": "Tài khoản Clone Facebook chuẩn US kèm 2FA",
-    "items": [
-        "1000888801|Password123|2FA_SECRET_KEY|Cookie...",
-        "1000888802|Password123|2FA_SECRET_KEY|Cookie..."
-    ]
-}}
-
-response = requests.post(url, json=payload, headers=headers)
-print("Kết quả:", response.json())</pre>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- TAB 2: BINANCE PAY (0% PHÍ) -->
-            <div class="tab-pane fade" id="tab-binance">
+            <!-- TAB 1: BINANCE PAY (0% PHÍ) -->
+            <div class="tab-pane fade show active" id="tab-binance">
                 <div class="card">
                     <div class="card-header py-3 text-warning d-flex justify-content-between align-items-center">
                         <h5 class="card-title mb-0 fw-bold"><i class="fa-brands fa-bitcoin me-2"></i>Nạp Tự Động Bằng Binance Pay (0% Phí - Nhận Ngay 1s)</h5>
@@ -335,136 +218,11 @@ KRYPTO_EXPRESS_API_URL="https://kryptoexpress.pro/api"</pre>
                 </div>
             </div>
 
-            <!-- TAB 4: XEM TỒN KHO & TEST API -->
-            <div class="tab-pane fade" id="tab-inventory">
-                <div class="card">
-                    <div class="card-header py-3 text-info d-flex justify-content-between align-items-center">
-                        <h5 class="card-title mb-0 fw-bold"><i class="fa-solid fa-boxes-stacked me-2"></i>Tình Trạng Kho Hàng Hiện Tại (Live Inventory)</h5>
-                        <button class="btn btn-sm btn-outline-info" onclick="fetchInventory()"><i class="fa-solid fa-rotate me-1"></i> Làm mới</button>
-                    </div>
-                    <div class="card-body">
-                        <div id="inventoryLoading" class="text-center py-4 text-muted">
-                            <i class="fa-solid fa-spinner fa-spin fa-2x mb-2"></i>
-                            <div>Đang tải dữ liệu kho hàng...</div>
-                        </div>
-                        <div id="inventoryContent" style="display:none;"></div>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        function updateLineCount() {{
-            const val = document.getElementById("formItems").value;
-            const lines = val.split('\n').map(s => s.trim()).filter(s => s.length > 0);
-            document.getElementById("lineCounter").innerText = lines.length + " tài khoản";
-        }}
-
-        function toggleKeyVisibility() {{
-            const input = document.getElementById("inputKey");
-            const icon = document.getElementById("eyeIcon");
-            if (input.type === "password") {{
-                input.type = "text";
-                icon.className = "fa-solid fa-eye-slash";
-            }} else {{
-                input.type = "password";
-                icon.className = "fa-solid fa-eye";
-            }}
-        }}
-
-        function copyId(id) {{
-            const input = document.getElementById(id);
-            input.select();
-            navigator.clipboard.writeText(input.value);
-            alert("Đã sao chép: " + input.value);
-        }}
-
-        function copyPyCode() {{
-            const code = document.getElementById("pyCodeText").innerText;
-            navigator.clipboard.writeText(code);
-            alert("Đã sao chép mã code Python!");
-        }}
-
-        async function submitUpload() {{
-            const cat = document.getElementById("formCat").value.trim();
-            const subcat = document.getElementById("formSubcat").value.trim();
-            const price = parseFloat(document.getElementById("formPrice").value);
-            const raw = document.getElementById("formItems").value.trim();
-            const resDiv = document.getElementById("uploadResult");
-
-            if (!raw) {{
-                alert("Vui lòng nhập ít nhất 1 tài khoản clone!");
-                return;
-            }}
-
-            const items = raw.split('\n').map(s => s.trim()).filter(s => s.length > 0);
-            resDiv.style.display = "block";
-            resDiv.innerHTML = '<div class="alert alert-info py-2"><i class="fa-solid fa-spinner fa-spin me-1"></i> Đang nạp ' + items.length + ' tài khoản vào kho...</div>';
-
-            try {{
-                const res = await fetch("{api_upload_url}", {{
-                    method: "POST",
-                    headers: {{
-                        "Content-Type": "application/json",
-                        "X-API-KEY": "{api_key}"
-                    }},
-                    body: JSON.stringify({{
-                        category_name: cat,
-                        subcategory_name: subcat,
-                        price: price,
-                        description: "Nạp trực tiếp từ Web Admin Bubba Gump",
-                        items: items
-                    }})
-                }});
-
-                const data = await res.json();
-                if (res.ok) {{
-                    resDiv.innerHTML = '<div class="alert alert-success py-2"><i class="fa-solid fa-circle-check me-1"></i> <b>Nạp thành công!</b> Đã thêm ' + data.uploaded_count + ' sản phẩm vào [' + data.category_name + ' > ' + data.subcategory_name + '].</div>';
-                    document.getElementById("formItems").value = "";
-                    updateLineCount();
-                    fetchInventory();
-                }} else {{
-                    resDiv.innerHTML = '<div class="alert alert-danger py-2">Lỗi: ' + (data.detail || "Không thể nạp hàng") + '</div>';
-                }}
-            }} catch (err) {{
-                resDiv.innerHTML = '<div class="alert alert-danger py-2">Lỗi kết nối: ' + err.message + '</div>';
-            }}
-        }}
-
-        async function fetchInventory() {{
-            const loading = document.getElementById("inventoryLoading");
-            const content = document.getElementById("inventoryContent");
-            loading.style.display = "block";
-            content.style.display = "none";
-
-            try {{
-                const res = await fetch("{api_inventory_url}", {{
-                    headers: {{ "X-API-KEY": "{api_key}" }}
-                }});
-                const data = await res.json();
-                loading.style.display = "none";
-                content.style.display = "block";
-
-                if (data.inventory && data.inventory.length > 0) {{
-                    let html = '<div class="table-responsive"><table class="table table-hover align-middle"><thead class="table-light"><tr><th>ID</th><th>Danh Mục</th><th>Số Lượng Clone Còn Trong Kho</th><th>Trạng Thái</th></tr></thead><tbody>';
-                    data.inventory.forEach(item => {{
-                        const badge = item.in_stock_qty > 0 ? '<span class="badge bg-success">Còn hàng</span>' : '<span class="badge bg-danger">Hết hàng</span>';
-                        html += '<tr><td>' + item.category_id + '</td><td class="fw-bold">' + item.category_name + '</td><td><span class="fs-5 fw-bold text-primary">' + item.in_stock_qty + '</span> con</td><td>' + badge + '</td></tr>';
-                    }});
-                    html += '</tbody></table></div>';
-                    content.innerHTML = html;
-                }} else {{
-                    content.innerHTML = '<div class="text-center py-4 text-muted"><i class="fa-solid fa-inbox fa-2x mb-2"></i><div>Kho hiện tại chưa có sản phẩm nào. Hãy dùng form bên Tab 1 để nạp ngay!</div></div>';
-                }}
-            }} catch (e) {{
-                loading.style.display = "none";
-                content.style.display = "block";
-                content.innerHTML = '<div class="alert alert-warning py-2">Không thể lấy dữ liệu kho: ' + e.message + '</div>';
-            }}
-        }}
-
         async function syncBinancePay() {{
             const resBox = document.getElementById("syncResult");
             resBox.style.display = "block";
@@ -489,11 +247,6 @@ KRYPTO_EXPRESS_API_URL="https://kryptoexpress.pro/api"</pre>
                 resBox.innerHTML = '<span class="text-danger">Lỗi kết nối: ' + err.message + '</span>';
             }}
         }}
-
-        document.addEventListener("DOMContentLoaded", function() {{
-            updateLineCount();
-            fetchInventory();
-        }});
     </script>
 </body>
 </html>"""
