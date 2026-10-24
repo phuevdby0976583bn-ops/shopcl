@@ -1,0 +1,7 @@
+﻿/data/
+.env
+.env.bot.dev
+__pycache__/
+*.pyc
+.pytest_cache/
+static/no_image.jpeg

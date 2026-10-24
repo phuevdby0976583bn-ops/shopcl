@@ -1,0 +1,6 @@
+﻿{
+  "name": "render-cron-pinger",
+  "version": "1.0.0",
+  "description": "Vercel Cron Pinger to keep Render Web Service active 24/7",
+  "private": true
+}

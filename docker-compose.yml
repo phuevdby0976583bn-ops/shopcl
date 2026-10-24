@@ -1,0 +1,73 @@
+services:
+  caddy:
+    image: caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - caddy
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy_data:/data
+      - ./caddy_config:/config
+    restart: always
+
+  bot:
+    build:
+      context: .
+    container_name: 'AiogramShopBot'
+    env_file:
+      - .env
+    labels:
+      caddy: YOUR-DOMAIN-GOES-HERE
+      caddy.reverse_proxy: "bot:5000"
+    depends_on:
+      - caddy
+    networks:
+      - caddy
+    ports:
+      - "127.0.0.1:5000:5000" # ${WEBAPP_PORT}:${WEBAPP_PORT}
+    volumes:
+      - ./i18n:/bot/i18n
+    command: [ "python", "-u", "run.py" ]
+    restart: always
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    command:
+      - /bin/sh
+      - -c
+      - redis-server --requirepass "$${REDIS_PASSWORD:?REDIS_PASSWORD variable is not set}"
+    ports:
+      - "127.0.0.1:6379:6379"
+    env_file:
+      - .env
+    volumes:
+      - redis_data:/data
+    restart: always
+    networks:
+      - caddy
+
+  postgres:
+    container_name: "postgres"
+    image: "postgres:18"
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ./postgres_data:/var/lib/postgresql
+    networks:
+      - caddy
+    restart: always
+
+
+volumes:
+  AiogramShopBot:
+  caddy_data:
+  redis_data:
+  postgres_data:
+
+networks:
+  caddy:
