@@ -226,6 +226,39 @@ async def _startup() -> None:
         except Exception as e:
             logging.warning(f"Note on user language sync: {e}")
 
+        try:
+            from models.subcategory import Subcategory
+            from models.item import Item
+            from models.cartItem import CartItem
+            from sqlalchemy import select, func, update, delete
+            dup_stmt = (
+                select(Subcategory.name)
+                .group_by(Subcategory.name)
+                .having(func.count(Subcategory.id) > 1)
+            )
+            dup_res = await db_sess.execute(dup_stmt)
+            dup_names = dup_res.scalars().all()
+            if dup_names:
+                for d_name in dup_names:
+                    s_stmt = select(Subcategory).where(Subcategory.name == d_name).order_by(Subcategory.id.asc())
+                    s_list = (await db_sess.execute(s_stmt)).scalars().all()
+                    if len(s_list) > 1:
+                        primary_sub = s_list[0]
+                        dup_sub_ids = [s.id for s in s_list[1:]]
+                        await db_sess.execute(
+                            update(Item).where(Item.subcategory_id.in_(dup_sub_ids)).values(subcategory_id=primary_sub.id)
+                        )
+                        await db_sess.execute(
+                            update(CartItem).where(CartItem.subcategory_id.in_(dup_sub_ids)).values(subcategory_id=primary_sub.id)
+                        )
+                        await db_sess.execute(
+                            delete(Subcategory).where(Subcategory.id.in_(dup_sub_ids))
+                        )
+                await db_sess.commit()
+                logging.info(f"Cleaned and merged {len(dup_names)} duplicate subcategories successfully")
+        except Exception as e:
+            logging.warning(f"Note on duplicate subcategory cleanup: {e}")
+
     webhook_url = f"{config.WEBHOOK_HOST}{config.WEBHOOK_PATH}"
 
     logging.info(f"Setting Telegram webhook to: {webhook_url}")

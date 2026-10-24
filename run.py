@@ -582,7 +582,8 @@ users_routers.include_routers(
     all_categories_router,
     my_profile_router,
     cart_router,
-    review_management_router
+    review_management_router,
+    deposit_router
 )
 users_routers.message.middleware(throttling_middleware)
 users_routers.callback_query.middleware(throttling_middleware)

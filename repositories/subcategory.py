@@ -22,14 +22,6 @@ class SubcategoryRepository:
                                            item_type: ItemType | None,
                                            category_id: int | None, page: int,
                                            session: AsyncSession) -> list[ItemDTO]:
-        sort_methods = []
-        for sort_property, sort_order in sort_pairs.items():
-            sort_property, sort_order = SortProperty(int(sort_property)), SortOrder(sort_order)
-            if sort_order != SortOrder.DISABLE:
-                table = Subcategory if sort_property == SortProperty.NAME else Item
-                sort_column = sort_property.get_column(table)
-                sort_method = (getattr(sort_column, sort_order.name.lower()))
-                sort_methods.append(sort_method())
         conditions = [
             Item.is_sold == False
         ]
@@ -40,20 +32,54 @@ class SubcategoryRepository:
         if filters:
             filter_conditions = [Subcategory.name.icontains(name) for name in filters]
             conditions.append(or_(*filter_conditions))
-        stmt = (select(Item.item_type,
-                       Item.category_id,
-                       Item.subcategory_id,
-                       Item.description,
-                       Item.price,
-                       Category.name.label("category_name"),
-                       Subcategory.name.label("subcategory_name"))
-                .join(Subcategory, Item.subcategory_id == Subcategory.id)
-                .join(Category, Item.category_id == Category.id)
-                .where(and_(*conditions))
-                .distinct()
-                .limit(config.PAGE_ENTRIES)
-                .offset(page * config.PAGE_ENTRIES)
-                .order_by(*sort_methods))
+
+        # Gộp và chỉ lấy duy nhất 1 bản ghi đại diện cho mỗi Mục Con (Subcategory)
+        # Loại bỏ hoàn toàn tình trạng nút bấm trùng lặp tên trên Telegram Bot
+        ranked_subq = (
+            select(
+                Item.item_type,
+                Item.category_id,
+                Item.subcategory_id,
+                Item.description,
+                Item.price,
+                Category.name.label("category_name"),
+                Subcategory.name.label("subcategory_name"),
+                func.row_number().over(
+                    partition_by=[Item.category_id, Subcategory.name],
+                    order_by=Item.id.desc()
+                ).label("rn")
+            )
+            .join(Subcategory, Item.subcategory_id == Subcategory.id)
+            .join(Category, Item.category_id == Category.id)
+            .where(and_(*conditions))
+            .subquery()
+        )
+
+        outer_sort_methods = []
+        for sort_property, sort_order in sort_pairs.items():
+            sort_property, sort_order = SortProperty(int(sort_property)), SortOrder(sort_order)
+            if sort_order != SortOrder.DISABLE:
+                col_name = "subcategory_name" if sort_property == SortProperty.NAME else "price"
+                sort_col = getattr(ranked_subq.c, col_name)
+                outer_sort_methods.append(getattr(sort_col, sort_order.name.lower())())
+        if not outer_sort_methods:
+            outer_sort_methods = [ranked_subq.c.subcategory_name.asc()]
+
+        stmt = (
+            select(
+                ranked_subq.c.item_type,
+                ranked_subq.c.category_id,
+                ranked_subq.c.subcategory_id,
+                ranked_subq.c.description,
+                ranked_subq.c.price,
+                ranked_subq.c.category_name,
+                ranked_subq.c.subcategory_name
+            )
+            .where(ranked_subq.c.rn == 1)
+            .limit(config.PAGE_ENTRIES)
+            .offset(page * config.PAGE_ENTRIES)
+            .order_by(*outer_sort_methods)
+        )
         items = await session_execute(stmt, session)
         items = items.mappings().all()
         return [ItemDTO.model_validate(item, from_attributes=True) for item in items]
@@ -68,7 +94,7 @@ class SubcategoryRepository:
         if filters is not None:
             filter_conditions = [Subcategory.name.icontains(name) for name in filters]
             conditions.append(or_(*filter_conditions))
-        subquery = (select(Subcategory.id)
+        subquery = (select(Subcategory.name)
                     .join(Item, Item.subcategory_id == Subcategory.id)
                     .where(and_(*conditions))
                     .distinct())

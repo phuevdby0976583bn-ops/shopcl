@@ -41,21 +41,94 @@ class BulkUploadAdminView(BaseView):
         from db import get_db_session
         from models.category import Category
         from models.subcategory import Subcategory
-        from sqlalchemy import select
+        from models.item import Item
+        from sqlalchemy import select, func
+        import html as html_lib
 
         async with get_db_session() as session:
             cat_stmt = select(Category).order_by(Category.name)
             categories = (await session.execute(cat_stmt)).scalars().all()
-            subcat_stmt = select(Subcategory).order_by(Subcategory.name)
-            subcategories = (await session.execute(subcat_stmt)).scalars().all()
+
+            stats_stmt = (
+                select(
+                    Subcategory.name.label("subcategory_name"),
+                    Category.name.label("category_name"),
+                    func.count(Item.id).filter(Item.is_sold == False).label("live_count"),
+                    func.count(Item.id).filter(Item.is_sold == True).label("sold_count"),
+                    func.max(Item.price).label("latest_price"),
+                    func.max(Item.description).label("latest_desc")
+                )
+                .join(Item, Item.subcategory_id == Subcategory.id, isouter=True)
+                .join(Category, Item.category_id == Category.id, isouter=True)
+                .group_by(Subcategory.name, Category.name)
+                .order_by(Subcategory.name.asc())
+            )
+            rows = (await session.execute(stats_stmt)).all()
+
+        subcat_dict = {}
+        for r in rows:
+            name = r.subcategory_name
+            if not name:
+                continue
+            if name not in subcat_dict:
+                subcat_dict[name] = {
+                    "name": name,
+                    "category": r.category_name or "",
+                    "live_count": int(r.live_count or 0),
+                    "sold_count": int(r.sold_count or 0),
+                    "price": float(r.latest_price or 0.25),
+                    "description": r.latest_desc or "Clone Facebook chất lượng cao, bao login, 2FA đầy đủ"
+                }
+            else:
+                subcat_dict[name]["live_count"] += int(r.live_count or 0)
+                subcat_dict[name]["sold_count"] += int(r.sold_count or 0)
+                if r.category_name and not subcat_dict[name]["category"]:
+                    subcat_dict[name]["category"] = r.category_name
 
         cat_options_html = ""
         for c in categories:
-            cat_options_html += f'<option value="{c.name}">{c.name}</option>\n'
+            cat_options_html += f'<option value="{html_lib.escape(c.name)}">{html_lib.escape(c.name)}</option>\n'
 
         subcat_options_html = ""
-        for s in subcategories:
-            subcat_options_html += f'<option value="{s.name}">{s.name}</option>\n'
+        table_rows_html = ""
+        if not subcat_dict:
+            table_rows_html = '<tr><td colspan="6" class="text-center text-muted py-4">Chưa có sản phẩm nào trong kho. Hãy tạo danh mục con bên dưới để bắt đầu nạp hàng!</td></tr>'
+        else:
+            for name, data in subcat_dict.items():
+                esc_name = html_lib.escape(name)
+                esc_cat = html_lib.escape(data["category"] or "Chưa gán")
+                esc_desc = html_lib.escape(data["description"])
+                price_val = data["price"]
+                live_val = data["live_count"]
+                sold_val = data["sold_count"]
+
+                subcat_options_html += (
+                    f'<option value="{esc_name}" data-price="{price_val}" data-stock="{live_val}" '
+                    f'data-category="{esc_cat}" data-desc="{esc_desc}">'
+                    f'{esc_name} (Còn {live_val:,} acc LIVE | ${price_val:g})</option>\n'
+                )
+
+                status_badge = (
+                    f'<span class="badge bg-success"><i class="fa-solid fa-circle-check me-1"></i>Còn {live_val:,} LIVE</span>'
+                    if live_val > 0 else
+                    f'<span class="badge bg-secondary"><i class="fa-solid fa-circle-xmark me-1"></i>Hết hàng (0)</span>'
+                )
+
+                table_rows_html += f"""
+                    <tr>
+                        <td class="fw-bold text-dark"><i class="fa-solid fa-folder-open text-primary me-2"></i>{esc_name}</td>
+                        <td><span class="badge bg-light text-dark border">{esc_cat}</span></td>
+                        <td class="fw-bold text-success">${price_val:g}</td>
+                        <td>{status_badge}</td>
+                        <td class="text-muted">{sold_val:,} acc</td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    onclick="quickSelectSubcat('{esc_name}')">
+                                <i class="fa-solid fa-cloud-arrow-up me-1"></i> Nạp thêm
+                            </button>
+                        </td>
+                    </tr>
+                """
 
         html_content = f"""<!DOCTYPE html>
 <html lang="vi">
@@ -121,6 +194,35 @@ class BulkUploadAdminView(BaseView):
             </div>
         </div>
 
+        <!-- BẢNG TỔNG QUAN KHO HÀNG (ĐÃ GỘP GỌN THEO MỤC CON) -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+                <div class="fw-bold fs-6 text-primary">
+                    <i class="fa-solid fa-boxes-stacked me-2"></i>📊 TỔNG QUAN KHO HÀNG HIỆN TẠI (TẤT CẢ DANH MỤC CON)
+                </div>
+                <span class="badge bg-info text-dark px-3 py-2">
+                    <i class="fa-solid fa-layer-group me-1"></i> Gộp theo loại hàng - Hiển thị số lượng nick LIVE & Giá bán
+                </span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Loại Clone (Mục Con)</th>
+                            <th>Danh Mục</th>
+                            <th>Giá Bán</th>
+                            <th>Số Lượng LIVE Trong Kho</th>
+                            <th>Đã Bán</th>
+                            <th class="text-end">Hành Động</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {table_rows_html}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="row">
             <!-- Cột trái: Form cấu hình & nạp hàng -->
             <div class="col-lg-8">
@@ -152,6 +254,7 @@ class BulkUploadAdminView(BaseView):
                                     <option value="__NEW__" class="fw-bold text-primary">➕ Tạo mục con mới...</option>
                                 </select>
                                 <input type="text" id="newSubcategoryInput" class="form-control mt-2" placeholder="Nhập tên mục con mới (vd: Clone US ngâm 6 tháng, VIA 902...)" style="display:none;">
+                                <div id="subcatInfoBadge" class="alert alert-success py-2 px-3 mt-2 small" style="display:none;"></div>
                             </div>
 
                             <!-- Giá bán ($) -->
@@ -176,7 +279,7 @@ class BulkUploadAdminView(BaseView):
                 </div>
 
                 <!-- BƯỚC 2: NHẬP DANH SÁCH 1000 TÀI KHOẢN -->
-                <div class="card shadow-sm">
+                <div class="card shadow-sm" id="uploadStep2Card">
                     <div class="card-header bg-white d-flex justify-content-between align-items-center">
                         <div>
                             <span class="step-badge">2</span>
@@ -349,11 +452,54 @@ print(r.json())
         function handleSubcatChange() {{
             const sel = document.getElementById('subcategorySelect');
             const inp = document.getElementById('newSubcategoryInput');
+            const infoBadge = document.getElementById('subcatInfoBadge');
             if (sel.value === '__NEW__') {{
                 inp.style.display = 'block';
                 inp.focus();
+                if (infoBadge) infoBadge.style.display = 'none';
             }} else {{
                 inp.style.display = 'none';
+                const opt = sel.options[sel.selectedIndex];
+                if (opt && opt.dataset && opt.dataset.price) {{
+                    // TỰ ĐỘNG ĐIỀN GIÁ CŨ & MÔ TẢ ĐÃ CÓ - KHÔNG CẦN NHẬP LẠI
+                    document.getElementById('itemPrice').value = opt.dataset.price;
+                    updateRatePreview();
+                    if (opt.dataset.desc) {{
+                        document.getElementById('itemDescription').value = opt.dataset.desc;
+                    }}
+                    if (opt.dataset.category) {{
+                        const catSel = document.getElementById('categorySelect');
+                        for (let i = 0; i < catSel.options.length; i++) {{
+                            if (catSel.options[i].value === opt.dataset.category) {{
+                                catSel.selectedIndex = i;
+                                handleCatChange();
+                                break;
+                            }}
+                        }}
+                    }}
+                    if (infoBadge) {{
+                        const stockNum = Number(opt.dataset.stock || 0);
+                        infoBadge.innerHTML = `<i class="fa-solid fa-circle-check text-success me-1"></i> Mục con <b>${opt.value}</b> đã có sẵn giá bán <b>$${opt.dataset.price}</b>, hiện còn <b>${stockNum.toLocaleString('vi-VN')} nick LIVE</b> trong kho. Bạn chỉ cần dán thêm nick bên dưới là xong!`;
+                        infoBadge.style.display = 'block';
+                    }}
+                }} else {{
+                    if (infoBadge) infoBadge.style.display = 'none';
+                }}
+            }}
+        }}
+
+        function quickSelectSubcat(name) {{
+            const sel = document.getElementById('subcategorySelect');
+            for (let i = 0; i < sel.options.length; i++) {{
+                if (sel.options[i].value === name) {{
+                    sel.selectedIndex = i;
+                    handleSubcatChange();
+                    const step2 = document.getElementById('uploadStep2Card');
+                    if (step2) step2.scrollIntoView({{ behavior: 'smooth' }});
+                    const rawInp = document.getElementById('rawItemsInput');
+                    if (rawInp) rawInp.focus();
+                    break;
+                }}
             }}
         }}
 

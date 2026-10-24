@@ -183,19 +183,33 @@ async def receive_top_up_amount(message: Message,
                                 state: FSMContext,
                                 session: AsyncSession,
                                 language: Language):
-    media, kb_builder = await PaymentService.create(message,
-                                                    None,
-                                                    state,
-                                                    session,
-                                                    language)
-    state_data = await state.get_data()
-    if state_data.get("chat_id") and state_data.get("msg_id"):
-        await message.bot.edit_message_media(chat_id=state_data.get("chat_id"),
-                                             message_id=state_data.get("msg_id"),
-                                             media=media,
-                                             reply_markup=kb_builder.as_markup())
-    else:
-        await NotificationService.answer_media(message, media, kb_builder.as_markup())
+    try:
+        media, kb_builder = await PaymentService.create(message,
+                                                        None,
+                                                        state,
+                                                        session,
+                                                        language)
+        state_data = await state.get_data()
+        if state_data.get("chat_id") and state_data.get("msg_id"):
+            await message.bot.edit_message_media(chat_id=state_data.get("chat_id"),
+                                                 message_id=state_data.get("msg_id"),
+                                                 media=media,
+                                                 reply_markup=kb_builder.as_markup())
+        else:
+            await NotificationService.answer_media(message, media, kb_builder.as_markup())
+    except Exception as e:
+        logger.error(f"Error in receive_top_up_amount: {e}")
+        await state.clear()
+        kb = InlineKeyboardBuilder()
+        kb.button(text="🟡 Nạp Binance Pay (0% Phí - Nhận ngay 1s)", callback_data="binance_pay:view")
+        kb.adjust(1)
+        await message.answer(
+            "⚠️ <b>Cổng nạp on-chain (KryptoExpress) chưa lưu API Key hoặc đang bảo trì.</b>\n\n"
+            "👉 <b>Khuyên dùng:</b> Bạn vui lòng bấm nút bên dưới để nạp qua <b>Binance Pay (0% Phí - Nhận ngay 1 giây)</b> hoàn toàn tự động!\n"
+            "💬 Hoặc liên hệ Admin @truongdvfb để được hỗ trợ.",
+            parse_mode="HTML",
+            reply_markup=kb.as_markup()
+        )
 
 
 @my_profile_router.callback_query(MyProfileCallback.filter(), IsUserExistFilter())
