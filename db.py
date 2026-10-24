@@ -27,6 +27,7 @@ from models.shipping_option import ShippingOption
 from models.review import Review
 from models.referral import ReferralBonus
 from models.binance_pay import BinancePayOrder
+from models.bank_order import BankDepositOrder
 from models.system_setting import SystemSetting
 
 connect_args = {}

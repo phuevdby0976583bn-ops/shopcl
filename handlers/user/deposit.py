@@ -503,11 +503,16 @@ async def handle_bank_check_invoice(callback: CallbackQuery, session: AsyncSessi
                 f"━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"Thank you for your purchase!"
             )
+        from callbacks import AllCategoriesCallback
+        from enums.item_type import ItemType
+        kb_shop = InlineKeyboardBuilder()
+        btn_txt = "\U0001f6d2 Ch\u1ecdn Mua S\u1ea3n Ph\u1ea9m" if language == Language.VI else "\U0001f6d2 Shop Products Now"
+        kb_shop.button(text=btn_txt, callback_data=AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL))
         try:
             await callback.message.delete()
         except Exception:
             pass
-        await callback.message.answer(success_msg, parse_mode="HTML")
+        await callback.message.answer(success_msg, reply_markup=kb_shop.as_markup(), parse_mode="HTML")
     else:
         if language == Language.VI:
             toast = (

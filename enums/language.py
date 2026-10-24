@@ -11,6 +11,15 @@ class Language(str, Enum):
     IT = 'it'
     ES = 'es'
 
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            val_lower = value.strip().lower()
+            for member in cls:
+                if member.value == val_lower or member.name.lower() == val_lower:
+                    return member
+        return None
+
     @staticmethod
     def from_locale(locale: str) -> 'Language':
         try:

@@ -1,6 +1,6 @@
 from typing import Any
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqladmin import ModelView
 from sqlalchemy import Column, Integer, DateTime, String, Boolean, Float, func, CheckConstraint, Enum, ForeignKey, BigInteger
 from sqlalchemy.orm import relationship
@@ -83,6 +83,19 @@ class UserDTO(BaseModel):
     referral_code: str | None = None
     referred_by_user_id: int | None = None
     referred_at: datetime | None = None
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def validate_language(cls, v: Any) -> Language:
+        if isinstance(v, Language):
+            return v
+        if isinstance(v, str):
+            v_clean = v.strip().lower()
+            try:
+                return Language(v_clean)
+            except ValueError:
+                return Language.from_locale(v_clean)
+        return Language.VI
 
     @staticmethod
     def get_chart_text(language: Language) -> tuple[str, str]:

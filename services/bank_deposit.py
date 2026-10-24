@@ -145,30 +145,20 @@ class BankDepositService:
 
         qr_file = BankDepositService.generate_vietqr_image(bin_code, account_number, exact_vnd, memo, bank_code)
 
-        acc_name_display = f"👤 <b>Chủ TK:</b> <b>{account_name}</b>
-" if account_name else ""
+        acc_name_display = f"👤 <b>Chủ TK:</b> <b>{account_name}</b>\n" if account_name else ""
 
         if language == Language.VI:
             text = (
-                f"🏦 <b>HOÁ ĐƠN NẠP TIỀN NGÂN HÀNG (VIETQR)</b>
-"
-                f"━━━━━━━━━━━━━━━━━━━━━━
-"
-                f"🏛️ <b>Ngân hàng:</b> <b>{bank_code} (BIDV)</b>
-"
-                f"💳 <b>Số tài khoản (STK):</b> <code>{account_number}</code>
-"
+                f"🏦 <b>HOÁ ĐƠN NẠP TIỀN NGÂN HÀNG (VIETQR)</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🏛️ <b>Ngân hàng:</b> <b>{bank_code} (BIDV)</b>\n"
+                f"💳 <b>Số tài khoản (STK):</b> <code>{account_number}</code>\n"
                 f"{acc_name_display}"
-                f"💵 <b>Số tiền cần chuyển:</b> <code>{exact_vnd:,}</code> đ (~<b>{base_amount_usd}$</b>)
-"
-                f"📝 <b>Nội dung chuyển khoản (BẮT BUỘC):</b>
-"
-                f"👉 <code>{memo}</code>
-"
-                f"━━━━━━━━━━━━━━━━━━━━━━
-"
-                f"⚡ <i>Hệ thống tự động cộng tiền trong 10-30 giây ngay sau khi nhận được tiền.</i>
-"
+                f"💵 <b>Số tiền cần chuyển:</b> <code>{exact_vnd:,}</code> đ (~<b>{base_amount_usd}$</b>)\n"
+                f"📝 <b>Nội dung chuyển khoản (BẮT BUỘC):</b>\n"
+                f"👉 <code>{memo}</code>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚡ <i>Hệ thống tự động cộng tiền trong 10-30 giây ngay sau khi nhận được tiền.</i>\n"
                 f"⚠️ <b>LƯU Ý:</b> Bạn <b>BẮT BUỘC</b> điền đúng nội dung <code>{memo}</code> để được cộng tiền tự động!"
             )
             btn_cp_stk = "📋 Sao chép STK"
@@ -178,25 +168,16 @@ class BankDepositService:
             btn_cancel = "❌ Huỷ hoá đơn"
         else:
             text = (
-                f"🏦 <b>VIETNAM BANK DEPOSIT (VIETQR)</b>
-"
-                f"━━━━━━━━━━━━━━━━━━━━━━
-"
-                f"🏛️ <b>Bank:</b> <b>{bank_code} (BIDV)</b>
-"
-                f"💳 <b>Account Number:</b> <code>{account_number}</code>
-"
+                f"🏦 <b>VIETNAM BANK DEPOSIT (VIETQR)</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🏛️ <b>Bank:</b> <b>{bank_code} (BIDV)</b>\n"
+                f"💳 <b>Account Number:</b> <code>{account_number}</code>\n"
                 f"{acc_name_display}"
-                f"💵 <b>Transfer Amount:</b> <code>{exact_vnd:,}</code> VND (~<b>${base_amount_usd}</b>)
-"
-                f"📝 <b>Transfer Content (REQUIRED):</b>
-"
-                f"👉 <code>{memo}</code>
-"
-                f"━━━━━━━━━━━━━━━━━━━━━━
-"
-                f"⚡ <i>Instant auto-credit in 10-30s once transfer is completed.</i>
-"
+                f"💵 <b>Transfer Amount:</b> <code>{exact_vnd:,}</code> VND (~<b>${base_amount_usd}</b>)\n"
+                f"📝 <b>Transfer Content (REQUIRED):</b>\n"
+                f"👉 <code>{memo}</code>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚡ <i>Instant auto-credit in 10-30s once transfer is completed.</i>\n"
                 f"⚠️ <b>NOTE:</b> You MUST include the exact remark <code>{memo}</code>!"
             )
             btn_cp_stk = "📋 Copy Account No"
@@ -355,22 +336,14 @@ class BankDepositService:
             # Gửi tin nhắn thông báo cho khách hàng
             try:
                 user_msg = (
-                    f"🎉 <b>TING TING! NẠP TIỀN THÀNH CÔNG</b> 🎉
-"
-                    f"━━━━━━━━━━━━━━━━━━━━━━
-"
-                    f"✅ <b>Đã nhận:</b> <b>+{amount_vnd:,.0f} đ</b> (~ <b>+{usd_amount}$ USDT</b>)
-"
-                    f"🏛️ <b>Cổng nạp:</b> Ngân hàng BIDV (STK <code>{getattr(config, 'BANK_ACCOUNT_NUMBER', '8880117869')}</code>)
-"
-                    f"💳 <b>Số dư ví khả dụng hiện tại:</b> <b>{new_bal}$</b>
-"
-                    f"🆔 <b>Mã giao dịch:</b> <code>{tx_id}</code>
-"
-                    f"📝 <b>Nội dung CK:</b> <code>{desc}</code>
-"
-                    f"━━━━━━━━━━━━━━━━━━━━━━
-"
+                    f"🎉 <b>TING TING! NẠP TIỀN THÀNH CÔNG</b> 🎉\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"✅ <b>Đã nhận:</b> <b>+{amount_vnd:,.0f} đ</b> (~ <b>+{usd_amount}$ USDT</b>)\n"
+                    f"🏛️ <b>Cổng nạp:</b> Ngân hàng BIDV (STK <code>{getattr(config, 'BANK_ACCOUNT_NUMBER', '8880117869')}</code>)\n"
+                    f"💳 <b>Số dư ví khả dụng hiện tại:</b> <b>{new_bal}$</b>\n"
+                    f"🆔 <b>Mã giao dịch:</b> <code>{tx_id}</code>\n"
+                    f"📝 <b>Nội dung CK:</b> <code>{desc}</code>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
                     f"🦐 Cảm ơn bạn đã ủng hộ shop! Hãy bấm <b>🛒 Sản phẩm</b> để mua tài khoản ngay nhé!"
                 )
                 await bot.send_message(chat_id=matched_tg_id, text=user_msg, parse_mode="HTML")
@@ -380,15 +353,10 @@ class BankDepositService:
             # Gửi thông báo cho Admin
             try:
                 admin_msg = (
-                    f"💰 <b>[NGÂN HÀNG BIDV] CÓ GIAO DỊCH NẠP MỚI!</b>
-
-"
-                    f"👤 Khách hàng: @{user.telegram_username or 'Unknown'} (ID: <code>{matched_tg_id}</code>)
-"
-                    f"💵 Số tiền nhận: <b>+{amount_vnd:,.0f} đ</b> (~ <b>+{usd_amount}$</b>)
-"
-                    f"🆔 Mã GD ThueApi: <code>{tx_id}</code>
-"
+                    f"💰 <b>[NGÂN HÀNG BIDV] CÓ GIAO DỊCH NẠP MỚI!</b>\n\n"
+                    f"👤 Khách hàng: @{user.telegram_username or 'Unknown'} (ID: <code>{matched_tg_id}</code>)\n"
+                    f"💵 Số tiền nhận: <b>+{amount_vnd:,.0f} đ</b> (~ <b>+{usd_amount}$</b>)\n"
+                    f"🆔 Mã GD ThueApi: <code>{tx_id}</code>\n"
                     f"📝 Nội dung CK: <code>{desc}</code>"
                 )
                 for aid in getattr(config, "ADMIN_ID_LIST", []):

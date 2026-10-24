@@ -17,6 +17,7 @@ from repositories.item import ItemRepository
 from repositories.subcategory import SubcategoryRepository
 from services.media import MediaService
 from utils.utils import get_text
+from services.i18n_messages import get_out_of_stock_text, get_select_quantity_text, get_instant_buy_confirm_text
 from utils.utils import get_bot_photo_id
 
 

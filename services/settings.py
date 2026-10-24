@@ -33,6 +33,12 @@ SUPPORTED_SETTING_KEYS = [
     "FB_CRON_NOTIFY_ADMIN",
     "WARRANTY_LEGAL_POLICY",
     "WARRANTY_SHORT_SUMMARY",
+    "BANK_BIDV_TOKEN",
+    "BANK_ACCOUNT_NUMBER",
+    "BANK_ACCOUNT_NAME",
+    "BANK_CODE",
+    "BANK_EXCHANGE_RATE",
+    "BANK_AUTO_CHECK",
 ]
 
 BOOLEAN_KEYS = {
@@ -43,6 +49,7 @@ BOOLEAN_KEYS = {
     "FB_CHECK_LIVE_BEFORE_DELIVERY",
     "FB_AUTO_DELETE_DIE_ON_DELIVERY",
     "FB_CRON_NOTIFY_ADMIN",
+    "BANK_AUTO_CHECK",
 }
 
 
@@ -83,6 +90,12 @@ class SettingsService:
                 elif k == "FB_CRON_CHECK_INTERVAL_MINUTES":
                     try:
                         setattr(config, k, int(v))
+                        loaded_count += 1
+                    except ValueError:
+                        pass
+                elif k == "BANK_EXCHANGE_RATE":
+                    try:
+                        setattr(config, k, float(v))
                         loaded_count += 1
                     except ValueError:
                         pass
@@ -173,6 +186,16 @@ class SettingsService:
             ),
             "WARRANTY_LEGAL_POLICY": db_settings.get("WARRANTY_LEGAL_POLICY") or getattr(config, "WARRANTY_LEGAL_POLICY", "") or DEFAULT_WARRANTY_LEGAL_POLICY,
             "WARRANTY_SHORT_SUMMARY": db_settings.get("WARRANTY_SHORT_SUMMARY") or getattr(config, "WARRANTY_SHORT_SUMMARY", "") or DEFAULT_WARRANTY_SHORT_SUMMARY,
+            "BANK_BIDV_TOKEN": db_settings.get("BANK_BIDV_TOKEN") or getattr(config, "BANK_BIDV_TOKEN", "5bba49041ff9263b6e9aa1cde25c72de") or "5bba49041ff9263b6e9aa1cde25c72de",
+            "BANK_ACCOUNT_NUMBER": db_settings.get("BANK_ACCOUNT_NUMBER") or getattr(config, "BANK_ACCOUNT_NUMBER", "8880117869") or "8880117869",
+            "BANK_ACCOUNT_NAME": db_settings.get("BANK_ACCOUNT_NAME") or getattr(config, "BANK_ACCOUNT_NAME", "") or "",
+            "BANK_CODE": db_settings.get("BANK_CODE") or getattr(config, "BANK_CODE", "BIDV") or "BIDV",
+            "BANK_EXCHANGE_RATE": float(db_settings.get("BANK_EXCHANGE_RATE") or getattr(config, "BANK_EXCHANGE_RATE", 26000) or 26000),
+            "BANK_AUTO_CHECK": (
+                db_settings.get("BANK_AUTO_CHECK", "true").lower() in ("true", "1", "yes")
+                if "BANK_AUTO_CHECK" in db_settings
+                else getattr(config, "BANK_AUTO_CHECK", True)
+            ),
         }
         return res
 
@@ -198,6 +221,11 @@ class SettingsService:
             elif k == "FB_CRON_CHECK_INTERVAL_MINUTES":
                 try:
                     setattr(config, k, int(str_val))
+                except ValueError:
+                    pass
+            elif k == "BANK_EXCHANGE_RATE":
+                try:
+                    setattr(config, k, float(str_val))
                 except ValueError:
                     pass
             elif hasattr(config, k):

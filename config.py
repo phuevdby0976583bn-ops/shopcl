@@ -83,7 +83,7 @@ TOTAL_BONUS_CAP_PERCENT = float(os.environ.get('TOTAL_BONUS_CAP_PERCENT', '12'))
 
 
 # VIETNAMESE BANK (BIDV / THUEAPI.PRO) CONFIGURATION
-BANK_BIDV_TOKEN = (os.environ.get('BANK_BIDV_TOKEN') or '').strip().strip('"').strip("'")
+BANK_BIDV_TOKEN = (os.environ.get('BANK_BIDV_TOKEN') or '5bba49041ff9263b6e9aa1cde25c72de').strip().strip('"').strip("'")
 BANK_ACCOUNT_NUMBER = (os.environ.get('BANK_ACCOUNT_NUMBER') or '8880117869').strip().strip('"').strip("'")
 BANK_ACCOUNT_NAME = (os.environ.get('BANK_ACCOUNT_NAME') or 'CHU TAI KHOAN').strip().strip('"').strip("'")
 BANK_CODE = (os.environ.get('BANK_CODE') or 'BIDV').strip().strip('"').strip("'")
