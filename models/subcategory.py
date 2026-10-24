@@ -1,4 +1,5 @@
 from typing import Any
+from markupsafe import Markup
 from pydantic import BaseModel
 from sqladmin import ModelView
 from sqlalchemy import Integer, Column, String, Float
@@ -17,6 +18,18 @@ class Subcategory(Base):
     media_id = Column(String, nullable=False, default="0no_image_default")
     items = relationship("Item", back_populates="subcategory")
     cart_items = relationship("CartItem", back_populates="subcategory")
+
+    @property
+    def live_count(self) -> int:
+        if not hasattr(self, "items") or self.items is None:
+            return 0
+        return sum(1 for it in self.items if not it.is_sold)
+
+    @property
+    def sold_count(self) -> int:
+        if not hasattr(self, "items") or self.items is None:
+            return 0
+        return sum(1 for it in self.items if it.is_sold)
 
     def __repr__(self):
         if self.price and float(self.price) > 0:
@@ -37,30 +50,43 @@ class SubcategoryAdmin(ModelView, model=Subcategory):
     name_plural = "Danh mục con"
     icon = "fa-solid fa-folder-open"
     column_list = [
-        Subcategory.id,
-        Subcategory.name,
-        Subcategory.price,
-        Subcategory.description,
+        "id",
+        "name",
+        "live_count",
+        "sold_count",
+        "price",
+        "description",
     ]
     column_labels = {
         "id": "ID",
         "name": "Tên danh mục con",
+        "live_count": "Clone trong kho",
+        "sold_count": "Clone đã bán",
         "price": "Giá bán ($)",
         "description": "Mô tả sản phẩm",
         "media_id": "Media ID",
         "items": "Danh sách clone",
         "cart_items": "Trong giỏ hàng"
     }
-    column_searchable_list = [Subcategory.name]
-    column_sortable_list = [
-        Subcategory.id,
-        Subcategory.name,
-        Subcategory.price
-    ]
+    column_formatters = {
+        "live_count": lambda m, a: Markup(
+            f'<span class="badge bg-green text-green-fg fs-6 font-monospace" style="padding: 5px 10px; font-weight: 600;">🟢 {m.live_count} nick</span>'
+            if m.live_count > 0
+            else '<span class="badge bg-secondary text-secondary-fg fs-6" style="padding: 5px 10px;">0 nick (Hết hàng)</span>'
+        ),
+        "sold_count": lambda m, a: Markup(
+            f'<span class="badge bg-blue text-blue-fg fs-6 font-monospace" style="padding: 5px 10px; font-weight: 600;">🛒 {m.sold_count} đã bán</span>'
+        ),
+        "price": lambda m, a: Markup(
+            f'<span class="badge bg-yellow text-yellow-fg fs-6 font-monospace" style="padding: 5px 10px; font-weight: 700; font-size: 14px;">💵 ${float(m.price or 0.02):g}</span>'
+        ),
+    }
+    column_searchable_list = ["name"]
+    column_sortable_list = ["id", "name", "price"]
 
     form_excluded_columns = [
-        Subcategory.items,
-        Subcategory.cart_items
+        "items",
+        "cart_items"
     ]
     form_widget_args = {
         "price": {
@@ -76,6 +102,11 @@ class SubcategoryAdmin(ModelView, model=Subcategory):
     can_edit = True
     can_create = True
     can_export = True
+
+    def list_query(self, request: Any) -> Any:
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        return select(Subcategory).options(selectinload(Subcategory.items))
 
     async def after_model_change(self, data: dict, model: Any, is_created: bool, request) -> None:
         """Khi Admin sửa giá hoặc mô tả của Danh mục con, tự động đồng bộ sang tất cả các nick chưa bán!"""

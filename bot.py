@@ -181,7 +181,7 @@ async def binance_pay_background_worker():
 
         try:
 
-            await asyncio.sleep(25)
+            await asyncio.sleep(10)
 
             if config.BINANCE_API_KEY and config.BINANCE_API_SECRET:
 
@@ -210,13 +210,14 @@ async def _startup() -> None:
         from services.settings import SettingsService
         try:
             from sqlalchemy import text
-            await db_sess.execute(text("""
-                ALTER TABLE subcategories ADD COLUMN IF NOT EXISTS price FLOAT DEFAULT 0.0;
-                ALTER TABLE subcategories ADD COLUMN IF NOT EXISTS description VARCHAR DEFAULT '';
-                ALTER TABLE items ALTER COLUMN price DROP NOT NULL;
-                ALTER TABLE items ALTER COLUMN description DROP NOT NULL;
-            """))
-            await db_sess.execute(text("""
+            schema_cmds = [
+                "ALTER TABLE subcategories ADD COLUMN IF NOT EXISTS price FLOAT DEFAULT 0.0",
+                "ALTER TABLE subcategories ADD COLUMN IF NOT EXISTS description VARCHAR DEFAULT ''",
+                "ALTER TABLE items ALTER COLUMN price DROP NOT NULL",
+                "ALTER TABLE items ALTER COLUMN description DROP NOT NULL",
+                "ALTER TABLE binance_pay_orders ADD COLUMN IF NOT EXISTS chat_id BIGINT",
+                "ALTER TABLE binance_pay_orders ADD COLUMN IF NOT EXISTS message_id BIGINT",
+                """
                 UPDATE subcategories s
                 SET price = sub.item_price
                 FROM (
@@ -225,8 +226,9 @@ async def _startup() -> None:
                     WHERE price IS NOT NULL AND price > 0
                     GROUP BY subcategory_id
                 ) sub
-                WHERE s.id = sub.subcategory_id AND (s.price IS NULL OR s.price = 0);
-
+                WHERE s.id = sub.subcategory_id AND (s.price IS NULL OR s.price = 0)
+                """,
+                """
                 UPDATE subcategories s
                 SET description = sub.item_desc
                 FROM (
@@ -235,10 +237,16 @@ async def _startup() -> None:
                     WHERE description IS NOT NULL AND description != ''
                     GROUP BY subcategory_id
                 ) sub
-                WHERE s.id = sub.subcategory_id AND (s.description IS NULL OR s.description = '');
-            """))
+                WHERE s.id = sub.subcategory_id AND (s.description IS NULL OR s.description = '')
+                """
+            ]
+            for cmd in schema_cmds:
+                try:
+                    await db_sess.execute(text(cmd.strip()))
+                except Exception:
+                    pass
             await db_sess.commit()
-            logging.info("Migrated subcategories table with price & description columns successfully")
+            logging.info("Migrated subcategories table schema successfully")
         except Exception as e:
             logging.warning(f"Note on subcategories schema migration: {e}")
 

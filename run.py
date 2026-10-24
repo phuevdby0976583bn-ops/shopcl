@@ -20,6 +20,7 @@ from middleware.throttling_middleware import ThrottlingMiddleware
 from models.user import UserDTO
 from multibot import main as main_multibot
 from handlers.user.cart import cart_router
+from handlers.user.deposit import deposit_router
 from handlers.admin.admin import admin_router, admin
 from handlers.user.all_categories import all_categories_router, all_types
 from handlers.user.my_profile import my_profile_router, my_profile
@@ -267,93 +268,6 @@ async def on_language_selected(callback: CallbackQuery, session: AsyncSession):
     await callback.message.answer(text=msg_text, reply_markup=new_start_markup)
 
 
-from services.binance_pay import BinancePayService
-
-
-@main_router.callback_query(F.data == "binance_pay:view")
-async def show_binance_pay_screen(callback: CallbackQuery, session: AsyncSession, language: Language):
-    media, kb_builder = await BinancePayService.build_payment_screen(callback.from_user.id, session, language)
-    try:
-        await callback.message.edit_media(media=media, reply_markup=kb_builder.as_markup())
-    except Exception:
-        await callback.message.delete()
-        await callback.message.answer_photo(photo=media.media, caption=media.caption, reply_markup=kb_builder.as_markup(), parse_mode="HTML")
-
-
-@main_router.callback_query(F.data == "binance_pay:check")
-async def check_binance_pay_payment(callback: CallbackQuery, session: AsyncSession, language: Language):
-    checking_toast = {
-        Language.VI: "🔍 Đang kiểm tra giao dịch trên Binance...",
-        Language.EN: "🔍 Checking transaction on Binance...",
-        Language.HI: "🔍 Binance पर लेनदेन की जाँच की जा रही है...",
-        Language.ZH: "🔍 正在查询币安交易状态...",
-        Language.FR: "🔍 Vérification de la transaction sur Binance...",
-        Language.DE: "🔍 Transaktion auf Binance wird überprüft...",
-        Language.IT: "🔍 Verifica transazione su Binance in corso...",
-        Language.ES: "🔍 Verificando transacción en Binance..."
-    }.get(language, "🔍 Checking transaction on Binance...")
-    await callback.answer(checking_toast)
-
-    credited = await BinancePayService.process_and_credit_transactions(bot, session, callback.from_user.id)
-    if credited:
-        total_credited = sum(item["amount"] for item in credited)
-        success_toast = {
-            Language.VI: f"🎉 Đã nhận và cộng thành công +{total_credited} USDT vào tài khoản!",
-            Language.EN: f"🎉 Successfully credited +{total_credited} USDT to your balance!",
-            Language.HI: f"🎉 सफलतापूर्वक आपके खाते में +{total_credited} USDT जोड़ दिए गए!",
-            Language.ZH: f"🎉 成功到账 +{total_credited} USDT 至您的账户！",
-            Language.FR: f"🎉 +{total_credited} USDT crédités avec succès sur votre compte !",
-            Language.DE: f"🎉 +{total_credited} USDT erfolgreich Ihrem Guthaben gutgeschrieben!",
-            Language.IT: f"🎉 Accreditati con successo +{total_credited} USDT sul tuo conto!",
-            Language.ES: f"🎉 ¡Se han acreditado con éxito +{total_credited} USDT en su saldo!"
-        }.get(language, f"🎉 Successfully credited +{total_credited} USDT!")
-        await callback.answer(success_toast, show_alert=True)
-        from handlers.user.my_profile import my_profile
-        await my_profile(callback=callback, session=session, state=None, language=language)
-    else:
-        no_tx_alert = {
-            Language.VI: """⏳ Chưa phát hiện giao dịch mới!
-
-Nếu bạn vừa chuyển trên App Binance, vui lòng đợi 5-15 giây rồi bấm lại nút này.
-
-⚠️ Lưu ý: BẮT BUỘC phải điền đúng mã Ghi chú (Memo) khi chuyển tiền!""",
-            Language.EN: """⏳ No new transaction detected!
-
-If you just sent on Binance App, please wait 5-15 seconds and try again.
-
-⚠️ Note: You MUST enter the correct Remark/Memo when transferring!""",
-            Language.HI: """⏳ कोई नया लेनदेन नहीं मिला!
-
-यदि आपने अभी भेजा है, तो कृपया 5-15 सेकंड प्रतीक्षा करें और पुनः प्रयास करें।""",
-            Language.ZH: """⏳ 暂未检测到新交易！
-
-如果您刚刚完成转账，请等待5-15秒后重试。
-
-⚠️ 注意：转账时请务必填写正确的备注 Memo！""",
-            Language.FR: """⏳ Aucune nouvelle transaction détectée !
-
-Si vous venez d'effectuer le transfert, veuillez patienter 5 à 15 secondes puis réessayer.
-
-⚠️ Remarque : Vous DEVEZ indiquer le Memo correct lors du virement !""",
-            Language.DE: """⏳ Keine neue Transaktion erkannt!
-
-Wenn Sie gerade überwiesen haben, warten Sie bitte 5-15 Sekunden und versuchen Sie es erneut.
-
-⚠️ Hinweis: Sie MÜSSEN den richtigen Hinweis (Memo) angeben!""",
-            Language.IT: """⏳ Nessuna nuova transazione rilevata!
-
-Se hai appena trasferito, attendi 5-15 secondi e riprova.
-
-⚠️ Nota: DEVI inserire il Remark/Memo corretto durante il trasferimento!""",
-            Language.ES: """⏳ ¡No se ha detectado ninguna transacción nueva!
-
-Si acabas de enviar en Binance, espera entre 5 y 15 segundos e intenta de nuevo.
-
-⚠️ Nota: ¡DEBES ingresar el Remark/Memo correcto al transferir!"""
-        }.get(language, "⏳ No new transaction detected!")
-        await callback.answer(no_tx_alert, show_alert=True)
-
-
 @main_router.message(F.text.in_(set(BUTTON_PRODUCTS.values())))
 @main_router.message(Command("products"))
 async def handle_products(message: Message, session: AsyncSession, state: FSMContext, language: Language):
@@ -372,7 +286,54 @@ async def handle_orders(message: Message, session: AsyncSession, state: FSMConte
 @main_router.message(F.text.in_(set(BUTTON_WALLET.values())))
 @main_router.message(Command("wallet"))
 async def handle_wallet(message: Message, session: AsyncSession, state: FSMContext, language: Language):
-    await my_profile(message=message, session=session, state=state, language=language)
+    await state.clear()
+    stmt_u = select(User).where(User.telegram_id == message.from_user.id)
+    user = (await session.execute(stmt_u)).scalar_one_or_none()
+    balance = 0.0
+    top_up = 0.0
+    consume = 0.0
+    if user:
+        top_up = float(user.top_up_amount or 0.0)
+        consume = float(user.consume_records or 0.0)
+        balance = round(max(0.0, top_up - consume), 2)
+
+    user_name = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
+
+    if language == Language.VI:
+        text = (
+            "💳 <b>VÍ & TÀI KHOẢN CỦA BẠN</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 <b>Tài khoản:</b> {user_name} (ID: <code>{message.from_user.id}</code>)\n"
+            f"💰 <b>Số dư khả dụng:</b> <b>{balance}$</b> (USDT)\n"
+            f"📥 <b>Đã nạp:</b> {top_up:.2f}$ | 📤 <b>Đã tiêu:</b> {consume:.2f}$\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "⚡ <i>Khuyên dùng <b>Binance Pay</b>: Miễn phí 100%, nạp tự động nhận ngay sau 1-5 giây.</i>\n"
+            "👇 <b>Bấm nút bên dưới để nạp tiền tự động:</b>"
+        )
+        btn_binance = "🟡 Binance Pay (0% Phí - Nhận 1s)"
+        btn_onchain = "🌐 Nạp On-chain (BSC, TRX, TON...)"
+        btn_history = "📜 Lịch sử mua hàng"
+    else:
+        text = (
+            "💳 <b>YOUR WALLET & ACCOUNT</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 <b>Account:</b> {user_name} (ID: <code>{message.from_user.id}</code>)\n"
+            f"💰 <b>Available Balance:</b> <b>{balance}$</b> (USDT)\n"
+            f"📥 <b>Deposited:</b> {top_up:.2f}$ | 📤 <b>Spent:</b> {consume:.2f}$\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "⚡ <i>Recommended: <b>Binance Pay</b> (0% fee, instant credit in 1-5s).</i>\n"
+            "👇 <b>Tap a button below to deposit:</b>"
+        )
+        btn_binance = "🟡 Binance Pay (0% Fee - Instant 1s)"
+        btn_onchain = "🌐 Other Wallets / Exchanges"
+        btn_history = "📜 Purchase History"
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text=btn_binance, callback_data="dep_method:binance")
+    kb.button(text=btn_onchain, callback_data="dep_method:onchain")
+    kb.button(text=btn_history, callback_data=MyProfileCallback.create(level=3))
+    kb.adjust(1)
+    await message.answer(text=text, reply_markup=kb.as_markup(), parse_mode="HTML")
 
 
 @main_router.message(F.text.in_(set(BUTTON_LANGUAGE.values())))
@@ -539,11 +500,10 @@ async def handle_unified_support(message: Message, language: Language):
 @main_router.message(Command("nap"))
 @main_router.message(Command("topup"))
 async def handle_deposit_button(message: Message, state: FSMContext, session: AsyncSession, language: Language):
-    from callbacks import MyProfileCallback
-    from services.user import UserService
-    cb_data = MyProfileCallback.create(level=1)
-    msg_text, kb_builder = await UserService.get_top_up_buttons(cb_data, language)
-    await message.answer(msg_text, reply_markup=kb_builder.as_markup())
+    from services.deposit_flow import DepositFlowService
+    await state.clear()
+    text, kb = DepositFlowService.get_method_selection_keyboard(language)
+    await message.answer(text=text, reply_markup=kb.as_markup(), parse_mode="HTML")
 
 @main_router.message(F.text.in_(set(BUTTON_ADMIN.values())))
 async def handle_admin(message: Message, state: FSMContext, language: Language):
@@ -582,6 +542,7 @@ users_routers.include_routers(
     my_profile_router,
     cart_router,
     review_management_router,
+    deposit_router,
 )
 users_routers.message.middleware(throttling_middleware)
 users_routers.callback_query.middleware(throttling_middleware)

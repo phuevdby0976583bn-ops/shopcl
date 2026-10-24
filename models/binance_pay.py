@@ -17,6 +17,8 @@ class BinancePayOrder(Base):
     amount = Column(Float, default=0.0)
     transaction_id = Column(String(128), unique=True, nullable=True)
     status = Column(String(32), default="PENDING", index=True)
+    chat_id = Column(BigInteger, nullable=True)
+    message_id = Column(BigInteger, nullable=True)
     created_at = Column(DateTime(timezone=True), default=func.now())
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
