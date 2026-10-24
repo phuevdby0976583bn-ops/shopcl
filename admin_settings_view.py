@@ -1,4 +1,4 @@
-from sqladmin import BaseView, expose
+﻿from sqladmin import BaseView, expose
 from fastapi import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from utils.utils import decode_token
@@ -7,7 +7,7 @@ import config
 
 class PaymentApiConfigView(BaseView):
     name = "Nạp USDT & Binance"
-    icon = "fa-solid fa-sliders"
+    icon = "fa-solid fa-coins"
 
     def is_accessible(self, request: Request) -> bool:
         try:
@@ -25,7 +25,7 @@ class PaymentApiConfigView(BaseView):
 
     @expose("/settings", methods=["GET"])
     async def settings_page(self, request: Request):
-        # Bat buoc xac thuc dang nhap Admin
+        # 1. Bắt buộc kiểm tra đăng nhập Admin
         try:
             token = request.session.get("token")
         except Exception:
@@ -35,22 +35,39 @@ class PaymentApiConfigView(BaseView):
             return RedirectResponse(url="/admin/login", status_code=302)
 
         webhook_host = config.WEBHOOK_HOST or "https://shopcl.onrender.com"
-        api_upload_url = f"{webhook_host}/api/items/bulk-upload"
-        api_inventory_url = f"{webhook_host}/api/inventory/status"
-        api_binance_status = f"{webhook_host}/api/binancepay/status"
         api_binance_check = f"{webhook_host}/api/binancepay/check-now"
+        api_settings_save = f"{webhook_host}/api/settings/save"
         api_key = config.SQLADMIN_RAW_PASSWORD or "MatKhauAdminCuaBan123"
 
-        binance_uid = config.BINANCE_UID or "805398854"
-        is_binance_ready = bool(config.BINANCE_API_KEY and config.BINANCE_API_SECRET)
-        binance_badge = '<span class="badge bg-success"><i class="fa-solid fa-circle-check me-1"></i> Đang hoạt động tự động</span>' if is_binance_ready else '<span class="badge bg-warning text-dark"><i class="fa-solid fa-triangle-exclamation me-1"></i> Chờ điền API Key & Secret</span>'
+        from db import get_db_session
+        from services.settings import SettingsService
+
+        async with get_db_session() as session:
+            cur_settings = await SettingsService.get_all_settings(session)
+
+        binance_uid = cur_settings.get("BINANCE_UID") or "805398854"
+        binance_api_key = cur_settings.get("BINANCE_API_KEY") or ""
+        binance_api_secret = cur_settings.get("BINANCE_API_SECRET") or ""
+
+        krypto_api_key = cur_settings.get("KRYPTO_EXPRESS_API_KEY") or ""
+        krypto_api_secret = cur_settings.get("KRYPTO_EXPRESS_API_SECRET") or ""
+        krypto_api_url = cur_settings.get("KRYPTO_EXPRESS_API_URL") or "https://kryptoexpress.pro/api"
+
+        fwd_mode = cur_settings.get("CRYPTO_FORWARDING_MODE", False)
+        bnb_fwd = cur_settings.get("BNB_FORWARDING_ADDRESS") or ""
+        sol_fwd = cur_settings.get("SOL_FORWARDING_ADDRESS") or ""
+
+        is_binance_ready = bool(binance_api_key and binance_api_secret)
+        binance_badge = '<span class="badge bg-success"><i class="fa-solid fa-circle-check me-1"></i> Đang hoạt động tự động</span>' if is_binance_ready else '<span class="badge bg-warning text-dark"><i class="fa-solid fa-triangle-exclamation me-1"></i> Chưa cấu hình API Key & Secret</span>'
+
+        fwd_checked_attr = "checked" if fwd_mode else ""
 
         html_content = f"""<!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cấu Hình Nạp USDT, Binance Pay & REST API - Bubba Gump</title>
+    <title>Cấu Hình Cổng Nạp USDT & Binance Pay - Bubba Gump</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -59,14 +76,9 @@ class PaymentApiConfigView(BaseView):
         .card-header {{ background-color: #ffffff; border-bottom: 1px solid #f1f5f9; font-weight: 600; padding: 14px 20px; }}
         .nav-pills .nav-link {{ color: #475569; font-weight: 500; border-radius: 8px; padding: 10px 16px; margin-right: 8px; transition: all 0.2s; }}
         .nav-pills .nav-link.active {{ background-color: #0d6efd; color: #fff; box-shadow: 0 4px 12px rgba(13,110,253,0.25); }}
-        .code-box {{ background-color: #0f172a; color: #f8fafc; padding: 16px; border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.88rem; position: relative; overflow-x: auto; }}
-        .btn-copy {{ position: absolute; top: 10px; right: 10px; z-index: 10; }}
         .step-badge {{ display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: #0d6efd; color: #fff; font-weight: bold; font-size: 0.85rem; margin-right: 8px; }}
         .step-badge.success {{ background: #10b981; }}
         .step-badge.warning {{ background: #f59e0b; }}
-        .info-pill {{ background: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 16px; }}
-        .warning-pill {{ background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 16px; }}
-        .success-pill {{ background: #ecfdf5; border-left: 4px solid #10b981; padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 16px; }}
     </style>
 </head>
 <body class="p-3 p-md-4">
@@ -74,8 +86,8 @@ class PaymentApiConfigView(BaseView):
         <!-- Header -->
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom">
             <div>
-                <h3 class="fw-bold mb-1 text-dark"><i class="fa-solid fa-coins text-warning me-2"></i>Cấu Hình Cổng Nạp USDT & Binance Pay</h3>
-                <p class="text-muted mb-0">Hệ thống nhận tiền tự động 100% qua Binance Pay (0% phí, 1s) và Cổng USDT Blockchain</p>
+                <h3 class="fw-bold mb-1 text-dark"><i class="fa-solid fa-coins text-warning me-2"></i>Cấu Hình Cổng Nạp Tiền Trực Tiếp</h3>
+                <p class="text-muted mb-0">Cấu hình trực tiếp tại đây để lưu vào Database Supabase mà <b>KHÔNG CẦN</b> phải vào Render chỉnh biến môi trường!</p>
             </div>
             <div class="mt-2 mt-md-0">
                 <a href="/admin" class="btn btn-outline-secondary"><i class="fa-solid fa-arrow-left me-1"></i> Quay lại Dashboard</a>
@@ -86,131 +98,111 @@ class PaymentApiConfigView(BaseView):
         <ul class="nav nav-pills mb-4" id="pills-tab" role="tablist">
             <li class="nav-item">
                 <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tab-binance">
-                    <i class="fa-brands fa-bitcoin text-warning me-1"></i> 1. Quét Mã App Binance & Binance Pay (0% Phí)
+                    <i class="fa-brands fa-bitcoin text-warning me-1"></i> 1. Cổng Nạp Binance Pay (0% Phí - Quét Mã App & API)
                 </button>
             </li>
             <li class="nav-item">
                 <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-usdt">
-                    <i class="fa-solid fa-wallet text-success me-1"></i> 2. Cổng Nạp USDT Tự Động (KryptoExpress)
+                    <i class="fa-solid fa-wallet text-success me-1"></i> 2. Cổng Nạp USDT Tự Động (KryptoExpress) & Rút Ví
                 </button>
             </li>
         </ul>
 
         <div class="tab-content" id="pills-tabContent">
-            <!-- TAB 1: BINANCE PAY (0% PHÍ) -->
+            <!-- TAB 1: BINANCE PAY -->
             <div class="tab-pane fade show active" id="tab-binance">
-                <div class="card">
-                    <div class="card-header py-3 text-warning d-flex justify-content-between align-items-center">
-                        <h5 class="card-title mb-0 fw-bold"><i class="fa-brands fa-bitcoin me-2"></i>Nạp Tự Động Bằng Binance Pay (0% Phí - Nhận Ngay 1s)</h5>
-                        {binance_badge}
-                    </div>
-                    <div class="card-body">
-                        <div class="success-pill">
-                            <b>Ưu điểm vượt trội của Binance Pay:</b><br>
-                            • <b>0đ / 0 USDT phí giao dịch</b>: Cả người chuyển và bạn đều hoàn toàn miễn phí 100%.<br>
-                            • <b>Nhận ngay trong 1-5 giây</b>: Không cần chờ đợi xác nhận khối Blockchain.<br>
-                            • <b>Hạn mức từ 0.01 USDT</b>: Khách nạp bao nhiêu cũng nhận được, tiền về thẳng ví Binance cá nhân của bạn.
-                        </div>
+                <div class="row g-4">
+                    <!-- Cột 1: Form lưu trực tiếp -->
+                    <div class="col-lg-6">
+                        <div class="card border-warning h-100 shadow-sm">
+                            <div class="card-header bg-warning bg-opacity-10 py-3 d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0 fw-bold text-dark"><i class="fa-brands fa-bitcoin text-warning me-2"></i>Cấu Hình Binance Pay & Open API</h5>
+                                {binance_badge}
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-success py-2 small mb-3">
+                                    <i class="fa-solid fa-bolt me-1"></i> <b>Nạp 0% Phí - Nhận 1s:</b> Khách chuyển tiền nội bộ Binance vào UID của bạn, Bot tự đọc lịch sử qua API và tự động cộng số dư ngay lập tức!
+                                </div>
 
-                        <!-- Thong tin UID -->
-                        <div class="row g-3 my-3">
-                            <div class="col-md-4">
-                                <div class="p-3 border rounded bg-light">
-                                    <div class="small text-muted fw-bold">Binance UID Của Bạn:</div>
-                                    <div class="fs-4 fw-bold text-warning font-monospace">{binance_uid}</div>
-                                    <small class="text-muted">Tài khoản ví Binance nhận tiền</small>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="p-3 border rounded bg-light">
-                                    <div class="small text-muted fw-bold">Trạng Thái Tự Động:</div>
-                                    <div class="fs-5 fw-bold text-success mt-1"><i class="fa-solid fa-robot me-1"></i> Background Polling (25s)</div>
-                                    <small class="text-muted">Tự quét lịch sử giao dịch và ting ting</small>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="p-3 border rounded bg-light">
-                                    <div class="small text-muted fw-bold">Đồng Bộ Nhanh:</div>
-                                    <button class="btn btn-warning w-100 mt-1 fw-bold" onclick="syncBinancePay()"><i class="fa-solid fa-rotate me-1"></i> Quét Binance Pay Ngay</button>
-                                    <div id="syncResult" class="small mt-1" style="display:none;"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <h5 class="fw-bold text-dark mt-4 mb-3"><i class="fa-solid fa-shield-halved text-success me-2"></i>Hướng Dẫn Lấy API Key Binance (Chỉ Đọc - Cực Kỳ An Toàn)</h5>
-                        <p class="text-muted">Để Bot có thể đọc lịch sử giao dịch và tự động cộng tiền, bạn chỉ cần tạo 1 API Key <b>chỉ đọc (Enable Reading)</b>:</p>
-
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <div class="border rounded p-3 h-100 bg-light">
-                                    <h6 class="fw-bold text-dark"><span class="step-badge">1</span>Tạo API trên Binance</h6>
-                                    <ol class="small text-muted ps-3">
-                                        <li class="mb-2">Bấm vào avatar tròn cá nhân <b>User-9b21f</b> ở góc trên bên phải trang Binance.</li>
-                                        <li class="mb-2">Chọn mục <b>Account</b> ➔ <b>API Management</b>.</li>
-                                        <li class="mb-2">Bấm <b>Create API</b> ➔ Chọn loại <b>System generated (HMAC)</b>.</li>
-                                        <li class="mb-2">Đặt tên: <code>ShopBotTelegram</code> ➔ Bấm Next và xác minh OTP email / Authenticator.</li>
-                                    </ol>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="border rounded p-3 h-100 bg-light">
-                                    <h6 class="fw-bold text-dark"><span class="step-badge success">2</span>Cài đặt Quyền & Lưu Key</h6>
-                                    <ol class="small text-muted ps-3">
-                                        <li class="mb-2"><b>BẢO MẬT:</b> Chỉ tích chọn duy nhất ô <b>Enable Reading</b> (Đọc dữ liệu).</li>
-                                        <li class="mb-2"><b>TUYỆT ĐỐI KHÔNG</b> tích chọn ô <i>Enable Withdrawals</i> (Rút tiền) hoặc <i>Enable Spot & Margin Trading</i>. Như vậy ví của bạn an toàn 100%!</li>
-                                        <li class="mb-2">Sao chép ngay <b>API Key</b> và <b>Secret Key</b>.</li>
-                                    </ol>
-                                </div>
-                            </div>
-                            <div class="col-12">
-                                <div class="border rounded p-3 bg-light">
-                                    <h6 class="fw-bold text-dark"><span class="step-badge warning">3</span>Điền vào Biến Môi Trường Render</h6>
-                                    <p class="small text-muted mb-2">Vào Render Dashboard ➔ Chọn service <b>shopcl</b> ➔ Mục <b>Environment</b> ➔ Điền thêm 3 dòng sau:</p>
-                                    <div class="code-box">
-                                        <pre style="margin:0; color:#38bdf8;">BINANCE_UID="{binance_uid}"
-BINANCE_API_KEY="Dán_API_Key_của_bạn_vào_đây"
-BINANCE_API_SECRET="Dán_Secret_Key_của_bạn_vào_đây"</pre>
+                                <form id="binanceForm" onsubmit="event.preventDefault(); saveBinanceSettings();">
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">1. Binance UID Cá Nhân Của Bạn (Pay ID):</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-solid fa-id-badge text-warning"></i></span>
+                                            <input type="text" class="form-control font-monospace fw-bold" id="binance_uid" value="{binance_uid}" placeholder="VD: 805398854" required>
+                                        </div>
+                                        <div class="form-text small">UID hiển thị trên app Binance của bạn để khách chuyển USDT vào.</div>
                                     </div>
-                                    <small class="text-success mt-2 d-block"><i class="fa-solid fa-circle-check me-1"></i> Sau khi điền xong, Render sẽ tự động kết nối và kích hoạt nạp tự động Binance Pay 100%!</small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
-            <!-- TAB 3: CẤU HÌNH USDT TỰ ĐỘNG -->
-            <div class="tab-pane fade" id="tab-usdt">
-                <div class="card">
-                    <div class="card-header py-3 text-success">
-                        <h5 class="card-title mb-0 fw-bold"><i class="fa-solid fa-wallet me-2"></i>Hướng Dẫn Cấu Hình Nạp USDT Blockchain (KryptoExpress)</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="info-pill">
-                            <b>Cơ chế On-chain:</b> Dành cho khách muốn nạp qua mạng Blockchain như BNB Smart Chain (BEP20) hoặc Solana (USDT-Solana). Cổng thanh toán KryptoExpress tự quét khối và bắn Webhook xác nhận sau 30 giây.
-                        </div>
-
-                        <div class="row g-4 mt-2">
-                            <div class="col-lg-6">
-                                <div class="card h-100 border-0 bg-light">
-                                    <div class="card-body">
-                                        <h5 class="fw-bold text-dark"><span class="step-badge">1</span>Đăng ký tài khoản Merchant</h5>
-                                        <p class="text-muted">Đăng ký tài khoản hoàn toàn miễn phí tại <a href="https://kryptoexpress.pro" target="_blank" class="fw-bold">kryptoexpress.pro</a>.</p>
-                                        <p class="small text-muted">Vào mục <b>Settings</b> ➔ <b>API Keys</b> ➔ Nhấn <b>Create New Key</b> để lấy <code>API Key</code> và <code>API Secret</code>.</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="col-lg-6">
-                                <div class="card h-100 border-0 bg-light">
-                                    <div class="card-body">
-                                        <h5 class="fw-bold text-dark"><span class="step-badge success">2</span>Điền vào Biến Môi Trường Render</h5>
-                                        <div class="code-box">
-                                            <pre style="margin:0; color:#38bdf8;">KRYPTO_EXPRESS_API_KEY="Dán_API_Key_Vào_Đây"
-KRYPTO_EXPRESS_API_SECRET="Dán_API_Secret_Vào_Đây"
-KRYPTO_EXPRESS_API_URL="https://kryptoexpress.pro/api"</pre>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">2. Binance API Key (Chỉ đọc - Read-only):</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-solid fa-key"></i></span>
+                                            <input type="password" class="form-control font-monospace" id="binance_api_key" value="{binance_api_key}" placeholder="Dán Binance API Key vào đây">
+                                            <button class="btn btn-outline-secondary" type="button" onclick="togglePass('binance_api_key', this)"><i class="fa-solid fa-eye"></i></button>
                                         </div>
                                     </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">3. Binance Secret Key:</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-solid fa-lock"></i></span>
+                                            <input type="password" class="form-control font-monospace" id="binance_api_secret" value="{binance_api_secret}" placeholder="Dán Binance Secret Key vào đây">
+                                            <button class="btn btn-outline-secondary" type="button" onclick="togglePass('binance_api_secret', this)"><i class="fa-solid fa-eye"></i></button>
+                                        </div>
+                                    </div>
+
+                                    <div id="binanceSaveResult" class="mb-3" style="display:none;"></div>
+
+                                    <div class="d-flex flex-wrap gap-2 pt-2 border-top">
+                                        <button type="submit" class="btn btn-warning fw-bold px-4">
+                                            <i class="fa-solid fa-floppy-disk me-1"></i> Lưu Cấu Hình Binance Ngay
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary" onclick="syncBinancePay()">
+                                            <i class="fa-solid fa-rotate me-1"></i> Quét Giao Dịch Ngay
+                                        </button>
+                                    </div>
+                                </form>
+                                <div id="syncResult" class="mt-3 p-2 bg-light rounded small" style="display:none;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cột 2: Hướng dẫn lấy key -->
+                    <div class="col-lg-6">
+                        <div class="card h-100 shadow-sm">
+                            <div class="card-header py-3">
+                                <h5 class="card-title mb-0 fw-bold text-dark"><i class="fa-solid fa-shield-halved text-success me-2"></i>Hướng Dẫn Lấy API Key Binance (An Toàn 100%)</h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted small">Bạn chỉ cần cấp quyền <b>Chỉ Đọc (Read-only)</b> để bot kiểm tra giao dịch nạp. Bot tuyệt đối không thể rút tiền hay giao dịch spot, tiền trong ví an toàn tuyệt đối.</p>
+                                <div class="d-flex align-items-start mb-3">
+                                    <span class="step-badge">1</span>
+                                    <div>
+                                        <b>Mở Quản lý API trên Binance:</b>
+                                        <div class="small text-muted">Mở Binance trên web ➔ Bấm Avatar góc trên ➔ Chọn <b>Account</b> ➔ <b>API Management</b>. Hoặc truy cập: <a href="https://www.binance.com/en/my/settings/api-management" target="_blank" class="text-decoration-none">binance.com/en/my/settings/api-management</a></div>
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-start mb-3">
+                                    <span class="step-badge">2</span>
+                                    <div>
+                                        <b>Tạo API Key:</b>
+                                        <div class="small text-muted">Bấm <b>Create API</b> ➔ Chọn loại <b>System generated (HMAC)</b> ➔ Đặt tên ví dụ: <code>ShopBotTelegram</code> ➔ Xác thực OTP.</div>
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-start mb-3">
+                                    <span class="step-badge warning">3</span>
+                                    <div>
+                                        <b>Cài đặt Quyền (API Restrictions):</b>
+                                        <div class="small text-muted"><span class="badge bg-success">Chỉ tích: Enable Reading</span>. <span class="badge bg-danger">KHÔNG TÍCH</span> <i>Enable Withdrawals</i> hay <i>Enable Spot Trading</i>.</div>
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-start">
+                                    <span class="step-badge success">4</span>
+                                    <div>
+                                        <b>Dán vào Form & Bấm Lưu:</b>
+                                        <div class="small text-muted">Copy <b>API Key</b> và <b>Secret Key</b> dán sang form bên trái rồi bấm nút <b>Lưu Cấu Hình Binance Ngay</b>. Cài đặt được lưu vào Supabase và kích hoạt ngay tức thì!</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -218,11 +210,180 @@ KRYPTO_EXPRESS_API_URL="https://kryptoexpress.pro/api"</pre>
                 </div>
             </div>
 
+            <!-- TAB 2: KRYPTOEXPRESS & AUTO FORWARDING -->
+            <div class="tab-pane fade" id="tab-usdt">
+                <div class="row g-4">
+                    <!-- Cột 1: Cấu hình KryptoExpress -->
+                    <div class="col-lg-6">
+                        <div class="card border-success h-100 shadow-sm">
+                            <div class="card-header bg-success bg-opacity-10 py-3">
+                                <h5 class="card-title mb-0 fw-bold text-dark"><i class="fa-solid fa-wallet text-success me-2"></i>Cấu Hình Cổng Nạp USDT (KryptoExpress)</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info py-2 small mb-3">
+                                    Cổng nạp USDT on-chain qua mạng BEP20, Solana, TRC20, Polygon... Tự động tạo ví riêng kèm mã QR cho từng đơn nạp.
+                                </div>
+
+                                <form id="kryptoForm" onsubmit="event.preventDefault(); saveKryptoSettings();">
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">1. KryptoExpress API Key:</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-solid fa-key"></i></span>
+                                            <input type="password" class="form-control font-monospace" id="krypto_api_key" value="{krypto_api_key}" placeholder="Dán KryptoExpress API Key vào đây">
+                                            <button class="btn btn-outline-secondary" type="button" onclick="togglePass('krypto_api_key', this)"><i class="fa-solid fa-eye"></i></button>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">2. KryptoExpress API Secret:</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-solid fa-lock"></i></span>
+                                            <input type="password" class="form-control font-monospace" id="krypto_api_secret" value="{krypto_api_secret}" placeholder="Dán KryptoExpress API Secret vào đây">
+                                            <button class="btn btn-outline-secondary" type="button" onclick="togglePass('krypto_api_secret', this)"><i class="fa-solid fa-eye"></i></button>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">3. API Base URL:</label>
+                                        <input type="text" class="form-control font-monospace small" id="krypto_api_url" value="{krypto_api_url}" required>
+                                    </div>
+
+                                    <div class="mb-3 p-2 bg-light rounded small">
+                                        <b>Webhook URL dán vào KryptoExpress:</b>
+                                        <div class="input-group input-group-sm mt-1">
+                                            <input type="text" class="form-control font-monospace" value="{webhook_host}/cryptoprocessing/event" readonly id="kryptoWebhook">
+                                            <button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('kryptoWebhook').value); alert('Đã sao chép Webhook URL!');"><i class="fa-regular fa-copy"></i> Copy</button>
+                                        </div>
+                                    </div>
+
+                                    <div id="kryptoSaveResult" class="mb-3" style="display:none;"></div>
+
+                                    <div class="pt-2 border-top">
+                                        <button type="submit" class="btn btn-success fw-bold px-4">
+                                            <i class="fa-solid fa-floppy-disk me-1"></i> Lưu Cấu Hình KryptoExpress
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cột 2: Cấu hình tự động bắn tiền về ví sàn Binance (Auto-Forwarding) -->
+                    <div class="col-lg-6">
+                        <div class="card border-primary h-100 shadow-sm">
+                            <div class="card-header bg-primary bg-opacity-10 py-3">
+                                <h5 class="card-title mb-0 fw-bold text-dark"><i class="fa-solid fa-arrow-right-arrow-left text-primary me-2"></i>Tự Động Bắn Tiền Về Ví Sàn Binance (Auto-Forwarding)</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-primary py-2 small mb-3">
+                                    Khi khách nạp tiền thành công, cổng thanh toán có thể tự động bắn thẳng số USDT đó về địa chỉ ví Binance của bạn mà không cần bạn phải thao tác rút tay!
+                                </div>
+
+                                <form id="forwardingForm" onsubmit="event.preventDefault(); saveForwardingSettings();">
+                                    <div class="form-check form-switch mb-3 p-2 bg-light rounded">
+                                        <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="crypto_forwarding_mode" {fwd_checked_attr}>
+                                        <label class="form-check-label fw-bold" for="crypto_forwarding_mode">Bật tự động chuyển tiếp tiền về ví cá nhân</label>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">Địa chỉ ví USDT (Mạng BNB Smart Chain - BEP20):</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-brands fa-ethereum text-warning"></i></span>
+                                            <input type="text" class="form-control font-monospace small" id="bnb_forwarding_address" value="{bnb_fwd}" placeholder="0x... (Lấy trong mục Nạp USDT của Binance)">
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">Địa chỉ ví USDT (Mạng Solana - SOL):</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-solid fa-sun text-info"></i></span>
+                                            <input type="text" class="form-control font-monospace small" id="sol_forwarding_address" value="{sol_fwd}" placeholder="Địa chỉ ví SOL trên Binance">
+                                        </div>
+                                    </div>
+
+                                    <div id="fwdSaveResult" class="mb-3" style="display:none;"></div>
+
+                                    <div class="pt-2 border-top">
+                                        <button type="submit" class="btn btn-primary fw-bold px-4">
+                                            <i class="fa-solid fa-floppy-disk me-1"></i> Lưu Cấu Hình Ví Chuyển Tiếp
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        function togglePass(id, btn) {{
+            const input = document.getElementById(id);
+            const icon = btn.querySelector('i');
+            if (input.type === 'password') {{
+                input.type = 'text';
+                icon.className = 'fa-solid fa-eye-slash';
+            }} else {{
+                input.type = 'password';
+                icon.className = 'fa-solid fa-eye';
+            }}
+        }}
+
+        async function saveSettingsPayload(payload, resultDivId) {{
+            const resDiv = document.getElementById(resultDivId);
+            resDiv.style.display = 'block';
+            resDiv.innerHTML = '<span class="text-info"><i class="fa-solid fa-spinner fa-spin me-1"></i> Đang lưu cài đặt vào Database Supabase...</span>';
+
+            try {{
+                const res = await fetch("{api_settings_save}", {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json',
+                        'X-API-KEY': "{api_key}"
+                    }},
+                    body: JSON.stringify({{ settings: payload }})
+                }});
+                const data = await res.json();
+                if (res.ok) {{
+                    resDiv.innerHTML = '<div class="alert alert-success py-2 mb-0"><i class="fa-solid fa-circle-check me-1"></i> <b>Lưu thành công!</b> Cấu hình đã được lưu vĩnh viễn vào Supabase và kích hoạt ngay lập tức mà KHÔNG CẦN sửa gì trên Render.</div>';
+                    setTimeout(() => {{ location.reload(); }}, 1500);
+                }} else {{
+                    resDiv.innerHTML = '<div class="alert alert-danger py-2 mb-0">Lỗi: ' + (data.detail || 'Không thể lưu cài đặt') + '</div>';
+                }}
+            }} catch (err) {{
+                resDiv.innerHTML = '<div class="alert alert-danger py-2 mb-0">Lỗi kết nối: ' + err.message + '</div>';
+            }}
+        }}
+
+        function saveBinanceSettings() {{
+            const payload = {{
+                'BINANCE_UID': document.getElementById('binance_uid').value.trim(),
+                'BINANCE_API_KEY': document.getElementById('binance_api_key').value.trim(),
+                'BINANCE_API_SECRET': document.getElementById('binance_api_secret').value.trim()
+            }};
+            saveSettingsPayload(payload, 'binanceSaveResult');
+        }}
+
+        function saveKryptoSettings() {{
+            const payload = {{
+                'KRYPTO_EXPRESS_API_KEY': document.getElementById('krypto_api_key').value.trim(),
+                'KRYPTO_EXPRESS_API_SECRET': document.getElementById('krypto_api_secret').value.trim(),
+                'KRYPTO_EXPRESS_API_URL': document.getElementById('krypto_api_url').value.trim()
+            }};
+            saveSettingsPayload(payload, 'kryptoSaveResult');
+        }}
+
+        function saveForwardingSettings() {{
+            const payload = {{
+                'CRYPTO_FORWARDING_MODE': document.getElementById('crypto_forwarding_mode').checked ? 'true' : 'false',
+                'BNB_FORWARDING_ADDRESS': document.getElementById('bnb_forwarding_address').value.trim(),
+                'SOL_FORWARDING_ADDRESS': document.getElementById('sol_forwarding_address').value.trim()
+            }};
+            saveSettingsPayload(payload, 'fwdSaveResult');
+        }}
+
         async function syncBinancePay() {{
             const resBox = document.getElementById("syncResult");
             resBox.style.display = "block";

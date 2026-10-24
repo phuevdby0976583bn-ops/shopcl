@@ -141,6 +141,9 @@ async def binance_pay_background_worker():
 async def _startup() -> None:
 
     await create_db_and_tables()
+    async with get_db_session() as db_sess:
+        from services.settings import SettingsService
+        await SettingsService.load_settings_into_config(db_sess)
 
     webhook_url = f"{config.WEBHOOK_HOST}{config.WEBHOOK_PATH}"
 

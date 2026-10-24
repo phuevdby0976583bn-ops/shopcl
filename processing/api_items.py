@@ -1,4 +1,5 @@
-﻿from fastapi import APIRouter, Header, HTTPException, status
+﻿from fastapi import APIRouter, Header, HTTPException, status, Request
+from typing import Any
 from pydantic import BaseModel
 from sqlalchemy import select
 import config
@@ -153,3 +154,44 @@ async def binance_pay_check_now(x_api_key: str = Header(None)):
             "credited_count": len(credited),
             "credited": credited
         }
+
+
+class SettingsUpdateRequest(BaseModel):
+    settings: dict[str, Any]
+
+
+@api_router.post("/settings/save")
+async def save_settings_endpoint(payload: SettingsUpdateRequest, request: Request, x_api_key: str = Header(None)):
+    token = request.session.get("token") if hasattr(request, "session") else None
+    from utils.utils import decode_token
+    is_session_valid = bool(token and decode_token(token))
+    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
+    is_api_key_valid = bool(x_api_key and x_api_key in valid_keys)
+
+    if not is_session_valid and not is_api_key_valid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Ch?a ??ng nh?p Admin ho?c sai API Key!")
+
+    from services.settings import SettingsService
+    async with get_db_session() as session:
+        result = await SettingsService.save_settings(payload.settings, session)
+        return {
+            "status": "success",
+            "message": "?? l?u c?i ??t th?nh c?ng v?o Database Supabase! C?u h?nh c? hi?u l?c ngay l?p t?c.",
+            "saved_keys": result.get("saved_keys", [])
+        }
+
+
+@api_router.get("/settings/current")
+async def get_settings_endpoint(request: Request, x_api_key: str = Header(None)):
+    token = request.session.get("token") if hasattr(request, "session") else None
+    from utils.utils import decode_token
+    is_session_valid = bool(token and decode_token(token))
+    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
+    is_api_key_valid = bool(x_api_key and x_api_key in valid_keys)
+
+    if not is_session_valid and not is_api_key_valid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Ch?a ??ng nh?p Admin ho?c sai API Key!")
+
+    from services.settings import SettingsService
+    async with get_db_session() as session:
+        return await SettingsService.get_all_settings(session)

@@ -27,6 +27,7 @@ from models.shipping_option import ShippingOption
 from models.review import Review
 from models.referral import ReferralBonus
 from models.binance_pay import BinancePayOrder
+from models.system_setting import SystemSetting
 
 connect_args = {}
 # Tu dong bat SSL va cau hinh pooler cho Supabase / Cloud DB
