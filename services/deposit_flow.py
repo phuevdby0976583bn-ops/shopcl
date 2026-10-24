@@ -68,6 +68,23 @@ class DepositFlowService:
         return BufferedInputFile(file=buffer.getvalue(), filename=f"binance_pay_{amount:.4f}.png")
 
     @staticmethod
+    def generate_clean_qr(data: str) -> BufferedInputFile:
+        """Sinh ma QR sach cho dia chi vi on-chain giong MetakingBot."""
+        qr = qrcode.QRCode(
+            version=None,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=10,
+            border=3
+        )
+        qr.add_data(data)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+        return BufferedInputFile(file=buffer.getvalue(), filename="onchain_address_qr.png")
+
+    @staticmethod
     def get_method_selection_keyboard(language: Language = Language.VI) -> tuple[str, InlineKeyboardBuilder]:
         if language == Language.VI:
             text = (
@@ -249,38 +266,33 @@ class DepositFlowService:
         rate = getattr(config, "USDT_VND_RATE", USDT_VND_RATE) or USDT_VND_RATE
         vnd_amount = int(round(exact_amount * rate))
 
+        qr_file = DepositFlowService.generate_clean_qr(wallet_address)
+
         if language == Language.VI:
-            text = (
-                f"🧾 <b>HOÁ ĐƠN NẠP TIỀN (ON-CHAIN)</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🌐 <b>Mạng:</b> <b>{network_name}</b>\n"
-                f"📬 <b>Địa chỉ ví:</b> <code>{wallet_address}</code>\n"
-                f"💰 <b>Số tiền cần chuyển:</b> <code>{exact_amount:.4f}</code> USDT\n"
-                f"💵 <b>Quy đổi:</b> {vnd_amount:,}đ (tỷ giá {rate:,}đ/$)\n"
-                f"⏳ <b>Hạn thanh toán:</b> 60 phút\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"⚠️ <b>LƯU Ý QUAN TRỌNG:</b>\n"
-                f"• Chuyển ĐÚNG <code>{exact_amount:.4f}</code> USDT (chưa bao gồm phí rút của sàn/ví) qua mạng <b>{network_name}</b>.\n"
-                f"• Gửi sai mạng hoặc sai loại coin sẽ bị mất tiền vĩnh viễn!\n"
-                f"• Con số lẻ {decimal_suffix} không phải là phí, bạn vẫn nhận đủ số tiền đã chuyển."
+            caption = (
+                f"🧾 <b>Hoá đơn nạp USDT</b>\n\n"
+                f"Mạng: {network_name}\n"
+                f"Địa chỉ ví: <code>{wallet_address}</code>\n"
+                f"Số tiền chuyển: <code>{exact_amount:.4f}</code> USDT\n"
+                f"Tiền nạp quy đổi: {vnd_amount:,}đ\n"
+                f"Tổng dự kiến nhận: {vnd_amount:,}đ (tỷ giá {rate:,}đ/USDT)\n"
+                f"Hết hạn: 60 phút\n\n"
+                f"⚠️ Chuyển ĐÚNG <code>{exact_amount:.4f}</code> USDT (chưa bao gồm phí chuyển của sàn) qua mạng {network_name}. Gửi sai mạng hoặc sai coin sẽ MẤT TIỀN!\n"
+                f"Con số lẻ {decimal_suffix} không phải là phí, bạn vẫn nhận được đủ số tiền đã chuyển."
             )
             btn_cp_addr = "📋 Sao chép địa chỉ ví"
             btn_cp_amt = "📋 Sao chép số tiền"
             btn_cancel = "❌ Huỷ hoá đơn"
         else:
-            text = (
-                f"🧾 <b>USDT INVOICE (ON-CHAIN)</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🌐 <b>Network:</b> <b>{network_name}</b>\n"
-                f"📬 <b>Wallet Address:</b> <code>{wallet_address}</code>\n"
-                f"💰 <b>Transfer Amount:</b> <code>{exact_amount:.4f}</code> USDT\n"
-                f"💵 <b>Approx. VND:</b> {vnd_amount:,}đ (rate {rate:,}đ/$)\n"
-                f"⏳ <b>Expires in:</b> 60 minutes\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"⚠️ <b>IMPORTANT NOTE:</b>\n"
-                f"• Send EXACTLY <code>{exact_amount:.4f}</code> USDT on {network_name}.\n"
-                f"• Sending to the wrong network will result in permanent loss!\n"
-                f"• The decimal suffix {decimal_suffix} is not a fee; you receive 100% of your funds."
+            caption = (
+                f"🧾 <b>USDT Invoice</b>\n\n"
+                f"Network: {network_name}\n"
+                f"Wallet Address: <code>{wallet_address}</code>\n"
+                f"Transfer Amount: <code>{exact_amount:.4f}</code> USDT\n"
+                f"Approx. VND: {vnd_amount:,}đ (rate {rate:,}đ/USDT)\n"
+                f"Expires in: 60 minutes\n\n"
+                f"⚠️ Send EXACTLY <code>{exact_amount:.4f}</code> USDT on {network_name}.\n"
+                f"The decimal suffix {decimal_suffix} is not a fee; you receive 100% of your funds."
             )
             btn_cp_addr = "📋 Copy Address"
             btn_cp_amt = "📋 Copy Amount"
@@ -292,4 +304,4 @@ class DepositFlowService:
         kb.button(text=btn_cancel, callback_data="dep_cancel:onchain")
         kb.adjust(2, 1)
 
-        return text, kb
+        return qr_file, caption, kb

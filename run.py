@@ -581,6 +581,23 @@ async def banned_callback(callback: CallbackQuery, language: Language):
 
 @main_router.message(F.text)
 async def fallback_any_text(message: Message, session: AsyncSession, language: Language):
+    text = (message.text or "").strip()
+    num_clean = text.replace(",", ".").replace("$", "").replace("USDT", "").replace("usdt", "").strip()
+    try:
+        val = float(num_clean)
+        if val > 0:
+            from services.deposit_flow import DepositFlowService
+            text_method, kb_method = DepositFlowService.get_method_selection_keyboard(language)
+            await message.answer(
+                f"💡 Bạn vừa nhập số tiền <b>{val:g}</b>.\n"
+                "Vui lòng chọn hình thức nạp tiền bên dưới để tạo hoá đơn:",
+                reply_markup=kb_method.as_markup(),
+                parse_mode="HTML"
+            )
+            return
+    except ValueError:
+        pass
+
     await start(message, session, language, None)
 
 

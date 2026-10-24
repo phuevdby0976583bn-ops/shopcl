@@ -355,7 +355,7 @@ class NotificationService:
         caption_text = media.caption if (media and hasattr(media, 'caption') and media.caption) else "..."
 
         # Neu khong phai file QR code dynamic (BufferedInputFile) ma la anh bot avatar tinh, bo anh va gui text thuan tuy:
-        is_dynamic_file = hasattr(media, 'media') and hasattr(media.media, 'file')
+        is_dynamic_file = hasattr(media, 'media') and (isinstance(media.media, BufferedInputFile) or hasattr(media.media, 'data') or hasattr(media.media, 'file'))
         if not is_dynamic_file:
             return await message.answer(text=caption_text, reply_markup=reply_markup)
 

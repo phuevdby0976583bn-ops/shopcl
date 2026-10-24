@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 from aiogram import Router, F
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -149,16 +151,17 @@ async def create_payment(**kwargs):
         response, kb_builder = await PaymentService.create(callback, callback_data, state, session, language)
         if isinstance(response, str):
             if callback.message.caption:
-                await callback.message.edit_caption(caption=response, reply_markup=kb_builder.as_markup())
-            else:
-                await callback.message.edit_text(text=response, reply_markup=kb_builder.as_markup())
-        else:
-            if callback.message.photo or callback.message.caption:
                 try:
-                    await callback.message.edit_media(media=response, reply_markup=kb_builder.as_markup())
-                    return
+                    await callback.message.delete()
                 except Exception:
                     pass
+                await callback.message.answer(text=response, reply_markup=kb_builder.as_markup(), parse_mode="HTML")
+            else:
+                try:
+                    await callback.message.edit_text(text=response, reply_markup=kb_builder.as_markup(), parse_mode="HTML")
+                except Exception:
+                    await callback.message.answer(text=response, reply_markup=kb_builder.as_markup(), parse_mode="HTML")
+        else:
             try:
                 await callback.message.delete()
             except Exception:
@@ -166,7 +169,8 @@ async def create_payment(**kwargs):
             await callback.message.answer_photo(
                 photo=response.media,
                 caption=response.caption,
-                reply_markup=kb_builder.as_markup()
+                reply_markup=kb_builder.as_markup(),
+                parse_mode="HTML"
             )
     except Exception as e:
         logger.error(f"Error in create_payment: {e}", exc_info=True)
@@ -212,6 +216,11 @@ async def receive_top_up_amount(message: Message,
                                 state: FSMContext,
                                 session: AsyncSession,
                                 language: Language):
+    raw_text = (message.text or "").strip()
+    if raw_text.startswith("/") or any(k in raw_text for k in ["Sản phẩm", "Đơn hàng", "Ví", "Hỗ trợ", "Products", "Orders", "Wallet"]):
+        await state.clear()
+        return
+
     try:
         media, kb_builder = await PaymentService.create(message,
                                                         None,
@@ -230,9 +239,8 @@ async def receive_top_up_amount(message: Message,
                 pass
         await NotificationService.answer_media(message, media, kb_builder.as_markup())
     except Exception as e:
-        logger.error(f"Error in receive_top_up_amount: {e}")
-        from handlers.user.deposit import receive_binance_amount
-        await receive_binance_amount(message, state, session, language)
+        logger.error(f"Error in receive_top_up_amount: {e}", exc_info=True)
+        await message.answer(f"❌ Có lỗi khi tạo hoá đơn nạp tiền: {e}")
 
 
 @my_profile_router.callback_query(MyProfileCallback.filter(), IsUserExistFilter())

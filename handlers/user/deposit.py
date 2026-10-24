@@ -99,7 +99,7 @@ async def cancel_deposit_prompt(callback: CallbackQuery, state: FSMContext, lang
     await callback.answer()
 
 
-@deposit_router.message(StateFilter(UserStates.binance_pay_amount, UserStates.top_up_amount))
+@deposit_router.message(StateFilter(UserStates.binance_pay_amount))
 async def receive_binance_amount(message: Message, state: FSMContext, session: AsyncSession, language: Language = Language.VI):
     raw_text = (message.text or "").strip()
     text_val = raw_text.replace(",", ".").replace("$", "").replace("USDT", "").replace("usdt", "").strip()
@@ -251,8 +251,21 @@ async def choose_network(callback: CallbackQuery, state: FSMContext, language: L
     await state.set_state(UserStates.onchain_amount)
 
     msg = (
-        f"🌐 <b>Mạng đã chọn:</b> <code>{net_code}</code>\n\n"
-        "👉 <b>Nhập số USDT bạn muốn nạp</b> (tối thiểu <code>1</code> USDT):"
+        f"Nhập số USDT muốn nạp (tối thiểu 1):\n\n"
+        "🎁 <b>Thưởng nạp qua bot:</b>\n"
+        "• 100 USDT: +2%\n"
+        "• 200 USDT: +5%\n"
+        "• 300 USDT: +6%\n"
+        "• 500 USDT: +7%\n"
+        "• 1.000 USDT trở lên: +8%"
+    ) if language == Language.VI else (
+        f"Enter USDT amount to deposit (min 1):\n\n"
+        "🎁 <b>Deposit bonus:</b>\n"
+        "• 100 USDT: +2%\n"
+        "• 200 USDT: +5%\n"
+        "• 300 USDT: +6%\n"
+        "• 500 USDT: +7%\n"
+        "• 1,000+ USDT: +8%"
     )
     kb = InlineKeyboardBuilder()
     kb.button(text="‹ Huỷ / Quay lại", callback_data="dep_cancel_prompt")
@@ -293,18 +306,27 @@ async def receive_onchain_amount(message: Message, state: FSMContext, session: A
     net_code = data.get("deposit_network", "BSC")
 
     try:
-        text, kb = await DepositFlowService.create_onchain_invoice(
+        qr_file, caption, kb = await DepositFlowService.create_onchain_invoice(
             telegram_id=message.from_user.id,
             network_code=net_code,
             base_amount=amount,
             session=session,
             language=language
         )
-        await message.answer(
-            text=text,
-            reply_markup=kb.as_markup(),
-            parse_mode="HTML"
-        )
+        try:
+            await message.answer_photo(
+                photo=qr_file,
+                caption=caption,
+                reply_markup=kb.as_markup(),
+                parse_mode="HTML"
+            )
+        except Exception as pe:
+            logger.warning(f"Failed to answer onchain photo: {pe}")
+            await message.answer(
+                text=caption,
+                reply_markup=kb.as_markup(),
+                parse_mode="HTML"
+            )
         await state.clear()
     except Exception as e:
         logger.error(f"Error creating On-chain invoice: {e}")
