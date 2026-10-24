@@ -24,11 +24,17 @@ class BuyItemRepository:
     @staticmethod
     async def create_many(buy_item_dto_list: list[BuyItemDTO], session: Session | AsyncSession):
         for buy_item_dto in buy_item_dto_list:
-            session.add(BuyItem(**buy_item_dto.model_dump()))
+            dump = buy_item_dto.model_dump()
+            if 'id' in dump and dump['id'] is None:
+                del dump['id']
+            session.add(BuyItem(**dump))
 
     @staticmethod
     async def create_single(buy_item_dto: BuyItemDTO, session: AsyncSession):
-        session.add(BuyItem(**buy_item_dto.model_dump()))
+        dump = buy_item_dto.model_dump()
+        if 'id' in dump and dump['id'] is None:
+            del dump['id']
+        session.add(BuyItem(**dump))
 
     @staticmethod
     async def get_all_by_buy_id(buy_id: int, session: Session | AsyncSession) -> list[BuyItemDTO]:

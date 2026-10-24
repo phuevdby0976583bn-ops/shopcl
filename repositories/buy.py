@@ -45,7 +45,10 @@ class BuyRepository:
 
     @staticmethod
     async def create(buy_dto: BuyDTO, session: Session | AsyncSession) -> BuyDTO:
-        buy = Buy(**buy_dto.model_dump())
+        buy_data = buy_dto.model_dump()
+        if 'id' in buy_data and buy_data['id'] is None:
+            del buy_data['id']
+        buy = Buy(**buy_data)
         session.add(buy)
         await session_flush(session)
         return BuyDTO.model_validate(buy, from_attributes=True)

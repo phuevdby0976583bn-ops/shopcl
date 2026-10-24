@@ -38,6 +38,7 @@ def _build_config_module() -> ModuleType:
     config.BNB_FORWARDING_ADDRESS = "bnb-forward"
     config.ADMIN_ID_LIST = [1]
     config.TOKEN = "token"
+    config.SUPPORT_LINK = "https://t.me/truongdvfb"
     config.MULTIBOT = False
     config.TELEGRAM_PROXY_URL = None
     config.REDIS_HOST = "localhost"

@@ -328,7 +328,9 @@ async def handle_wallet(message: Message, session: AsyncSession, state: FSMConte
         btn_onchain = "🌐 Other Wallets / Exchanges"
         btn_history = "📜 Purchase History"
 
+    btn_bank = "🏦 Chuyển khoản Ngân hàng (VietQR / BIDV)" if language == Language.VI else "🏦 Vietnam Bank Transfer (VietQR / BIDV)"
     kb = InlineKeyboardBuilder()
+    kb.button(text=btn_bank, callback_data="dep_method:bank")
     kb.button(text=btn_binance, callback_data="dep_method:binance")
     kb.button(text=btn_onchain, callback_data="dep_method:onchain")
     kb.button(text=btn_history, callback_data=MyProfileCallback.create(level=3))

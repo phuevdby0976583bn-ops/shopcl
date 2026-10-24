@@ -99,6 +99,7 @@ dp = Dispatcher(storage=RedisStorage(redis))
 
 
 binance_task = None
+bank_task = None
 keep_alive_task = None
 facebook_cron_task = None
 
@@ -173,6 +174,22 @@ async def keep_alive_background_worker():
 
 
 
+
+
+async def bank_deposit_background_worker():
+    while True:
+        try:
+            await asyncio.sleep(15)
+            token = getattr(config, "BANK_BIDV_TOKEN", "") or ""
+            auto_check = getattr(config, "BANK_AUTO_CHECK", True)
+            if token and auto_check:
+                from services.bank_deposit import BankDepositService
+                async with get_db_session() as session:
+                    await BankDepositService.process_and_credit_transactions(bot, session)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logging.warning(f"Error in bank_deposit_background_worker: {e}")
 
 
 async def binance_pay_background_worker():
@@ -435,9 +452,10 @@ async def _startup() -> None:
 
 
 
-    global binance_task, keep_alive_task, facebook_cron_task
+    global binance_task, bank_task, keep_alive_task, facebook_cron_task
 
     binance_task = asyncio.create_task(binance_pay_background_worker())
+    bank_task = asyncio.create_task(bank_deposit_background_worker())
     keep_alive_task = asyncio.create_task(keep_alive_background_worker())
     facebook_cron_task = asyncio.create_task(facebook_stock_cron_worker())
 
@@ -449,10 +467,12 @@ async def _shutdown() -> None:
 
     logging.warning('Shutting down..')
 
-    global binance_task, keep_alive_task, facebook_cron_task
+    global binance_task, bank_task, keep_alive_task, facebook_cron_task
 
     if binance_task:
         binance_task.cancel()
+    if bank_task:
+        bank_task.cancel()
     if keep_alive_task:
         keep_alive_task.cancel()
     if facebook_cron_task:
@@ -546,11 +566,17 @@ from models.binance_pay import BinancePayOrderAdmin
 
 admin.add_model_view(BinancePayOrderAdmin)
 
+from models.bank_order import BankDepositOrderAdmin
+admin.add_model_view(BankDepositOrderAdmin)
+
 
 
 from admin_settings_view import PaymentApiConfigView
 
 admin.add_base_view(PaymentApiConfigView)
+
+from admin_policy_view import WarrantyPolicyAdminView
+admin.add_base_view(WarrantyPolicyAdminView)
 
 
 

@@ -30,22 +30,31 @@ class DepositFlowService:
             text = (
                 "💰 <b>BẠN MUỐN NẠP TIỀN BẰNG CÁCH NÀO?</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "⚡ <b>Khuyên dùng:</b> Binance Pay (0% phí chuyển, nạp tự động nhận ngay sau 1-5 giây).\n"
+                "🏦 <b>Ngân Hàng Việt Nam:</b> Quét mã VietQR chuyển khoản BIDV, tự động cộng tiền 10s.\n"
+                "⚡ <b>Binance Pay:</b> 0% phí chuyển, nạp tự động nhận ngay sau 1-5 giây.\n"
+                "🌐 <b>On-chain:</b> Nạp qua USDT các mạng BSC, Solana, Tron, ERC20.\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
                 "👇 <i>Vui lòng chọn hình thức bên dưới:</i>"
             )
+            btn_bank = "🏦 Chuyển khoản Ngân hàng (VietQR / BIDV)"
             btn_binance = "🟡 Binance Pay (0% phí - Nhận ngay 1s)"
             btn_onchain = "🌐 Ví / Sàn khác (On-chain BSC, TRX, TON...)"
         else:
             text = (
                 "💰 <b>CHOOSE YOUR DEPOSIT METHOD</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "⚡ <b>Recommended:</b> Binance Pay (0% fee, instant credit in 1-5 seconds).\n"
+                "🏦 <b>Vietnam Bank:</b> VietQR instant transfer (BIDV), auto-credit in 10s.\n"
+                "⚡ <b>Binance Pay:</b> 0% fee, instant credit in 1-5 seconds.\n"
+                "🌐 <b>On-chain:</b> Deposit USDT via BSC, Solana, Tron, ERC20.\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
                 "👇 <i>Please choose an option below:</i>"
             )
+            btn_bank = "🏦 Vietnam Bank Transfer (VietQR / BIDV)"
             btn_binance = "🟡 Binance Pay (0% Fee - Instant 1s)"
             btn_onchain = "🌐 Other Wallets / Exchanges (On-chain)"
 
         kb = InlineKeyboardBuilder()
+        kb.button(text=btn_bank, callback_data="dep_method:bank")
         kb.button(text=btn_binance, callback_data="dep_method:binance")
         kb.button(text=btn_onchain, callback_data="dep_method:onchain")
         kb.adjust(1)

@@ -2,6 +2,7 @@ import logging
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 import config
+from services.policy_defaults import DEFAULT_WARRANTY_LEGAL_POLICY, DEFAULT_WARRANTY_SHORT_SUMMARY
 from models.system_setting import SystemSetting
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,8 @@ SUPPORTED_SETTING_KEYS = [
     "FB_CATEGORY_KEYWORDS",
     "FB_CRON_CHECK_INTERVAL_MINUTES",
     "FB_CRON_NOTIFY_ADMIN",
+    "WARRANTY_LEGAL_POLICY",
+    "WARRANTY_SHORT_SUMMARY",
 ]
 
 BOOLEAN_KEYS = {
@@ -168,6 +171,8 @@ class SettingsService:
                 if "FB_CRON_NOTIFY_ADMIN" in db_settings
                 else getattr(config, "FB_CRON_NOTIFY_ADMIN", True)
             ),
+            "WARRANTY_LEGAL_POLICY": db_settings.get("WARRANTY_LEGAL_POLICY") or getattr(config, "WARRANTY_LEGAL_POLICY", "") or DEFAULT_WARRANTY_LEGAL_POLICY,
+            "WARRANTY_SHORT_SUMMARY": db_settings.get("WARRANTY_SHORT_SUMMARY") or getattr(config, "WARRANTY_SHORT_SUMMARY", "") or DEFAULT_WARRANTY_SHORT_SUMMARY,
         }
         return res
 

@@ -1,3 +1,5 @@
+from models.bank_order import BankDepositOrder
+from services.bank_deposit import BankDepositService
 import logging
 from aiogram import Router, F
 from aiogram.filters import StateFilter, Command
@@ -335,4 +337,209 @@ async def handle_cancel_invoice(callback: CallbackQuery, state: FSMContext, sess
         except Exception:
             pass
         await callback.message.answer("❌ <b>Hoá đơn nạp tiền đã được huỷ.</b>", parse_mode="HTML")
+    await callback.answer("Đã huỷ hoá đơn thành công!")
+
+
+@deposit_router.callback_query(F.data == "dep_method:bank")
+async def prompt_bank_amount(callback: CallbackQuery, state: FSMContext, language: Language = Language.VI):
+    await state.set_state(UserStates.bank_deposit_amount)
+    rate = float(getattr(config, "BANK_EXCHANGE_RATE", 26000) or 26000)
+    stk = getattr(config, "BANK_ACCOUNT_NUMBER", "8880117869")
+    if language == Language.VI:
+        msg = (
+            f"🏦 <b>NẠP TIỀN QUA NGÂN HÀNG (VIETQR / BIDV)</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🏛️ <b>Ngân hàng:</b> <b>BIDV</b>\n"
+            f"💳 <b>Số tài khoản (STK):</b> <code>{stk}</code>\n"
+            f"💱 <b>Tỷ giá:</b> <b>1$ = {rate:,.0f} đ</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👉 <b>Vui lòng nhập số tiền bạn muốn nạp:</b>\n"
+            f"• Nhập theo USD (ví dụ: <code>1</code>, <code>2</code>, <code>5</code>, <code>10</code>$)\n"
+            f"• Hoặc nhập theo VNĐ (ví dụ: <code>26000</code>, <code>50000</code>, <code>100k</code>)\n"
+            f"<i>(Hạn mức tối thiểu: <b>1$ (~{rate:,.0f}đ)</b>)</i>"
+        )
+        btn_cancel = "‹ Huỷ / Quay lại"
+    else:
+        msg = (
+            f"🏦 <b>VIETNAM BANK TRANSFER (VIETQR / BIDV)</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🏛️ <b>Bank:</b> <b>BIDV</b>\n"
+            f"💳 <b>Account:</b> <code>{stk}</code>\n"
+            f"💱 <b>Rate:</b> <b>$1 = {rate:,.0f} VND</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👉 <b>Please enter the amount you want to deposit:</b>\n"
+            f"• In USD (e.g., <code>1</code>, <code>5</code>, <code>10</code>$)\n"
+            f"• Or in VND (e.g., <code>50000</code>, <code>100000</code>)\n"
+            f"<i>(Minimum: <b>$1 (~{rate:,.0f} VND)</b>)</i>"
+        )
+        btn_cancel = "‹ Cancel / Back"
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text=btn_cancel, callback_data="dep_cancel_prompt")
+
+    if callback.message.caption:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(text=msg, reply_markup=kb.as_markup(), parse_mode="HTML")
+    else:
+        try:
+            await callback.message.edit_text(text=msg, reply_markup=kb.as_markup(), parse_mode="HTML")
+        except Exception:
+            await callback.message.answer(text=msg, reply_markup=kb.as_markup(), parse_mode="HTML")
+    await callback.answer()
+
+
+@deposit_router.message(StateFilter(UserStates.bank_deposit_amount))
+async def receive_bank_amount(message: Message, state: FSMContext, session: AsyncSession, language: Language = Language.VI):
+    raw_text = (message.text or "").strip()
+    if raw_text.startswith("/") or any(k in raw_text for k in ["Sản phẩm", "Đơn hàng", "Ví", "Hỗ trợ"]):
+        await state.clear()
+        return
+
+    rate = float(getattr(config, "BANK_EXCHANGE_RATE", 26000) or 26000)
+    cleaned = raw_text.lower().replace("$", "").replace("vnd", "").replace("vnđ", "").replace("đ", "").replace(",", "").replace(".", "").strip()
+
+    if cleaned.endswith("k"):
+        try:
+            val_vnd = float(cleaned[:-1]) * 1000
+            amount_usd = round(val_vnd / rate, 2)
+        except ValueError:
+            await message.answer("⚠️ Vui lòng nhập số tiền hợp lệ:")
+            return
+    else:
+        raw_num = raw_text.replace(",", ".").replace("$", "").replace("VND", "").replace("vnd", "").strip()
+        try:
+            val = float(raw_num)
+            if val >= 1000:
+                amount_usd = round(val / rate, 2)
+            else:
+                amount_usd = round(val, 2)
+        except ValueError:
+            await message.answer("⚠️ Vui lòng nhập số tiền hợp lệ (ví dụ: <code>2</code> hoặc <code>50000</code>):", parse_mode="HTML")
+            return
+
+    if amount_usd < 0.5:
+        await message.answer(f"⚠️ Số tiền nạp tối thiểu là 1$ (~{rate:,.0f} đ). Vui lòng nhập lại:")
+        return
+
+    try:
+        qr_file, caption, kb, order = await BankDepositService.create_bank_invoice(
+            telegram_id=message.from_user.id,
+            base_amount_usd=amount_usd,
+            session=session,
+            language=language
+        )
+        sent = await message.answer_photo(
+            photo=qr_file,
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=kb.as_markup()
+        )
+        order.chat_id = sent.chat.id
+        order.message_id = sent.message_id
+        await session.commit()
+        await state.clear()
+    except Exception as e:
+        logger.error(f"Error creating Bank invoice: {e}", exc_info=True)
+        await message.answer(f"❌ Có lỗi khi tạo hoá đơn nạp ngân hàng: {e}")
+
+
+@deposit_router.callback_query(F.data.startswith("bank_cp:"))
+async def handle_bank_copy_buttons(callback: CallbackQuery):
+    parts = callback.data.split(":", 2)
+    cp_type = parts[1]
+    val = parts[2] if len(parts) > 2 else ""
+
+    if cp_type == "stk":
+        await callback.answer(f"Đã sao chép STK BIDV: {val}", show_alert=False)
+        await callback.message.answer(f"💳 STK BIDV: <code>{val}</code>", parse_mode="HTML")
+    elif cp_type == "amt":
+        try:
+            amt_fmt = f"{int(val):,} đ"
+        except Exception:
+            amt_fmt = val
+        await callback.answer(f"Đã sao chép số tiền: {amt_fmt}", show_alert=False)
+        await callback.message.answer(f"💵 Số tiền cần chuyển: <code>{val}</code>", parse_mode="HTML")
+    elif cp_type == "memo":
+        await callback.answer(f"Đã sao chép nội dung: {val}", show_alert=False)
+        await callback.message.answer(f"📝 Nội dung chuyển khoản: <code>{val}</code>", parse_mode="HTML")
+
+
+@deposit_router.callback_query(F.data.startswith("bank_chk:"))
+async def handle_bank_check_invoice(callback: CallbackQuery, session: AsyncSession, language: Language = Language.VI):
+    parts = callback.data.split(":", 1)
+    if len(parts) < 2 or not parts[1].isdigit():
+        await callback.answer("Hoá đơn không hợp lệ!")
+        return
+
+    order_id = int(parts[1])
+    checking_toast = "🔍 Đang kiểm tra giao dịch với ngân hàng BIDV..." if language == Language.VI else "🔍 Checking bank transfer with BIDV..."
+    await callback.answer(checking_toast)
+
+    is_paid, order = await BankDepositService.check_order_status(order_id, session, callback.bot)
+
+    if is_paid and order:
+        user_dto = await session.execute(select(User).where(User.id == order.user_id))
+        user = user_dto.scalar_one_or_none()
+        bal = round((user.top_up_amount or 0.0) - (user.consume_records or 0.0), 2) if user else order.amount_usd
+        if language == Language.VI:
+            success_msg = (
+                f"🎉 <b>NẠP TIỀN NGÂN HÀNG THÀNH CÔNG!</b> 🎉\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"✅ Đã nhận: <b>+{order.amount_vnd:,.0f} đ</b> (~ <b>+{order.amount_usd}$ USDT</b>)\n"
+                f"💳 Số dư khả dụng hiện tại: <b>{bal}$</b>\n"
+                f"🆔 Mã GD ThueApi: <code>{order.transaction_id or 'Auto'}</code>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🦐 Cảm ơn bạn! Hãy bấm nút bên dưới để chọn mua tài khoản ngay nhé!"
+            )
+        else:
+            success_msg = (
+                f"🎉 <b>DEPOSIT SUCCESSFUL!</b> 🎉\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"✅ Credited: <b>+{order.amount_vnd:,.0f} VND</b> (~ <b>+${order.amount_usd}</b>)\n"
+                f"💳 Current Balance: <b>${bal}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"Thank you for your purchase!"
+            )
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(success_msg, parse_mode="HTML")
+    else:
+        if language == Language.VI:
+            toast = (
+                "⏳ Chưa phát hiện giao dịch chuyển khoản mới!\n\n"
+                "Nếu bạn vừa chuyển trên App ngân hàng, vui lòng đợi 15-30 giây để hệ thống ngân hàng đồng bộ rồi bấm kiểm tra lại nhé.\n\n"
+                f"⚠️ Lưu ý: BẮT BUỘC phải điền đúng nội dung chuyển khoản: NAP {callback.from_user.id}"
+            )
+        else:
+            toast = (
+                "⏳ No transfer detected yet!\n\n"
+                "If you just transferred, please wait 15-30 seconds and check again.\n\n"
+                f"⚠️ Note: You MUST enter the exact remark: NAP {callback.from_user.id}"
+            )
+        await callback.answer(toast, show_alert=True)
+
+
+@deposit_router.callback_query(F.data.startswith("bank_cancel:"))
+async def handle_bank_cancel_invoice(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    await state.clear()
+    parts = callback.data.split(":", 1)
+    if len(parts) > 1 and parts[1].isdigit():
+        order_id = int(parts[1])
+        stmt = update(BankDepositOrder).where(
+            BankDepositOrder.id == order_id,
+            BankDepositOrder.status == "PENDING"
+        ).values(status="CANCELLED")
+        await session.execute(stmt)
+        await session.commit()
+
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.message.answer("❌ <b>Hoá đơn nạp tiền ngân hàng đã được huỷ.</b>", parse_mode="HTML")
     await callback.answer("Đã huỷ hoá đơn thành công!")

@@ -81,6 +81,15 @@ REFERRAL_BONUS_CAP_PERCENT = float(os.environ.get('REFERRAL_BONUS_CAP_PERCENT', 
 REFERRER_BONUS_CAP_PERCENT = float(os.environ.get('REFERRER_BONUS_CAP_PERCENT', '7'))
 TOTAL_BONUS_CAP_PERCENT = float(os.environ.get('TOTAL_BONUS_CAP_PERCENT', '12'))
 
+
+# VIETNAMESE BANK (BIDV / THUEAPI.PRO) CONFIGURATION
+BANK_BIDV_TOKEN = (os.environ.get('BANK_BIDV_TOKEN') or '').strip().strip('"').strip("'")
+BANK_ACCOUNT_NUMBER = (os.environ.get('BANK_ACCOUNT_NUMBER') or '8880117869').strip().strip('"').strip("'")
+BANK_ACCOUNT_NAME = (os.environ.get('BANK_ACCOUNT_NAME') or 'CHU TAI KHOAN').strip().strip('"').strip("'")
+BANK_CODE = (os.environ.get('BANK_CODE') or 'BIDV').strip().strip('"').strip("'")
+BANK_EXCHANGE_RATE = float(os.environ.get('BANK_EXCHANGE_RATE', '26000'))
+BANK_AUTO_CHECK = os.environ.get('BANK_AUTO_CHECK', 'true').lower() in ('true', '1', 'yes')
+
 # SQLADMIN
 SQLADMIN_RAW_PASSWORD = os.environ.get('SQLADMIN_RAW_PASSWORD', 'admin123').strip().strip('"').strip("'")
 SQLADMIN_HASHED_PASSWORD = hash_password(SQLADMIN_RAW_PASSWORD)
@@ -97,3 +106,9 @@ FB_AUTO_DELETE_DIE_ON_DELIVERY = os.environ.get('FB_AUTO_DELETE_DIE_ON_DELIVERY'
 FB_CATEGORY_KEYWORDS = os.environ.get('FB_CATEGORY_KEYWORDS', 'facebook, fb, clone, via, bm').strip()
 FB_CRON_CHECK_INTERVAL_MINUTES = int(os.environ.get('FB_CRON_CHECK_INTERVAL_MINUTES', '30'))
 FB_CRON_NOTIFY_ADMIN = os.environ.get('FB_CRON_NOTIFY_ADMIN', 'true').lower() in ('true', '1', 'yes')
+
+
+# CHINH SACH BAO HANH & DIEU KHOAN PHAP LY (VIET NAM)
+from services.policy_defaults import DEFAULT_WARRANTY_LEGAL_POLICY, DEFAULT_WARRANTY_SHORT_SUMMARY
+WARRANTY_LEGAL_POLICY = (os.environ.get('WARRANTY_LEGAL_POLICY') or '').strip() or DEFAULT_WARRANTY_LEGAL_POLICY
+WARRANTY_SHORT_SUMMARY = (os.environ.get('WARRANTY_SHORT_SUMMARY') or '').strip() or DEFAULT_WARRANTY_SHORT_SUMMARY

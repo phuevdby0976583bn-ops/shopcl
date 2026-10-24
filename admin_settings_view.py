@@ -59,6 +59,17 @@ class PaymentApiConfigView(BaseView):
         krypto_api_secret = cur_settings.get("KRYPTO_EXPRESS_API_SECRET") or ""
         krypto_api_url = cur_settings.get("KRYPTO_EXPRESS_API_URL") or "https://kryptoexpress.pro/api"
 
+        bank_token = cur_settings.get("BANK_BIDV_TOKEN") or ""
+        bank_acc_num = cur_settings.get("BANK_ACCOUNT_NUMBER") or "8880117869"
+        bank_acc_name = cur_settings.get("BANK_ACCOUNT_NAME") or "CHU TAI KHOAN"
+        bank_code = cur_settings.get("BANK_CODE") or "BIDV"
+        bank_rate = cur_settings.get("BANK_EXCHANGE_RATE", 26000)
+        bank_auto_check = cur_settings.get("BANK_AUTO_CHECK", True)
+        bank_auto_attr = "checked" if bank_auto_check else ""
+        is_bank_ready = bool(bank_token)
+        bank_badge = '<span class="badge bg-success"><i class="fa-solid fa-circle-check me-1"></i> Đang hoạt động tự động</span>' if is_bank_ready else '<span class="badge bg-warning text-dark"><i class="fa-solid fa-triangle-exclamation me-1"></i> Chưa điền Token ThueApi.pro</span>'
+        api_bank_check = "/api/bank/check-now"
+
         fwd_mode = cur_settings.get("CRYPTO_FORWARDING_MODE", False)
         only_usdt = cur_settings.get("ONLY_USDT_MODE", False)
         bnb_fwd = cur_settings.get("BNB_FORWARDING_ADDRESS") or ""
@@ -137,8 +148,13 @@ class PaymentApiConfigView(BaseView):
                 </button>
             </li>
             <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-bank">
+                    <i class="fa-solid fa-building-columns text-info me-1"></i> 3. Cổng Nạp Ngân Hàng BIDV (ThueApi.pro & VietQR)
+                </button>
+            </li>
+            <li class="nav-item">
                 <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-facebook">
-                    <i class="fa-brands fa-facebook text-primary me-1"></i> 3. Cấu Hình Clone Facebook (Check Live & Tự Động Xóa DIE)
+                    <i class="fa-brands fa-facebook text-primary me-1"></i> 4. Cấu Hình Clone Facebook (Check Live & Tự Động Xóa DIE)
                 </button>
             </li>
         </ul>
@@ -383,6 +399,127 @@ class PaymentApiConfigView(BaseView):
                                         </button>
                                     </div>
                                 </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+<!-- TAB: NGÂN HÀNG VIỆT NAM (BIDV / THUEAPI.PRO) -->
+            <div class="tab-pane fade" id="tab-bank">
+                <div class="row g-4">
+                    <!-- Cột 1: Form cấu hình BIDV & ThueApi.pro -->
+                    <div class="col-lg-6">
+                        <div class="card border-info h-100 shadow-sm">
+                            <div class="card-header bg-info bg-opacity-10 py-3 d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0 fw-bold text-dark"><i class="fa-solid fa-building-columns text-info me-2"></i>Cấu Hình Ngân Hàng BIDV (ThueApi.pro)</h5>
+                                {bank_badge}
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info py-2 small mb-3">
+                                    <i class="fa-solid fa-bolt me-1"></i> <b>Tự động 100%:</b> Khách nạp qua mã VietQR, tiền vào tài khoản BIDV của bạn, hệ thống gọi API <b>ThueApi.pro</b> đọc lịch sử giao dịch và tự động cộng tiền USD vào số dư bot sau 10-30 giây!
+                                </div>
+
+                                <form id="bankForm" onsubmit="event.preventDefault(); saveBankSettings();">
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">1. Token BIDV (Lấy từ ThueApi.pro):</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-solid fa-key text-info"></i></span>
+                                            <input type="password" class="form-control font-monospace" id="bank_token" value="{bank_token}" placeholder="Dán token BIDV từ thueapi.pro vào đây" required>
+                                            <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('bank_token', this)"><i class="fa-regular fa-eye"></i></button>
+                                        </div>
+                                        <div class="form-text small">Lấy trong mục API V2 tại <code>thueapi.pro/historyapibidvv2/:tokenbidv</code></div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">2. Số Tài Khoản Nhận Tiền (STK):</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-solid fa-credit-card text-success"></i></span>
+                                            <input type="text" class="form-control font-monospace fw-bold" id="bank_account_number" value="{bank_acc_num}" placeholder="VD: 8880117869" required>
+                                        </div>
+                                        <div class="form-text small">Số tài khoản BIDV của bạn để khách chuyển tiền tới.</div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">3. Tên Chủ Tài Khoản:</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-solid fa-user text-primary"></i></span>
+                                            <input type="text" class="form-control" id="bank_account_name" value="{bank_acc_name}" placeholder="VD: NGUYEN VAN A">
+                                        </div>
+                                        <div class="form-text small">Tên in trên tài khoản ngân hàng (viết hoa không dấu).</div>
+                                    </div>
+
+                                    <div class="row g-2 mb-3">
+                                        <div class="col-sm-6">
+                                            <label class="form-label fw-bold small text-muted">4. Mã Ngân Hàng:</label>
+                                            <input type="text" class="form-control font-monospace fw-bold" id="bank_code" value="{bank_code}" placeholder="BIDV" readonly>
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <label class="form-label fw-bold small text-muted">5. Tỷ Giá Quy Đổi (VNĐ / 1$):</label>
+                                            <div class="input-group">
+                                                <input type="number" class="form-control font-monospace fw-bold text-success" id="bank_exchange_rate" value="{bank_rate}" step="100" min="1000">
+                                                <span class="input-group-text small">đ / 1$</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-check form-switch mb-3 p-2 bg-light rounded border border-info">
+                                        <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="bank_auto_check" {bank_auto_attr}>
+                                        <label class="form-check-label fw-bold text-dark" for="bank_auto_check">
+                                            <i class="fa-solid fa-robot text-info me-1"></i> Tự Động Quét & Cộng Tiền Ngân Hàng (24/7)
+                                        </label>
+                                        <div class="small text-muted ms-4">Bot sẽ tự động quét API ThueApi.pro mỗi 15 giây. Khi khách chuyển đúng nội dung <code>NAP &lt;id&gt;</code>, số dư sẽ được cộng ngay lập tức!</div>
+                                    </div>
+
+                                    <div id="bankSaveResult" class="mb-3" style="display:none;"></div>
+
+                                    <div class="pt-2 border-top d-flex gap-2">
+                                        <button type="submit" class="btn btn-info text-white fw-bold px-4">
+                                            <i class="fa-solid fa-floppy-disk me-1"></i> Lưu Cấu Hình Ngân Hàng
+                                        </button>
+                                        <button type="button" class="btn btn-outline-info fw-bold" onclick="checkBankTransactionsNow()">
+                                            <i class="fa-solid fa-rotate me-1"></i> Quét Giao Dịch Ngay
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cột 2: Hướng dẫn lấy token từ ThueApi.pro -->
+                    <div class="col-lg-6">
+                        <div class="card bg-light border-0 shadow-sm h-100">
+                            <div class="card-body">
+                                <h5 class="fw-bold text-dark mb-3"><i class="fa-solid fa-book-open-reader text-info me-2"></i>Hướng Dẫn Tích Hợp ThueApi.pro (3 Bước)</h5>
+
+                                <div class="step-item d-flex mb-3">
+                                    <div class="step-num me-3 bg-info text-white rounded-circle d-flex align-items-center justify-content-center fw-bold" style="width: 32px; height: 32px; min-width: 32px;">1</div>
+                                    <div>
+                                        <div class="fw-bold">Đăng ký & Thêm tài khoản BIDV trên ThueApi.pro:</div>
+                                        <div class="small text-muted">Truy cập <a href="https://thueapi.pro" target="_blank" class="fw-bold text-info">https://thueapi.pro</a> ➔ Cổng thanh toán ➔ Thêm tài khoản ngân hàng BIDV của bạn (STK <code>8880117869</code>).</div>
+                                    </div>
+                                </div>
+
+                                <div class="step-item d-flex mb-3">
+                                    <div class="step-num me-3 bg-info text-white rounded-circle d-flex align-items-center justify-content-center fw-bold" style="width: 32px; height: 32px; min-width: 32px;">2</div>
+                                    <div>
+                                        <div class="fw-bold">Lấy Token BIDV:</div>
+                                        <div class="small text-muted">Vào menu <b>Nhà phát triển</b> ➔ Chọn <b>API V2</b> ➔ Chọn tab <b>BIDV</b> ➔ Copy đoạn token trong đường dẫn <code>https://thueapi.pro/historyapibidvv2/<b>:tokenbidv</b></code>.</div>
+                                    </div>
+                                </div>
+
+                                <div class="step-item d-flex mb-3">
+                                    <div class="step-num me-3 bg-info text-white rounded-circle d-flex align-items-center justify-content-center fw-bold" style="width: 32px; height: 32px; min-width: 32px;">3</div>
+                                    <div>
+                                        <div class="fw-bold">Dán Token & Lưu Cấu Hình:</div>
+                                        <div class="small text-muted">Dán token vào ô <b>Token BIDV</b> bên trái và bấm <b>Lưu Cấu Hình Ngân Hàng</b>. Hệ thống sẽ lưu vào Supabase và bắt đầu tự động quét giao dịch 24/7!</div>
+                                    </div>
+                                </div>
+
+                                <div class="alert alert-success mt-4 small">
+                                    <div class="fw-bold mb-1"><i class="fa-solid fa-qrcode me-1"></i> Cơ chế tạo mã VietQR tự động:</div>
+                                    Khi khách nạp qua bot, bot tự sinh mã VietQR chuẩn Napas quốc gia có sẵn STK <b>8880117869</b>, số tiền chính xác và cú pháp <code>NAP &lt;telegram_id&gt;</code>. Khách chỉ cần mở app ngân hàng quét là tự điền đúng mọi thông tin!
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -691,6 +828,44 @@ class PaymentApiConfigView(BaseView):
                 resDiv.innerHTML = '<div class="text-danger">Lỗi: ' + e.message + '</div>';
             }}
         }}
+
+function saveBankSettings() {
+            const payload = {
+                'BANK_BIDV_TOKEN': document.getElementById('bank_token').value.trim(),
+                'BANK_ACCOUNT_NUMBER': document.getElementById('bank_account_number').value.trim(),
+                'BANK_ACCOUNT_NAME': document.getElementById('bank_account_name').value.trim(),
+                'BANK_CODE': document.getElementById('bank_code').value.trim(),
+                'BANK_EXCHANGE_RATE': parseFloat(document.getElementById('bank_exchange_rate').value) || 26000,
+                'BANK_AUTO_CHECK': document.getElementById('bank_auto_check').checked
+            };
+            saveSettingsPayload(payload, 'bankSaveResult');
+        }
+
+        async function checkBankTransactionsNow() {
+            try {
+                showToast('Đang kết nối ThueApi.pro để quét giao dịch ngân hàng BIDV...', 'info');
+                const res = await fetch('/api/bank/check-now', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': '{api_key}',
+                        'Authorization': 'Bearer {admin_token}'
+                    }
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    if (data.credited_count > 0) {
+                        showToast(`Thành công! Đã phát hiện và cộng tiền cho ${data.credited_count} giao dịch mới!`, 'success');
+                    } else {
+                        showToast('Kết nối ThueApi.pro thành công! Hiện chưa có giao dịch chuyển khoản mới.', 'info');
+                    }
+                } else {
+                    showToast('Lỗi: ' + (data.detail || data.message || 'Không thể quét giao dịch'), 'danger');
+                }
+            } catch (err) {
+                showToast('Lỗi mạng khi gọi API quét ngân hàng: ' + err, 'danger');
+            }
+        }
 
         function saveBinanceSettings() {{
             const payload = {{

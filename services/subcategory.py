@@ -178,7 +178,7 @@ class SubcategoryService:
         category = await CategoryRepository.get_by_id(callback_data.category_id, session)
         subcategory = await SubcategoryRepository.get_by_id(callback_data.subcategory_id, session)
         qty = callback_data.quantity or 1
-        unit_price = item.price
+        unit_price = (getattr(subcategory, 'price', None) or (getattr(item, 'price', 0.0) if item else 0.0)) or 0.0
         total_price = unit_price * qty
         sym = _sym()
 

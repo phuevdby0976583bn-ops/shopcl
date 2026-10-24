@@ -326,6 +326,23 @@ class SettingsUpdateRequest(BaseModel):
     settings: dict[str, Any]
 
 
+@api_router.post("/bank/check-now")
+async def bank_check_now_endpoint(request: Request, x_api_key: str = Header(None)):
+    if not is_request_authorized(request, x_api_key):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chưa đăng nhập Admin hoặc sai API Key!")
+
+    from services.bank_deposit import BankDepositService
+    from bot import bot
+
+    async with get_db_session() as session:
+        credited = await BankDepositService.process_and_credit_transactions(bot, session)
+        return {
+            "status": "success",
+            "credited_count": len(credited),
+            "credited": credited
+        }
+
+
 @api_router.post("/settings/save")
 async def save_settings_endpoint(payload: SettingsUpdateRequest, request: Request, x_api_key: str = Header(None)):
     if not is_request_authorized(request, x_api_key):
