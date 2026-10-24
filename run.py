@@ -57,6 +57,13 @@ BUTTON_WALLET = {
     Language.ZH: "💳 钱包",
 }
 
+BUTTON_SUPPORT = {
+    Language.VI: "💬 Hỗ trợ & Bảo hành",
+    Language.EN: "💬 Support & Warranty",
+    Language.HI: "💬 समर्थन और वारंटी",
+    Language.ZH: "💬 客服与售后",
+}
+
 BUTTON_WARRANTY = {
     Language.VI: "🛡️ Bảo hành",
     Language.EN: "🛡️ Warranty",
@@ -83,13 +90,13 @@ def get_start_keyboard(language: Language, telegram_id: int):
     prod_btn = types.KeyboardButton(text=BUTTON_PRODUCTS.get(language, "🛒 Products"))
     orders_btn = types.KeyboardButton(text=BUTTON_ORDERS.get(language, "📦 Orders"))
     wallet_btn = types.KeyboardButton(text=BUTTON_WALLET.get(language, "💳 Wallet"))
-    warranty_btn = types.KeyboardButton(text=BUTTON_WARRANTY.get(language, "🛡️ Warranty"))
+    support_btn = types.KeyboardButton(text=BUTTON_SUPPORT.get(language, "💬 Support & Warranty"))
 
     lang_btn = types.KeyboardButton(text=BUTTON_LANGUAGE.get(language, "🌐 Language"))
 
     keyboard = [
         [prod_btn, orders_btn],
-        [wallet_btn, warranty_btn],
+        [wallet_btn, support_btn],
         [lang_btn]
     ]
     if telegram_id in config.ADMIN_ID_LIST:
@@ -235,6 +242,7 @@ async def handle_products(message: Message, session: AsyncSession, state: FSMCon
 
 
 @main_router.message(F.text.in_(set(BUTTON_ORDERS.values())))
+@main_router.message(Command("orders"))
 async def handle_orders(message: Message, session: AsyncSession, state: FSMContext, language: Language):
     caption, kb_builder = await UserService.get_purchase_history_buttons(
         message.from_user.id, None, state, session, language
@@ -243,6 +251,7 @@ async def handle_orders(message: Message, session: AsyncSession, state: FSMConte
 
 
 @main_router.message(F.text.in_(set(BUTTON_WALLET.values())))
+@main_router.message(Command("wallet"))
 async def handle_wallet(message: Message, session: AsyncSession, state: FSMContext, language: Language):
     await my_profile(message=message, session=session, state=state, language=language)
 
@@ -261,102 +270,91 @@ async def handle_change_language(message: Message, session: AsyncSession, langua
     await message.answer(text=text, reply_markup=lang_markup)
 
 
-@main_router.message(F.text.in_(set(BUTTON_WARRANTY.values())))
+@main_router.message(F.text.in_(set(BUTTON_SUPPORT.values()) | set(BUTTON_WARRANTY.values())))
+@main_router.message(Command("support"))
 @main_router.message(Command("warranty"))
-async def handle_warranty(message: Message, language: Language):
+@main_router.message(Command("api"))
+@main_router.message(Command("help"))
+@main_router.message(Command("contact"))
+@main_router.message(F.text.in_(KeyboardButton.get_localized_set(KeyboardButton.HELP)))
+@main_router.message(F.text.in_(KeyboardButton.get_localized_set(KeyboardButton.FAQ)))
+async def handle_unified_support(message: Message, language: Language):
     kb_builder = InlineKeyboardBuilder()
-    kb_builder.button(text="🛡️ Gửi yêu cầu bảo hành", url=SUPPORT_LINK)
-    warranty_info = {
+    admin_btn_text = {
+        Language.VI: "💬 Nhắn tin Admin (@truongdvfb)",
+        Language.EN: "💬 Message Admin (@truongdvfb)",
+        Language.HI: "💬 व्यवस्थापक को संदेश भेजें (@truongdvfb)",
+        Language.ZH: "💬 联系管理员 (@truongdvfb)",
+    }.get(language, "💬 Message Admin (@truongdvfb)")
+
+    kb_builder.button(text=admin_btn_text, url=config.SUPPORT_LINK)
+
+    support_info = {
         Language.VI: (
-            "🛡️ **CHÍNH SÁCH BẢO HÀNH & ĐỔI TRẢ**\n\n"
-            "1. **Bảo hành 1 đổi 1** trong vòng 24 giờ kể từ lúc nhận hàng nếu tài khoản bị lỗi hệ thống.\n"
-            "2. Vui lòng giữ nguyên định dạng ban đầu khi nhận đơn.\n"
-            "3. Bấm nút bên dưới để gửi **Mã đơn hàng (Order ID)** cho Admin hỗ trợ."
-        ),
-        Language.HI: (
-            "🛡️ **वारंटी और रिटर्न नीति**\n\n"
-            "1. सिस्टम त्रुटि के मामले में 24 घंटे के भीतर **1-टू-1 वारंटी**।\n"
-            "2. समर्थन के लिए नीचे दिए गए बटन पर क्लिक करें।"
-        ),
-        Language.ZH: (
-            "🛡️ **售后保修政策**\n\n"
-            "1. 购买后24小时内如遇系统问题，**1对1换新**。\n"
-            "2. 点击下方按钮联系客服处理。"
+            "💬 **TRUNG TÂM HỖ TRỢ & LIÊN HỆ ADMIN**\n"
+            "👤 **Admin:** @truongdvfb\n\n"
+            "🛡️ **1. Chính sách bảo hành & Đổi trả:**\n"
+            "• Bảo hành 1 đổi 1 trong vòng 24 giờ kể từ lúc nhận hàng nếu tài khoản lỗi do hệ thống.\n"
+            "• Vui lòng giữ nguyên định dạng ban đầu khi nhận đơn.\n"
+            "• Gửi kèm **Mã đơn hàng (Order ID)** khi nhắn tin để được hỗ trợ nhanh nhất.\n\n"
+            "💳 **2. Hỗ trợ Ví & Nạp tiền:**\n"
+            "• Hỗ trợ nạp tiền tự động qua **Binance Pay (0% phí)** và **USDT Blockchain**.\n"
+            "• Nếu cần kiểm tra giao dịch nạp, vui lòng gửi mã Memo hoặc TxID cho Admin.\n\n"
+            "🔑 **3. Kết nối API & Mua sỉ:**\n"
+            "• Cấp API Key, tài liệu kết nối cho tool tự động reg/nuôi clone và đại lý mua sỉ.\n"
+            "• Chiết khấu ưu đãi cho khách mua số lượng lớn.\n\n"
+            "👉 **Bấm nút bên dưới để nhắn tin trực tiếp cho Admin:**"
         ),
         Language.EN: (
-            "🛡️ **WARRANTY & REPLACEMENT POLICY**\n\n"
-            "1. **1-to-1 replacement** within 24 hours of delivery if there is any system error.\n"
-            "2. Please keep the original format.\n"
-            "3. Click the button below to send your **Order ID** to Support."
+            "💬 **SUPPORT CENTER & CONTACT ADMIN**\n"
+            "👤 **Admin:** @truongdvfb\n\n"
+            "🛡️ **1. Warranty & Replacement Policy:**\n"
+            "• 1-to-1 replacement within 24 hours of delivery if there is any system error.\n"
+            "• Please keep the original format delivered.\n"
+            "• Send your **Order ID** for the fastest resolution.\n\n"
+            "💳 **2. Wallet & Deposit Support:**\n"
+            "• Automatic deposit available via **Binance Pay (0% Fee)** and **USDT Blockchain**.\n"
+            "• For deposit verification, send your Memo or TxID to Admin.\n\n"
+            "🔑 **3. API Integration & Bulk Orders:**\n"
+            "• API Key and REST documentation provided for automation tools and wholesale partners.\n"
+            "• Special discounts for high-volume orders.\n\n"
+            "👉 **Click the button below to message Admin directly:**"
+        ),
+        Language.HI: (
+            "💬 **सहायता केंद्र और व्यवस्यापक संपर्क**\n"
+            "👤 **व्यवस्यापक:** @truongdvfb\n\n"
+            "🛡️ **1. वारंटी और प्रतिस्थापन:**\n"
+            "• सिस्टम त्रुटि के मामले में 24 घंटे के भीतर **1-टू-1 वारंटी**।\n"
+            "• कृपया सहायता के लिए अपना **ऑर्डर आईडी (Order ID)** भेजें।\n\n"
+            "💳 **2. वॉलेट और जमा समर्\u0925न:**\n"
+            "• **Binance Pay (0% शुल्क)** और **USDT** द्वारा स्वचालित जमा।\n\n"
+            "🔑 **3. एपीआई और थोक खरीद:**\n"
+            "• टूल और थोक विक्रेताओं के लिए एपीआई कुंजी उपलब्ध है।\n\n"
+            "👉 **व्यवस्यापक से संपर्क करने के लिए नीचे दिए गए बटन पर क्लिक करें:**"
+        ),
+        Language.ZH: (
+            "💬 **客服支持与售后中心**\n"
+            "👤 **管理员:** @truongdvfb\n\n"
+            "🛡️ **1. 售后保修政策:**\n"
+            "• 购买后24小时内如遇系统问题，**1对1换新**。\n"
+            "• 请保留发货时的原始格式，并提供 **订单号 (Order ID)**。\n\n"
+            "💳 **2. 充值与钱包支持:**\n"
+            "• 支持 **Binance Pay（0% 手续费）** 及 **USDT** 自动充值。\n"
+            "• 充值遇阻请发送 Memo 备注或 TxID 给管理员。\n\n"
+            "🔑 **3. API 接口与批量采购:**\n"
+            "• 为代理、养号/注册工具提供 REST API 接口及技术文档。\n"
+            "• 大额批发享专属折扣优惠。\n\n"
+            "👉 **点击下方按钮直接联系管理员:**"
         )
-    }.get(language, "🛡️ **WARRANTY & REPLACEMENT POLICY**")
-    await message.answer(warranty_info, reply_markup=kb_builder.as_markup())
+    }.get(language, "💬 **SUPPORT CENTER & CONTACT ADMIN**")
+
+    await message.answer(support_info, reply_markup=kb_builder.as_markup())
 
 
 @main_router.message(F.text.in_(set(BUTTON_ADMIN.values())))
 async def handle_admin(message: Message, state: FSMContext, language: Language):
     if message.from_user.id in config.ADMIN_ID_LIST:
         await admin(message=message, state=state, language=language)
-
-
-@main_router.message(Command("help"))
-async def cmd_help(message: Message, session: AsyncSession, language: Language):
-    kb_builder = InlineKeyboardBuilder()
-    kb_builder.button(text=get_text(language, BotEntity.USER, "help_button"), url=SUPPORT_LINK)
-    try:
-        button_media = await ButtonMediaRepository.get_by_button(KeyboardButton.HELP, session)
-        media = MediaService.convert_to_media(button_media.media_id, caption=get_text(language, BotEntity.USER, "help_string"))
-        await NotificationService.answer_media(message, media, kb_builder.as_markup())
-    except Exception:
-        await message.answer(get_text(language, BotEntity.USER, "help_string"), reply_markup=kb_builder.as_markup())
-
-
-@main_router.message(Command("support"))
-async def cmd_support(message: Message, language: Language):
-    kb_builder = InlineKeyboardBuilder()
-    kb_builder.button(text="💬 Nhắn tin Admin", url=SUPPORT_LINK)
-    support_info = (
-        "🆘 **THÔNG TIN HỖ TRỢ / SUPPORT**\n\n"
-        "• Kênh hỗ trợ trực tuyến 24/7.\n"
-        "• Giải quyết các vấn đề nạp tiền, bảo hành tài khoản, tư vấn mua hàng.\n\n"
-        "👉 Bấm nút bên dưới để gặp nhân viên hỗ trợ:"
-    )
-    await message.answer(support_info, reply_markup=kb_builder.as_markup())
-
-
-@main_router.message(Command("api"))
-async def cmd_api(message: Message, language: Language):
-    kb_builder = InlineKeyboardBuilder()
-    kb_builder.button(text="🔑 Đăng ký API Key", url=SUPPORT_LINK)
-    api_info = (
-        "🔑 **QUẢN LÝ KẾT NỐI API**\n\n"
-        "• Hỗ trợ kết nối API cho các đối tác, tool tự động hoặc đại lý mua sỉ.\n"
-        "• Tự động trừ tiền qua ví bot và trả dữ liệu tài khoản theo thời gian thực.\n\n"
-        "👉 Vui lòng liên hệ Admin để cấp quyền API và nhận tài liệu tích hợp."
-    )
-    await message.answer(api_info, reply_markup=kb_builder.as_markup())
-
-
-@main_router.message(F.text.in_(KeyboardButton.get_localized_set(KeyboardButton.FAQ)), IsUserExistFilter())
-async def faq(message: Message, session: AsyncSession, language: Language):
-    try:
-        button_media = await ButtonMediaRepository.get_by_button(KeyboardButton.FAQ, session)
-        media = MediaService.convert_to_media(button_media.media_id, caption=get_text(language, BotEntity.USER, "faq_string"))
-        await NotificationService.answer_media(message, media)
-    except Exception:
-        await message.answer(get_text(language, BotEntity.USER, "faq_string"))
-
-
-@main_router.message(F.text.in_(KeyboardButton.get_localized_set(KeyboardButton.HELP)), IsUserExistFilter())
-async def support(message: Message, session: AsyncSession, language: Language):
-    kb_builder = InlineKeyboardBuilder()
-    kb_builder.button(text=get_text(language, BotEntity.USER, "help_button"), url=SUPPORT_LINK)
-    try:
-        button_media = await ButtonMediaRepository.get_by_button(KeyboardButton.HELP, session)
-        media = MediaService.convert_to_media(button_media.media_id, caption=get_text(language, BotEntity.USER, "help_string"))
-        await NotificationService.answer_media(message, media, kb_builder.as_markup())
-    except Exception:
-        await message.answer(get_text(language, BotEntity.USER, "help_string"), reply_markup=kb_builder.as_markup())
 
 
 @main_router.message(F.text.in_(KeyboardButton.get_localized_set(KeyboardButton.REVIEWS)), IsUserExistFilter())

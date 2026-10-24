@@ -167,12 +167,12 @@ async def _startup() -> None:
 
 
     commands = [
-        BotCommand(command="start", description="Trang ch? (Home)"),
-        BotCommand(command="products", description="Xem s?n ph?m (Products)"),
-        BotCommand(command="orders", description="??n h?ng ?? mua (Orders)"),
-        BotCommand(command="wallet", description="V? & N?p ti?n (Wallet)"),
-        BotCommand(command="support", description="H? tr?, B?o h?nh & API"),
-        BotCommand(command="language", description="??i ng?n ng? (Language)"),
+        BotCommand(command="start", description="Trang chủ (Home)"),
+        BotCommand(command="products", description="Xem sản phẩm (Products)"),
+        BotCommand(command="orders", description="Đơn hàng đã mua (Orders)"),
+        BotCommand(command="wallet", description="Ví & Nạp tiền (Wallet)"),
+        BotCommand(command="support", description="Hỗ trợ, Bảo hành & API"),
+        BotCommand(command="language", description="Đổi ngôn ngữ (Language)"),
     ]
 
     try:
