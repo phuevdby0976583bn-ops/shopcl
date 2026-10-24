@@ -106,7 +106,7 @@ facebook_cron_task = None
 
 async def facebook_stock_cron_worker():
     """Tu dong quet va loai bo clone Facebook DIE trong kho dinh ky sau moi XX phut."""
-    await asyncio.sleep(120)
+    await asyncio.sleep(15)
     from services.facebook import scan_facebook_inventory
 
     while True:

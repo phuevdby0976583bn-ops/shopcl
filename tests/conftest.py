@@ -52,6 +52,9 @@ def _build_config_module() -> ModuleType:
     config.JWT_EXPIRE_MINUTES = 30
     config.JWT_SECRET_KEY = "secret"
     config.JWT_ALGORITHM = "HS256"
+    from services.policy_defaults import DEFAULT_WARRANTY_LEGAL_POLICY, DEFAULT_WARRANTY_SHORT_SUMMARY
+    config.WARRANTY_LEGAL_POLICY = DEFAULT_WARRANTY_LEGAL_POLICY
+    config.WARRANTY_SHORT_SUMMARY = DEFAULT_WARRANTY_SHORT_SUMMARY
     return config
 
 
@@ -59,6 +62,8 @@ sys.modules.setdefault("config", _build_config_module())
 
 sqladmin_module = ModuleType("sqladmin")
 sqladmin_module.ModelView = type("ModelView", (), {"__init_subclass__": classmethod(lambda cls, **kwargs: None)})
+sqladmin_module.BaseView = type("BaseView", (), {})
+sqladmin_module.expose = lambda *args, **kwargs: (lambda fn: fn)
 sys.modules.setdefault("sqladmin", sqladmin_module)
 
 jose_module = ModuleType("jose")
@@ -112,6 +117,14 @@ redis_asyncio_module.Redis = _Redis
 redis_module.asyncio = redis_asyncio_module
 sys.modules.setdefault("redis", redis_module)
 sys.modules.setdefault("redis.asyncio", redis_asyncio_module)
+
+redis_asyncio_client_module = ModuleType("redis.asyncio.client")
+redis_asyncio_client_module.Redis = _Redis
+sys.modules.setdefault("redis.asyncio.client", redis_asyncio_client_module)
+
+redis_asyncio_conn_module = ModuleType("redis.asyncio.connection")
+redis_asyncio_conn_module.ConnectionPool = type("ConnectionPool", (), {})
+sys.modules.setdefault("redis.asyncio.connection", redis_asyncio_conn_module)
 
 db_module = ModuleType("db")
 

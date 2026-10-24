@@ -356,15 +356,27 @@ async def handle_change_language(message: Message, session: AsyncSession, langua
     await message.answer(text=text, reply_markup=lang_markup)
 
 
-@main_router.message(F.text.in_(set(BUTTON_SUPPORT.values()) | set(BUTTON_WARRANTY.values())))
-@main_router.message(Command("support"))
+@main_router.message(F.text.in_(set(BUTTON_WARRANTY.values())))
 @main_router.message(Command("warranty"))
-@main_router.message(Command("api"))
-@main_router.message(Command("help"))
-@main_router.message(Command("contact"))
-@main_router.message(F.text.in_(KeyboardButton.get_localized_set(KeyboardButton.HELP)))
-@main_router.message(F.text.in_(KeyboardButton.get_localized_set(KeyboardButton.FAQ)))
-async def handle_unified_support(message: Message, language: Language):
+@main_router.message(Command("policy"))
+@main_router.message(Command("dieukhoan"))
+@main_router.message(Command("baohanh"))
+@main_router.message(Command("terms"))
+@main_router.callback_query(F.data == "view_full_policy")
+async def handle_full_policy(event: Message | CallbackQuery, language: Language = Language.VI):
+    from services.policy_defaults import get_default_policy, split_message_text
+
+    is_cb = isinstance(event, CallbackQuery)
+    if is_cb:
+        await event.answer()
+        target_msg = event.message
+    else:
+        target_msg = event
+
+    policy_text = getattr(config, "WARRANTY_LEGAL_POLICY", "") or ""
+    if not policy_text:
+        policy_text = get_default_policy(language)
+
     kb_builder = InlineKeyboardBuilder()
     admin_btn_text = {
         Language.VI: "💬 Nhắn tin Admin (@truongdvfb)",
@@ -377,124 +389,120 @@ async def handle_unified_support(message: Message, language: Language):
         Language.ES: "💬 Contactar al Administrador (@truongdvfb)",
     }.get(language, "💬 Message Admin (@truongdvfb)")
 
+    back_btn_text = {
+        Language.VI: "⬅️ Quay lại Hỗ trợ",
+        Language.EN: "⬅️ Back to Support",
+        Language.HI: "⬅️ वापस सहायता",
+        Language.ZH: "⬅️ 返回客服中心",
+        Language.FR: "⬅️ Retour au Support",
+        Language.DE: "⬅️ Zurück zum Support",
+        Language.IT: "⬅️ Torna all'assistenza",
+        Language.ES: "⬅️ Volver al Soporte",
+    }.get(language, "⬅️ Back to Support")
+
     kb_builder.button(text=admin_btn_text, url=config.SUPPORT_LINK)
+    kb_builder.button(text=back_btn_text, callback_data="back_to_support_menu")
+    kb_builder.adjust(1)
 
-    support_info = {
-        Language.VI: (
-            "💬 **TRUNG TÂM HỖ TRỢ & LIÊN HỆ ADMIN**\n"
-            "👤 **Admin:** @truongdvfb\n\n"
-            "🛡️ **1. Chính sách bảo hành & Đổi trả:**\n"
-            "• Bảo hành 1 đổi 1 trong vòng 24 giờ kể từ lúc nhận hàng nếu tài khoản lỗi do hệ thống.\n"
-            "• Vui lòng giữ nguyên định dạng ban đầu khi nhận đơn.\n"
-            "• Gửi kèm **Mã đơn hàng (Order ID)** khi nhắn tin để được hỗ trợ nhanh nhất.\n\n"
-            "💳 **2. Hỗ trợ Ví & Nạp tiền:**\n"
-            "• Hỗ trợ nạp tiền tự động qua **Binance Pay (0% phí)** và **USDT Blockchain**.\n"
-            "• Nếu cần kiểm tra giao dịch nạp, vui lòng gửi mã Memo hoặc TxID cho Admin.\n\n"
-            "🔑 **3. Kết nối API & Mua sỉ:**\n"
-            "• Cấp API Key, tài liệu kết nối cho tool tự động reg/nuôi clone và đại lý mua sỉ.\n"
-            "• Chiết khấu ưu đãi cho khách mua số lượng lớn.\n\n"
-            "👉 **Bấm nút bên dưới để nhắn tin trực tiếp cho Admin:**"
-        ),
-        Language.EN: (
-            "💬 **SUPPORT CENTER & CONTACT ADMIN**\n"
-            "👤 **Admin:** @truongdvfb\n\n"
-            "🛡️ **1. Warranty & Replacement Policy:**\n"
-            "• 1-to-1 replacement within 24 hours of delivery if there is any system error.\n"
-            "• Please keep the original format delivered.\n"
-            "• Send your **Order ID** for the fastest resolution.\n\n"
-            "💳 **2. Wallet & Deposit Support:**\n"
-            "• Automatic deposit available via **Binance Pay (0% Fee)** and **USDT Blockchain**.\n"
-            "• For deposit verification, send your Memo or TxID to Admin.\n\n"
-            "🔑 **3. API Integration & Bulk Orders:**\n"
-            "• API Key and REST documentation provided for automation tools and wholesale partners.\n"
-            "• Special discounts for high-volume orders.\n\n"
-            "👉 **Click the button below to message Admin directly:**"
-        ),
-        Language.HI: (
-            "💬 **सहायता केंद्र और व्यवस्यापक संपर्क**\n"
-            "👤 **व्यवस्यापक:** @truongdvfb\n\n"
-            "🛡️ **1. वारंटी और प्रतिस्थापन:**\n"
-            "• सिस्टम त्रुटि के मामले में 24 घंटे के भीतर **1-टू-1 वारंटी**।\n"
-            "• कृपया सहायता के लिए अपना **ऑर्डर आईडी (Order ID)** भेजें।\n\n"
-            "💳 **2. वॉलेट और जमा समर्\u0925न:**\n"
-            "• **Binance Pay (0% शुल्क)** और **USDT** द्वारा स्वचालित जमा।\n\n"
-            "🔑 **3. एपीआई और थोक खरीद:**\n"
-            "• टूल और थोक विक्रेताओं के लिए एपीआई कुंजी उपलब्ध है।\n\n"
-            "👉 **व्यवस्यापक से संपर्क करने के लिए नीचे दिए गए बटन पर क्लिक करें:**"
-        ),
-        Language.ZH: (
-            "💬 **客服支持与售后中心**\n"
-            "👤 **管理员:** @truongdvfb\n\n"
-            "🛡️ **1. 售后保修政策:**\n"
-            "• 购买后24小时内如遇系统问题，**1对1换新**。\n"
-            "• 请保留发货时的原始格式，并提供 **订单号 (Order ID)**。\n\n"
-            "💳 **2. 充值与钱包支持:**\n"
-            "• 支持 **Binance Pay（0% 手续费）** 及 **USDT** 自动充值。\n"
-            "• 充值遇阻请发送 Memo 备注或 TxID 给管理员。\n\n"
-            "🔑 **3. API 接口与批量采购:**\n"
-            "• 为代理、养号/注册工具提供 REST API 接口及技术文档。\n"
-            "• 大额批发享专属折扣优惠。\n\n"
-            "👉 **点击下方按钮直接联系管理员:**"
-        ),
-        Language.FR: (
-            "💬 **CENTRE DE SUPPORT & GARANTIE**\n"
-            "👤 **Administrateur :** @truongdvfb\n\n"
-            "🛡️ **1. Politique de garantie :**\n"
-            "• Remplacement **1 pour 1** sous 24h en cas d'erreur système ou problème initial.\n"
-            "• Veuillez conserver le format d'origine livré et fournir votre **Numéro de commande (Order ID)**.\n\n"
-            "💳 **2. Support portefeuille & recharge :**\n"
-            "• Recharge automatique via **Binance Pay (0% de frais)** et **USDT**.\n"
-            "• En cas de problème de dépôt, envoyez la note Memo ou le TxID à l'administrateur.\n\n"
-            "🔑 **3. API & Achats en gros :**\n"
-            "• Clé API REST disponible pour outils et revendeurs avec documentation technique.\n"
-            "• Tarifs préférentiels pour les gros volumes.\n\n"
-            "👉 **Cliquez sur le bouton ci-dessous pour contacter l'administrateur :**"
-        ),
-        Language.DE: (
-            "💬 **KUNDENSERVICE & GARANTIEZENTRUM**\n"
-            "👤 **Administrator:** @truongdvfb\n\n"
-            "🛡️ **1. Garantiebestimmungen:**\n"
-            "• **1:1-Ersatz** innerhalb von 24 Stunden bei Systemfehlern oder Erstproblemen.\n"
-            "• Bitte Originalformat beibehalten und Ihre **Bestellnummer (Order ID)** bereithalten.\n\n"
-            "💳 **2. Guthaben & Aufladung:**\n"
-            "• Automatische Aufladung über **Binance Pay (0% Gebühr)** und **USDT**.\n"
-            "• Bei Verzögerungen Memo-Code oder TxID an den Administrator senden.\n\n"
-            "🔑 **3. API & Großeinkauf:**\n"
-            "• REST-API-Schlüssel für Tools und Wiederverkäufer verfügbar.\n"
-            "• Attraktive Rabatte bei Großbestellungen.\n\n"
-            "👉 **Klicken Sie unten, um den Administrator direkt zu kontaktieren:**"
-        ),
-        Language.IT: (
-            "💬 **CENTRO ASSISTENZA & GARANZIA**\n"
-            "👤 **Amministratore:** @truongdvfb\n\n"
-            "🛡️ **1. Politica di garanzia:**\n"
-            "• Sostituzione **1 a 1** entro 24 ore in caso di errori di sistema o difetti iniziali.\n"
-            "• Conservare il formato originale e fornire il proprio **ID Ordine (Order ID)**.\n\n"
-            "💳 **2. Supporto portafoglio & ricariche:**\n"
-            "• Ricarica automatica tramite **Binance Pay (0% commissioni)** e **USDT**.\n"
-            "• In caso di necessità, inviare il Memo o TxID all'amministratore.\n\n"
-            "🔑 **3. API & Acquisti all'ingrosso:**\n"
-            "• Chiavi API REST disponibili per tool e rivenditori con documentazione completa.\n"
-            "• Sconti dedicati per ordini all'ingrosso.\n\n"
-            "👉 **Clicca sul pulsante qui sotto per contattare l'amministratore:**"
-        ),
-        Language.ES: (
-            "💬 **CENTRO DE SOPORTE & GARANTÍA**\n"
-            "👤 **Administrador:** @truongdvfb\n\n"
-            "🛡️ **1. Política de garantía:**\n"
-            "• Reemplazo **1 a 1** dentro de las 24 horas por fallas del sistema o problemas iniciales.\n"
-            "• Conserve el formato de entrega original y proporcione su **ID de Pedido (Order ID)**.\n\n"
-            "💳 **2. Soporte de billetera y depósitos:**\n"
-            "• Depósito automático a través de **Binance Pay (0% comisión)** y **USDT**.\n"
-            "• Si tiene algún problema, envíe el Memo o TxID al administrador.\n\n"
-            "🔑 **3. API y compras al por mayor:**\n"
-            "• Claves API REST disponibles para herramientas y distribuidores con documentación técnica.\n"
-            "• Descuentos exclusivos para compras al por mayor.\n\n"
-            "👉 **Haz clic en el botón de abajo para contactar al administrador:**"
+    chunks = split_message_text(policy_text, max_length=3800)
+
+    if is_cb and len(chunks) == 1:
+        try:
+            await target_msg.edit_text(chunks[0], reply_markup=kb_builder.as_markup(), parse_mode="HTML")
+            return
+        except Exception:
+            pass
+
+    for i, chunk in enumerate(chunks):
+        if i == len(chunks) - 1:
+            await target_msg.answer(chunk, reply_markup=kb_builder.as_markup(), parse_mode="HTML")
+        else:
+            await target_msg.answer(chunk, parse_mode="HTML")
+
+
+@main_router.message(F.text.in_(set(BUTTON_SUPPORT.values())))
+@main_router.message(Command("support"))
+@main_router.message(Command("api"))
+@main_router.message(Command("help"))
+@main_router.message(Command("contact"))
+@main_router.message(F.text.in_(KeyboardButton.get_localized_set(KeyboardButton.HELP)))
+@main_router.message(F.text.in_(KeyboardButton.get_localized_set(KeyboardButton.FAQ)))
+@main_router.callback_query(F.data == "back_to_support_menu")
+async def handle_unified_support(event: Message | CallbackQuery, language: Language = Language.VI):
+    from services.policy_defaults import get_default_summary
+
+    is_cb = isinstance(event, CallbackQuery)
+    if is_cb:
+        await event.answer()
+        target_msg = event.message
+    else:
+        target_msg = event
+
+    kb_builder = InlineKeyboardBuilder()
+
+    policy_btn_text = {
+        Language.VI: "🛡️ Xem Điều khoản & Bảo hành (Toàn văn)",
+        Language.EN: "🛡️ Full Warranty & Legal Policy",
+        Language.HI: "🛡️ पूर्ण वारंटी और कानूनी नीति",
+        Language.ZH: "🛡️ 查看完整质保与法律条款",
+        Language.FR: "🛡️ Voir Politique de Garantie Complète",
+        Language.DE: "🛡️ Vollständige Garantiebestimmungen",
+        Language.IT: "🛡️ Termini di Garanzia Completi",
+        Language.ES: "🛡️ Ver Política de Garantía Completa",
+    }.get(language, "🛡️ Full Warranty & Legal Policy")
+
+    admin_btn_text = {
+        Language.VI: "💬 Nhắn tin Admin (@truongdvfb)",
+        Language.EN: "💬 Message Admin (@truongdvfb)",
+        Language.HI: "💬 व्यवस्थापक को संदेश भेजें (@truongdvfb)",
+        Language.ZH: "💬 联系管理员 (@truongdvfb)",
+        Language.FR: "💬 Contacter l'administrateur (@truongdvfb)",
+        Language.DE: "💬 Admin kontaktieren (@truongdvfb)",
+        Language.IT: "💬 Contatta l'amministratore (@truongdvfb)",
+        Language.ES: "💬 Contactar al Administrador (@truongdvfb)",
+    }.get(language, "💬 Message Admin (@truongdvfb)")
+
+    kb_builder.button(text=policy_btn_text, callback_data="view_full_policy")
+    kb_builder.button(text=admin_btn_text, url=config.SUPPORT_LINK)
+    kb_builder.adjust(1)
+
+    summary_text = getattr(config, "WARRANTY_SHORT_SUMMARY", "") or ""
+    if not summary_text:
+        summary_text = get_default_summary(language)
+
+    if language == Language.VI:
+        support_info = (
+            f"💬 <b>TRUNG TÂM HỖ TRỢ & LIÊN HỆ ADMIN</b>\n"
+            f"👤 <b>Admin:</b> @truongdvfb\n\n"
+            f"{summary_text}\n\n"
+            f"💳 <b>Hỗ trợ Ví & Nạp tiền:</b>\n"
+            f"• Hỗ trợ nạp tiền tự động qua <b>Binance Pay (0% phí - Nhận 1s)</b> và <b>USDT Blockchain</b>.\n"
+            f"• Nạp tự động chuyển khoản ngân hàng Việt Nam (VietQR 24/7).\n\n"
+            f"🔑 <b>Kết nối API & Mua sỉ:</b>\n"
+            f"• Cấp API Key, tài liệu kết nối cho tool tự động reg/nuôi clone và đại lý mua sỉ.\n"
+            f"• Chiết khấu ưu đãi cho khách mua số lượng lớn.\n\n"
+            f"👉 <i>Bấm nút bên dưới để xem toàn văn chính sách hoặc nhắn tin trực tiếp cho Admin:</i>"
         )
-    }.get(language, "💬 **SUPPORT CENTER & CONTACT ADMIN**")
+    else:
+        support_info = (
+            f"💬 <b>SUPPORT CENTER & CONTACT ADMIN</b>\n"
+            f"👤 <b>Admin:</b> @truongdvfb\n\n"
+            f"{summary_text}\n\n"
+            f"💳 <b>Wallet & Deposit Support:</b>\n"
+            f"• Automatic deposit available via <b>Binance Pay (0% Fee - 1s)</b> and <b>USDT</b>.\n\n"
+            f"🔑 <b>API Integration & Bulk Orders:</b>\n"
+            f"• REST API available for automation tools and wholesale partners.\n\n"
+            f"👉 <i>Click below to read full warranty policy or message Admin:</i>"
+        )
 
-    await message.answer(support_info, reply_markup=kb_builder.as_markup())
+    if is_cb:
+        try:
+            await target_msg.edit_text(support_info, reply_markup=kb_builder.as_markup(), parse_mode="HTML")
+            return
+        except Exception:
+            pass
+
+    await target_msg.answer(support_info, reply_markup=kb_builder.as_markup(), parse_mode="HTML")
 
 
 @main_router.message(F.text.in_(set(BUTTON_TOP_UP.values())))
