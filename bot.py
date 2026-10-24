@@ -338,6 +338,8 @@ from middleware.anti_ddos import AntiDDoSMiddleware
 
 app = FastAPI(lifespan=lifespan)
 
+from starlette.middleware.sessions import SessionMiddleware
+app.add_middleware(SessionMiddleware, secret_key=config.JWT_SECRET_KEY)
 app.add_middleware(AntiDDoSMiddleware, max_requests_per_minute=120)
 
 

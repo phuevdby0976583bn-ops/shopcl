@@ -12,6 +12,33 @@ from models.item import Item
 api_router = APIRouter(prefix="/api", tags=["API Upload Hàng Tự Động & Check Live"])
 
 
+def is_request_authorized(request: Request, x_api_key: Optional[str] = None) -> bool:
+    """Xác thực request qua X-API-KEY header hoặc qua Cookie Session của Admin."""
+    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
+    if x_api_key and x_api_key in valid_keys:
+        return True
+
+    token = None
+    try:
+        session_dict = request.scope.get("session")
+        if isinstance(session_dict, dict):
+            token = session_dict.get("token")
+        if not token:
+            try:
+                token = request.session.get("token")
+            except (AssertionError, AttributeError, Exception):
+                token = None
+    except Exception:
+        token = None
+
+    if token:
+        from utils.utils import decode_token
+        if decode_token(token):
+            return True
+
+    return False
+
+
 class BulkUploadRequest(BaseModel):
     category_name: str
     subcategory_name: str
@@ -25,13 +52,7 @@ class BulkUploadRequest(BaseModel):
 
 @api_router.post("/items/bulk-upload")
 async def bulk_upload_items(payload: BulkUploadRequest, request: Request, x_api_key: str = Header(None)):
-    token = request.session.get("token") if hasattr(request, "session") else None
-    from utils.utils import decode_token
-    is_session_valid = bool(token and decode_token(token))
-    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
-    is_api_key_valid = bool(x_api_key and x_api_key in valid_keys)
-
-    if not is_session_valid and not is_api_key_valid:
+    if not is_request_authorized(request, x_api_key):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Sai mã X-API-KEY hoặc chưa đăng nhập Admin!"
@@ -138,63 +159,53 @@ class CheckUidRequest(BaseModel):
 
 @api_router.post("/facebook/check-uid")
 async def check_uid_endpoint(payload: CheckUidRequest, request: Request, x_api_key: str = Header(None)):
-    token = request.session.get("token") if hasattr(request, "session") else None
-    from utils.utils import decode_token
-    is_session_valid = bool(token and decode_token(token))
-    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
-    is_api_key_valid = bool(x_api_key and x_api_key in valid_keys)
-
-    if not is_session_valid and not is_api_key_valid:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chưa đăng nhập Admin hoặc sai API Key!")
+    if not is_request_authorized(request, x_api_key):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sai mã X-API-KEY hoặc chưa đăng nhập Admin!")
 
     from services.facebook import extract_uid, check_uid_live_async
-    uid = extract_uid(payload.data)
-    if not uid:
-        return {
-            "status": "error",
-            "message": "Không tìm thấy UID Facebook hợp lệ trong chuỗi cung cấp!",
-            "result": "UNKNOWN"
-        }
+    import aiohttp
 
-    live_status = await check_uid_live_async(uid)
+    lines = [l.strip() for l in payload.data.splitlines() if l.strip()]
+    if not lines:
+        return {"status": "success", "results": [], "total": 0, "live": 0, "die": 0}
+
+    results = []
+    async with aiohttp.ClientSession() as session:
+        for line in lines[:50]:  # Giới hạn 50 UID mỗi lần test tức thì
+            uid = extract_uid(line)
+            if uid:
+                res_status = await check_uid_live_async(uid, session)
+                results.append({"raw": line, "uid": uid, "status": res_status})
+            else:
+                results.append({"raw": line, "uid": None, "status": "UNKNOWN"})
+
+    live_cnt = sum(1 for r in results if r["status"] == "LIVE")
+    die_cnt = sum(1 for r in results if r["status"] == "DIE")
+
     return {
         "status": "success",
-        "uid": uid,
-        "result": live_status,
-        "avatar_url": f"https://graph.facebook.com/{uid}/picture?type=normal" if live_status == "LIVE" else None
+        "results": results,
+        "total": len(results),
+        "live": live_cnt,
+        "die": die_cnt
     }
 
 
-@api_router.post("/facebook/scan-stock")
-async def scan_facebook_stock_endpoint(request: Request, x_api_key: str = Header(None)):
-    token = request.session.get("token") if hasattr(request, "session") else None
-    from utils.utils import decode_token
-    is_session_valid = bool(token and decode_token(token))
-    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
-    is_api_key_valid = bool(x_api_key and x_api_key in valid_keys)
-
-    if not is_session_valid and not is_api_key_valid:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chưa đăng nhập Admin hoặc sai API Key!")
+@api_router.get("/facebook/scan-stock")
+async def scan_stock_endpoint(request: Request, x_api_key: str = Header(None)):
+    if not is_request_authorized(request, x_api_key):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sai mã X-API-KEY hoặc chưa đăng nhập Admin!")
 
     from services.facebook import scan_facebook_inventory
     async with get_db_session() as session:
         result = await scan_facebook_inventory(session, auto_delete_die=False)
-        return {
-            "status": "success",
-            **result
-        }
+        return {"status": "success", **result}
 
 
 @api_router.post("/facebook/clean-die")
-async def clean_facebook_die_endpoint(request: Request, x_api_key: str = Header(None)):
-    token = request.session.get("token") if hasattr(request, "session") else None
-    from utils.utils import decode_token
-    is_session_valid = bool(token and decode_token(token))
-    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
-    is_api_key_valid = bool(x_api_key and x_api_key in valid_keys)
-
-    if not is_session_valid and not is_api_key_valid:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chưa đăng nhập Admin hoặc sai API Key!")
+async def clean_die_endpoint(request: Request, x_api_key: str = Header(None)):
+    if not is_request_authorized(request, x_api_key):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sai mã X-API-KEY hoặc chưa đăng nhập Admin!")
 
     from services.facebook import scan_facebook_inventory
     async with get_db_session() as session:
@@ -207,9 +218,8 @@ async def clean_facebook_die_endpoint(request: Request, x_api_key: str = Header(
 
 
 @api_router.get("/inventory/status")
-async def inventory_status(x_api_key: str = Header(None)):
-    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
-    if not x_api_key or x_api_key not in valid_keys:
+async def inventory_status(request: Request, x_api_key: str = Header(None)):
+    if not is_request_authorized(request, x_api_key):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sai mã X-API-KEY!")
 
     async with get_db_session() as session:
@@ -230,9 +240,8 @@ async def inventory_status(x_api_key: str = Header(None)):
 
 
 @api_router.get("/binancepay/status")
-async def binance_pay_status(x_api_key: str = Header(None)):
-    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
-    if not x_api_key or x_api_key not in valid_keys:
+async def binance_pay_status(request: Request, x_api_key: str = Header(None)):
+    if not is_request_authorized(request, x_api_key):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sai mã X-API-KEY!")
 
     is_configured = bool(config.BINANCE_API_KEY and config.BINANCE_API_SECRET)
@@ -256,9 +265,8 @@ async def binance_pay_status(x_api_key: str = Header(None)):
 
 
 @api_router.post("/binancepay/check-now")
-async def binance_pay_check_now(x_api_key: str = Header(None)):
-    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
-    if not x_api_key or x_api_key not in valid_keys:
+async def binance_pay_check_now(request: Request, x_api_key: str = Header(None)):
+    if not is_request_authorized(request, x_api_key):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sai mã X-API-KEY!")
 
     from services.binance_pay import BinancePayService
@@ -279,13 +287,7 @@ class SettingsUpdateRequest(BaseModel):
 
 @api_router.post("/settings/save")
 async def save_settings_endpoint(payload: SettingsUpdateRequest, request: Request, x_api_key: str = Header(None)):
-    token = request.session.get("token") if hasattr(request, "session") else None
-    from utils.utils import decode_token
-    is_session_valid = bool(token and decode_token(token))
-    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
-    is_api_key_valid = bool(x_api_key and x_api_key in valid_keys)
-
-    if not is_session_valid and not is_api_key_valid:
+    if not is_request_authorized(request, x_api_key):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chưa đăng nhập Admin hoặc sai API Key!")
 
     from services.settings import SettingsService
@@ -300,13 +302,7 @@ async def save_settings_endpoint(payload: SettingsUpdateRequest, request: Reques
 
 @api_router.get("/settings/current")
 async def get_settings_endpoint(request: Request, x_api_key: str = Header(None)):
-    token = request.session.get("token") if hasattr(request, "session") else None
-    from utils.utils import decode_token
-    is_session_valid = bool(token and decode_token(token))
-    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
-    is_api_key_valid = bool(x_api_key and x_api_key in valid_keys)
-
-    if not is_session_valid and not is_api_key_valid:
+    if not is_request_authorized(request, x_api_key):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chưa đăng nhập Admin hoặc sai API Key!")
 
     from services.settings import SettingsService
@@ -316,13 +312,7 @@ async def get_settings_endpoint(request: Request, x_api_key: str = Header(None))
 
 @api_router.get("/categories/list")
 async def list_categories_and_subcategories(request: Request, x_api_key: str = Header(None)):
-    token = request.session.get("token") if hasattr(request, "session") else None
-    from utils.utils import decode_token
-    is_session_valid = bool(token and decode_token(token))
-    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
-    is_api_key_valid = bool(x_api_key and x_api_key in valid_keys)
-
-    if not is_session_valid and not is_api_key_valid:
+    if not is_request_authorized(request, x_api_key):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chưa đăng nhập Admin!")
 
     async with get_db_session() as session:

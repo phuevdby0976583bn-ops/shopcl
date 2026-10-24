@@ -54,7 +54,18 @@ db_url = URL.create(
     database=config.DB_NAME,
 )
 
-engine = create_async_engine(db_url, echo=False, connect_args=connect_args)
+connect_args["command_timeout"] = 10
+
+engine = create_async_engine(
+    db_url,
+    echo=False,
+    connect_args=connect_args,
+    pool_size=15,
+    max_overflow=25,
+    pool_recycle=300,
+    pool_pre_ping=True,
+    pool_timeout=15,
+)
 session_maker = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
