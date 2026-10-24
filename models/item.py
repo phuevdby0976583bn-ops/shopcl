@@ -121,10 +121,17 @@ class ItemAdmin(ModelView, model=Item):
         raw_text = data.get("private_data") or ""
         lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
 
-        if len(lines) <= 1:
-            return await Query(self).insert(data, request)
+        if not lines:
+            raise ValueError("Vui lòng nhập ít nhất 1 tài khoản clone!")
 
-        from services.facebook import is_facebook_product, is_facebook_clone, scan_and_filter_facebook_raw_lines
+        from services.facebook import (
+            is_facebook_product,
+            is_facebook_clone,
+            scan_and_filter_facebook_raw_lines,
+            extract_uid,
+            check_uid_live_async,
+            get_existing_uids_from_db
+        )
         import config
 
         cat_obj = data.get("category")
@@ -137,21 +144,42 @@ class ItemAdmin(ModelView, model=Item):
         )
         should_check = getattr(config, 'FB_AUTO_CHECK_ON_UPLOAD', True)
         should_delete = getattr(config, 'FB_AUTO_DELETE_DIE_ON_UPLOAD', True)
+        should_filter_dups = getattr(config, 'FB_FILTER_DUPLICATE_UIDS', True)
 
-        if is_fb and should_check:
-            clean_lines, dead_lines, stats = await scan_and_filter_facebook_raw_lines(
-                lines, check_live=True, delete_die=should_delete
-            )
-            lines = clean_lines
-
-        if not lines:
-            data["private_data"] = "NONE (Tất cả tài khoản DIE đã bị loại bỏ)"
+        # TRƯỜNG HỢP 1: NGƯỜI DÙNG NHẬP 1 TÀI KHOẢN DUY NHẤT
+        if len(lines) == 1:
+            line = lines[0]
+            uid = extract_uid(line)
+            if uid and should_filter_dups:
+                existing_uids = await get_existing_uids_from_db()
+                if str(uid) in existing_uids:
+                    raise ValueError(f"Tài khoản UID {uid} đã tồn tại trong kho hàng! Hệ thống từ chối thêm nick trùng lặp.")
+            if is_fb and uid and should_check:
+                status = await check_uid_live_async(uid)
+                if status == "DIE" and should_delete:
+                    raise ValueError(f"Tài khoản UID {uid} đã bị DIE (khóa/checkpoint)! Không thể thêm tài khoản DIE vào kho.")
+            data["private_data"] = line
             return await Query(self).insert(data, request)
 
-        data["private_data"] = lines[0]
+        # TRƯỜNG HỢP 2: DÁN NHIỀU DÒNG (HÀNG LOẠT 2 - 1000+ DÒNG)
+        clean_lines, dead_lines, stats = await scan_and_filter_facebook_raw_lines(
+            lines,
+            check_live=(is_fb and should_check),
+            delete_die=should_delete,
+            filter_duplicates=should_filter_dups
+        )
+
+        if not clean_lines:
+            dup_count = stats.get("duplicates", 0)
+            die_count = stats.get("die", 0)
+            raise ValueError(
+                f"Không có tài khoản nào được thêm! ({dup_count} nick trùng UID, {die_count} nick DIE)."
+            )
+
+        data["private_data"] = clean_lines[0]
         first_obj = await Query(self).insert(data, request)
 
-        if len(lines) > 1:
+        if len(clean_lines) > 1:
             from db import get_db_session, session_commit
             cat_id = getattr(first_obj, "category_id", None) or getattr(data.get("category"), "id", None)
             subcat_id = getattr(first_obj, "subcategory_id", None) or getattr(data.get("subcategory"), "id", None)
@@ -167,7 +195,7 @@ class ItemAdmin(ModelView, model=Item):
                     is_new=first_obj.is_new,
                     description=first_obj.description
                 )
-                for line in lines[1:]
+                for line in clean_lines[1:]
             ]
             async with get_db_session() as session:
                 session.add_all(extra_items)

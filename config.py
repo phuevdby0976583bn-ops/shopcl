@@ -89,6 +89,7 @@ JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
 JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'default_jwt_secret_key_123').strip().strip('"').strip("'")
 
 # FACEBOOK CLONE SETTINGS (CHECK LIVE & TU DONG XOA DIE)
+FB_FILTER_DUPLICATE_UIDS = os.environ.get('FB_FILTER_DUPLICATE_UIDS', 'true').lower() in ('true', '1', 'yes')
 FB_AUTO_CHECK_ON_UPLOAD = os.environ.get('FB_AUTO_CHECK_ON_UPLOAD', 'true').lower() in ('true', '1', 'yes')
 FB_AUTO_DELETE_DIE_ON_UPLOAD = os.environ.get('FB_AUTO_DELETE_DIE_ON_UPLOAD', 'true').lower() in ('true', '1', 'yes')
 FB_CHECK_LIVE_BEFORE_DELIVERY = os.environ.get('FB_CHECK_LIVE_BEFORE_DELIVERY', 'true').lower() in ('true', '1', 'yes')

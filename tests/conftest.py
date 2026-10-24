@@ -119,9 +119,15 @@ async def _noop_async(*args, **kwargs):
     return None
 
 
+from contextlib import asynccontextmanager
+@asynccontextmanager
+async def _noop_async_cm(*args, **kwargs):
+    yield SimpleNamespace(execute=_noop_async, commit=_noop_async)
+
+
 db_module.session_execute = _noop_async
 db_module.session_flush = _noop_async
 db_module.session_commit = _noop_async
-db_module.get_db_session = _noop_async
+db_module.get_db_session = _noop_async_cm
 db_module.create_db_and_tables = _noop_async
 sys.modules.setdefault("db", db_module)

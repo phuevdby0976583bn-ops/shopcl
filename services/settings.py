@@ -22,6 +22,7 @@ SUPPORTED_SETTING_KEYS = [
     "LTC_FORWARDING_ADDRESS",
     "DOGE_FORWARDING_ADDRESS",
     "SUPPORT_LINK",
+    "FB_FILTER_DUPLICATE_UIDS",
     "FB_AUTO_CHECK_ON_UPLOAD",
     "FB_AUTO_DELETE_DIE_ON_UPLOAD",
     "FB_CHECK_LIVE_BEFORE_DELIVERY",
@@ -129,6 +130,11 @@ class SettingsService:
             "LTC_FORWARDING_ADDRESS": db_settings.get("LTC_FORWARDING_ADDRESS") or getattr(config, "LTC_FORWARDING_ADDRESS", "") or "",
             "DOGE_FORWARDING_ADDRESS": db_settings.get("DOGE_FORWARDING_ADDRESS") or getattr(config, "DOGE_FORWARDING_ADDRESS", "") or "",
             "SUPPORT_LINK": db_settings.get("SUPPORT_LINK") or getattr(config, "SUPPORT_LINK", "https://t.me/truongdvfb") or "https://t.me/truongdvfb",
+            "FB_FILTER_DUPLICATE_UIDS": (
+                db_settings.get("FB_FILTER_DUPLICATE_UIDS", "true").lower() in ("true", "1", "yes")
+                if "FB_FILTER_DUPLICATE_UIDS" in db_settings
+                else getattr(config, "FB_FILTER_DUPLICATE_UIDS", True)
+            ),
             "FB_AUTO_CHECK_ON_UPLOAD": (
                 db_settings.get("FB_AUTO_CHECK_ON_UPLOAD", "true").lower() in ("true", "1", "yes")
                 if "FB_AUTO_CHECK_ON_UPLOAD" in db_settings

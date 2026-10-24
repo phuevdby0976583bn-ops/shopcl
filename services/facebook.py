@@ -197,41 +197,170 @@ async def filter_live_facebook_items(
     return live_items, dead_items
 
 
+async def get_existing_uids_from_db(session: Any = None) -> set[str]:
+    """
+    Lấy danh sách tất cả các UID Facebook đã có trong bảng items (kho hàng)
+    để phục vụ việc kiểm tra và chặn trùng lặp khi nạp hàng.
+    """
+    from db import get_db_session
+    from models.item import Item
+    from sqlalchemy import select
+
+    async def _fetch(sess):
+        stmt = select(Item.private_data).where(Item.private_data.is_not(None))
+        res = await sess.execute(stmt)
+        uids = set()
+        for row in res.scalars().all():
+            if not row:
+                continue
+            u = extract_uid(row)
+            if u:
+                uids.add(str(u))
+        return uids
+
+    if session is not None:
+        return await _fetch(session)
+    else:
+        async with get_db_session() as sess:
+            return await _fetch(sess)
+
+
+async def deduplicate_facebook_raw_lines(
+    lines: List[str],
+    existing_uids: Optional[set[str]] = None,
+    session: Any = None,
+    check_db: bool = True
+) -> Tuple[List[str], List[str], dict]:
+    """
+    Lọc bỏ các dòng tài khoản Facebook bị trùng UID:
+    1. Trùng lặp giữa các dòng trong chính danh sách gửi lên (internal duplicate).
+    2. Trùng lặp với các UID Facebook ĐÃ CÓ trong kho hàng (database duplicate).
+
+    Trả về:
+    - unique_lines: danh sách các dòng hợp lệ duy nhất.
+    - duplicate_lines: danh sách các dòng bị loại bỏ do trùng lặp UID.
+    - stats: thống kê chi tiết {total, unique, duplicates, internal_duplicates, db_duplicates}
+    """
+    cleaned_input = [line.strip() for line in lines if line and line.strip()]
+    if not cleaned_input:
+        return [], [], {
+            "total": 0, "unique": 0, "duplicates": 0,
+            "internal_duplicates": 0, "db_duplicates": 0
+        }
+
+    known_uids = set(existing_uids) if existing_uids is not None else set()
+    if check_db and existing_uids is None:
+        try:
+            known_uids = await get_existing_uids_from_db(session=session)
+        except Exception as e:
+            logger.warning(f"Could not fetch existing UIDs from DB for deduplication: {e}")
+            known_uids = set()
+
+    seen_batch_uids = set()
+    seen_batch_lines = set()
+    unique_lines = []
+    duplicate_lines = []
+    internal_dup = 0
+    db_dup = 0
+
+    for line in cleaned_input:
+        uid = extract_uid(line)
+        if uid:
+            uid_str = str(uid)
+            if uid_str in seen_batch_uids:
+                internal_dup += 1
+                duplicate_lines.append(line)
+                continue
+            if uid_str in known_uids:
+                db_dup += 1
+                duplicate_lines.append(line)
+                continue
+            seen_batch_uids.add(uid_str)
+            known_uids.add(uid_str)
+            unique_lines.append(line)
+        else:
+            # Mặt hàng không trích xuất được UID -> lọc trùng theo nguyên chuỗi
+            if line in seen_batch_lines:
+                internal_dup += 1
+                duplicate_lines.append(line)
+                continue
+            seen_batch_lines.add(line)
+            unique_lines.append(line)
+
+    stats = {
+        "total": len(cleaned_input),
+        "unique": len(unique_lines),
+        "duplicates": len(duplicate_lines),
+        "internal_duplicates": internal_dup,
+        "db_duplicates": db_dup
+    }
+    return unique_lines, duplicate_lines, stats
+
+
 async def scan_and_filter_facebook_raw_lines(
     lines: List[str],
     check_live: bool = True,
     delete_die: bool = True,
-    concurrency_limit: int = 15
+    concurrency_limit: int = 15,
+    filter_duplicates: bool = True,
+    session: Any = None
 ) -> Tuple[List[str], List[str], dict]:
     """
-    Quét danh sách các dòng clone Facebook (chuỗi thô):
-    - Trả về (kept_lines, dead_lines, stats_dict)
-    - Nếu check_live=False: giữ nguyên tất cả dòng
-    - Nếu delete_die=True: kept_lines chỉ chứa các tài khoản LIVE (loại bỏ nick DIE)
-    - Nếu delete_die=False: kept_lines chứa toàn bộ dòng ban đầu
+    Quét danh sách các dòng clone Facebook:
+    - Tự động lọc trùng UID (cả trùng lặp trong file và trùng với kho hàng DB).
+    - Tự động check LIVE qua Graph API và loại bỏ nick DIE.
     """
     cleaned_input = [line.strip() for line in lines if line and line.strip()]
     if not cleaned_input:
-        return [], [], {"total": 0, "live": 0, "die": 0, "deleted": 0}
+        return [], [], {"total": 0, "unique": 0, "duplicates": 0, "live": 0, "die": 0, "deleted": 0}
 
+    # BƯỚC 1: LỌC TRÙNG UID (Không check LIVE những dòng trùng lặp để tiết kiệm request)
+    duplicate_lines = []
+    dup_stats = {"duplicates": 0, "internal_duplicates": 0, "db_duplicates": 0}
+    if filter_duplicates:
+        unique_lines, duplicate_lines, dup_stats = await deduplicate_facebook_raw_lines(
+            cleaned_input, session=session, check_db=True
+        )
+    else:
+        unique_lines = cleaned_input
+
+    if not unique_lines:
+        return [], duplicate_lines, {
+            "total": len(cleaned_input),
+            "unique": 0,
+            "duplicates": len(duplicate_lines),
+            "live": 0,
+            "die": 0,
+            "deleted": 0,
+            **dup_stats
+        }
+
+    # BƯỚC 2: CHECK LIVE CÁC DÒNG HỢP LỆ VÀ KHÔNG TRÙNG
     if not check_live:
-        return cleaned_input, [], {"total": len(cleaned_input), "live": len(cleaned_input), "die": 0, "deleted": 0}
+        return unique_lines, duplicate_lines, {
+            "total": len(cleaned_input),
+            "unique": len(unique_lines),
+            "duplicates": len(duplicate_lines),
+            "live": len(unique_lines),
+            "die": 0,
+            "deleted": 0,
+            **dup_stats
+        }
 
     live_lines = []
     dead_lines = []
     semaphore = asyncio.Semaphore(concurrency_limit)
 
-    async def _check_line(line: str, session: aiohttp.ClientSession):
+    async def _check_line(line: str, http_session: aiohttp.ClientSession):
         uid = extract_uid(line)
         if not uid:
-            # Không trích xuất được UID -> coi như item thường, giữ lại
             return line, "LIVE", None
         async with semaphore:
-            status = await check_uid_live_async(uid, session)
+            status = await check_uid_live_async(uid, http_session)
             return line, status, uid
 
-    async with aiohttp.ClientSession() as session:
-        tasks = [_check_line(line, session) for line in cleaned_input]
+    async with aiohttp.ClientSession() as http_session:
+        tasks = [_check_line(line, http_session) for line in unique_lines]
         results = await asyncio.gather(*tasks)
 
     for line, status, uid in results:
@@ -240,16 +369,18 @@ async def scan_and_filter_facebook_raw_lines(
         elif status == "DIE":
             dead_lines.append(line)
         else:
-            # Gặp lỗi tạm thời (mạng timeout...), giữ lại để không xóa nhầm tài khoản của admin
             logger.warning(f"Check live UID {uid} got error '{status}', keeping line safely.")
             live_lines.append(line)
 
-    kept_lines = live_lines if delete_die else cleaned_input
+    kept_lines = live_lines if delete_die else unique_lines
     stats = {
         "total": len(cleaned_input),
+        "unique": len(unique_lines),
+        "duplicates": len(duplicate_lines),
         "live": len(live_lines),
         "die": len(dead_lines),
-        "deleted": len(dead_lines) if delete_die else 0
+        "deleted": len(dead_lines) if delete_die else 0,
+        **dup_stats
     }
     return kept_lines, dead_lines, stats
 
@@ -322,4 +453,44 @@ async def scan_facebook_inventory(
         "die_count": len(dead_items),
         "die_items": dead_items,
         "deleted_count": deleted_count
+    }
+
+
+async def clean_duplicate_inventory_uids(session: Any) -> dict:
+    """
+    Quét toàn bộ tài khoản chưa bán trong kho.
+    Nếu phát hiện các bản ghi có cùng UID Facebook:
+    - Giữ lại 1 bản ghi duy nhất (ID nhỏ nhất).
+    - Xóa các bản ghi trùng lặp còn lại khỏi DB.
+    """
+    from repositories.item import ItemRepository
+    from models.item import Item
+    from sqlalchemy import delete
+
+    unsold_items = await ItemRepository.get_all_unsold_clones(session)
+    seen_uids: dict[str, int] = {}  # uid -> first item id
+    duplicate_item_ids: list[int] = []
+
+    for item in unsold_items:
+        uid = extract_uid(item.private_data)
+        if not uid:
+            continue
+        uid_str = str(uid)
+        if uid_str in seen_uids:
+            duplicate_item_ids.append(item.id)
+        else:
+            seen_uids[uid_str] = item.id
+
+    if duplicate_item_ids:
+        await session.execute(
+            delete(Item).where(Item.id.in_(duplicate_item_ids))
+        )
+        await session.commit()
+        logger.info(f"Cleaned {len(duplicate_item_ids)} duplicate Facebook clones from inventory.")
+
+    return {
+        "total_scanned": len(unsold_items),
+        "unique_uids": len(seen_uids),
+        "deleted_duplicates": len(duplicate_item_ids),
+        "duplicate_ids": duplicate_item_ids
     }

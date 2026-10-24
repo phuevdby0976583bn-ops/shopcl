@@ -259,6 +259,14 @@ async def _startup() -> None:
         except Exception as e:
             logging.warning(f"Note on duplicate subcategory cleanup: {e}")
 
+        try:
+            from services.facebook import clean_duplicate_inventory_uids
+            dup_uid_res = await clean_duplicate_inventory_uids(db_sess)
+            if dup_uid_res.get("deleted_duplicates", 0) > 0:
+                logging.info(f"Auto-cleaned {dup_uid_res['deleted_duplicates']} duplicate Facebook clone UIDs from database")
+        except Exception as e:
+            logging.warning(f"Note on duplicate UID cleanup: {e}")
+
     webhook_url = f"{config.WEBHOOK_HOST}{config.WEBHOOK_PATH}"
 
     logging.info(f"Setting Telegram webhook to: {webhook_url}")

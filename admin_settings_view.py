@@ -41,6 +41,7 @@ class PaymentApiConfigView(BaseView):
         api_fb_check_uid = "/api/facebook/check-uid"
         api_fb_scan_stock = "/api/facebook/scan-stock"
         api_fb_clean_die = "/api/facebook/clean-die"
+        api_fb_clean_dups = "/api/facebook/clean-duplicates"
         api_key = config.SQLADMIN_RAW_PASSWORD or "MatKhauAdminCuaBan123"
         admin_token = token or ""
 
@@ -69,6 +70,8 @@ class PaymentApiConfigView(BaseView):
 
         only_usdt_checked_attr = "checked" if only_usdt else ""
 
+        fb_filter_dups = cur_settings.get("FB_FILTER_DUPLICATE_UIDS", True)
+        fb_filter_dups_attr = "checked" if fb_filter_dups else ""
         fb_check_upload = cur_settings.get("FB_AUTO_CHECK_ON_UPLOAD", True)
         fb_delete_upload = cur_settings.get("FB_AUTO_DELETE_DIE_ON_UPLOAD", True)
         fb_check_delivery = cur_settings.get("FB_CHECK_LIVE_BEFORE_DELIVERY", True)
@@ -402,6 +405,14 @@ class PaymentApiConfigView(BaseView):
 
                                 <form id="facebookForm" onsubmit="event.preventDefault(); saveFacebookSettings();">
                                     <h6 class="fw-bold text-primary border-bottom pb-1 mb-3">1. Khi Nạp / Đăng Hàng Vào Kho:</h6>
+
+                                    <div class="form-check form-switch mb-3 p-2 bg-light rounded border border-warning">
+                                        <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="fb_filter_duplicate_uids" {fb_filter_dups_attr}>
+                                        <label class="form-check-label fw-bold text-dark" for="fb_filter_duplicate_uids">
+                                            <i class="fa-solid fa-clone text-warning me-1"></i> Tự động LỌC & CHẶN TRÙNG UID Facebook khi nạp
+                                        </label>
+                                        <div class="small text-muted ms-4">Nếu UID đã có trong kho hàng (hoặc lặp lại trong danh sách nạp), hệ thống sẽ tự động loại bỏ để <b>không bao giờ bán trùng nick</b> cho khách.</div>
+                                    </div>
                                     
                                     <div class="form-check form-switch mb-3 p-2 bg-light rounded">
                                         <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="fb_auto_check_on_upload" {fb_check_up_attr}>
@@ -505,10 +516,13 @@ class PaymentApiConfigView(BaseView):
                                 
                                 <div class="d-flex flex-wrap gap-2 mb-3">
                                     <button class="btn btn-outline-primary fw-bold" type="button" onclick="scanFbStock()">
-                                        <i class="fa-solid fa-magnifying-glass-chart me-1"></i> Quét Toàn Kho (Chỉ Xem)
+                                        <i class="fa-solid fa-magnifying-glass-chart me-1"></i> Quét Toàn Kho (Xem Trạng Thái)
+                                    </button>
+                                    <button class="btn btn-warning fw-bold text-dark" type="button" onclick="cleanFbDuplicateStock()">
+                                        <i class="fa-solid fa-clone me-1"></i> Quét & XÓA Nick Trùng UID
                                     </button>
                                     <button class="btn btn-danger fw-bold" type="button" onclick="cleanFbDieStock()">
-                                        <i class="fa-solid fa-trash-can me-1"></i> Quét & XÓA Nick DIE Ngay
+                                        <i class="fa-solid fa-trash-can me-1"></i> Quét & XÓA Nick DIE
                                     </button>
                                 </div>
 
@@ -566,6 +580,7 @@ class PaymentApiConfigView(BaseView):
 
         function saveFacebookSettings() {{
             const payload = {{
+                'FB_FILTER_DUPLICATE_UIDS': document.getElementById('fb_filter_duplicate_uids').checked ? 'true' : 'false',
                 'FB_AUTO_CHECK_ON_UPLOAD': document.getElementById('fb_auto_check_on_upload').checked ? 'true' : 'false',
                 'FB_AUTO_DELETE_DIE_ON_UPLOAD': document.getElementById('fb_auto_delete_die_on_upload').checked ? 'true' : 'false',
                 'FB_CHECK_LIVE_BEFORE_DELIVERY': document.getElementById('fb_check_live_before_delivery').checked ? 'true' : 'false',
@@ -625,6 +640,32 @@ class PaymentApiConfigView(BaseView):
                 }});
                 const data = await res.json();
                 resDiv.innerHTML = '<div class="alert alert-info py-2 mb-0"><b>Kết quả:</b> Quét ' + data.total_scanned + ' clone | Live: <span class="text-success fw-bold">' + data.live_count + '</span> | Die: <span class="text-danger fw-bold">' + data.die_count + '</span></div>';
+            }} catch(e) {{
+                resDiv.innerHTML = '<div class="text-danger">Lỗi: ' + e.message + '</div>';
+            }}
+        }}
+
+                async function cleanFbDuplicateStock() {{
+            if (!confirm('Bạn có chắc chắn muốn quét và XÓA các nick bị TRÙNG UID trong kho hàng không? (Hệ thống sẽ giữ lại 1 nick duy nhất)')) return;
+            const resDiv = document.getElementById('stockScanResult');
+            resDiv.style.display = 'block';
+            resDiv.innerHTML = '<span class="text-warning"><i class="fa-solid fa-spinner fa-spin me-1"></i> Đang quét và lọc nick trùng UID trong kho...</span>';
+            try {{
+                const res = await fetch("{api_fb_clean_dups}", {{
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {{
+                        'X-API-KEY': "{api_key}",
+                        'Authorization': "Bearer {admin_token}"
+                    }}
+                }});
+                const data = await res.json();
+                if (res.ok) {{
+                    const delCount = data.deleted_duplicates || 0;
+                    resDiv.innerHTML = '<div class="alert alert-success py-2 mb-0"><b>Hoàn tất:</b> Đã quét ' + data.total_scanned + ' clone. Độc nhất: ' + data.unique_uids + ' UID | Đã xóa: <span class="text-danger fw-bold">' + delCount + '</span> nick bị trùng UID khỏi kho!</div>';
+                }} else {{
+                    resDiv.innerHTML = '<div class="alert alert-danger py-2 mb-0">Lỗi: ' + (data.detail || JSON.stringify(data)) + '</div>';
+                }}
             }} catch(e) {{
                 resDiv.innerHTML = '<div class="text-danger">Lỗi: ' + e.message + '</div>';
             }}

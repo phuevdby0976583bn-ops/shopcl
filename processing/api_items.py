@@ -98,18 +98,25 @@ async def bulk_upload_items(payload: BulkUploadRequest, request: Request, x_api_
         else getattr(config, 'FB_AUTO_DELETE_DIE_ON_UPLOAD', True)
     )
 
-    clean_lines = [line.strip() for line in payload.items if line and line.strip()]
-    dead_lines = []
-    stats = {"total": len(clean_lines), "live": len(clean_lines), "die": 0, "deleted": 0}
-
-    if is_fb and should_check_live:
-        clean_lines, dead_lines, stats = await scan_and_filter_facebook_raw_lines(
-            payload.items,
-            check_live=True,
-            delete_die=should_delete_die
-        )
+    should_filter_dups = getattr(config, 'FB_FILTER_DUPLICATE_UIDS', True)
 
     async with get_db_session() as session:
+        clean_lines, dead_lines, stats = await scan_and_filter_facebook_raw_lines(
+            payload.items,
+            check_live=(is_fb and should_check_live),
+            delete_die=should_delete_die,
+            filter_duplicates=should_filter_dups,
+            session=session
+        )
+
+        if not clean_lines:
+            dup_count = stats.get("duplicates", 0)
+            die_count = stats.get("die", 0)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Không thể nạp hàng! Tất cả {len(payload.items)} tài khoản đều không hợp lệ ({dup_count} nick trùng UID, {die_count} nick DIE)."
+            )
+
         # 1. Tìm hoặc tự động tạo Category
         cat_stmt = select(Category).where(Category.name == payload.category_name.strip())
         cat_res = await session.execute(cat_stmt)
@@ -149,18 +156,23 @@ async def bulk_upload_items(payload: BulkUploadRequest, request: Request, x_api_
             session.add_all(items_to_add)
             await session_commit(session)
 
-        msg = (
-            f"Đã quét và nạp thành công {len(items_to_add)} tài khoản LIVE vào kho! (Đã lọc bỏ {len(dead_lines)} tài khoản DIE)"
-            if is_fb and should_check_live and should_delete_die and dead_lines
-            else f"Đã nạp thành công {len(items_to_add)} sản phẩm vào kho!"
-        )
+        msg_parts = [f"Đã nạp thành công {len(items_to_add)} tài khoản LIVE vào kho!"]
+        if stats.get("duplicates", 0) > 0:
+            msg_parts.append(f"(Đã lọc bỏ {stats['duplicates']} nick trùng UID)")
+        if dead_lines:
+            msg_parts.append(f"(Đã lọc bỏ {len(dead_lines)} nick DIE)")
+
+        msg = " ".join(msg_parts)
 
         return {
             "status": "success",
             "message": msg,
             "is_facebook": is_fb,
             "total_submitted": len(payload.items),
-            "live_count": stats.get("live", len(items_to_add)),
+            "duplicate_count": stats.get("duplicates", 0),
+            "internal_duplicates": stats.get("internal_duplicates", 0),
+            "db_duplicates": stats.get("db_duplicates", 0),
+            "live_count": len(items_to_add),
             "die_count": stats.get("die", 0),
             "dead_removed_count": len(dead_lines) if should_delete_die else 0,
             "uploaded_count": len(items_to_add),
@@ -399,5 +411,26 @@ async def cron_check_live_endpoint(
             "status": "success",
             "message": f"Quét hoàn tất: {result['live_count']} Live, đã xóa {result['deleted_count']} nick Die khỏi kho.",
             "duration_seconds": duration,
+            **result
+        }
+
+
+@api_router.post("/facebook/clean-duplicates")
+async def clean_duplicates_endpoint(request: Request, x_api_key: str = Header(None)):
+    if not is_request_authorized(request, x_api_key):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chưa đăng nhập Admin!")
+
+    from services.facebook import clean_duplicate_inventory_uids
+    async with get_db_session() as session:
+        result = await clean_duplicate_inventory_uids(session)
+        deleted = result["deleted_duplicates"]
+        msg = (
+            f"Đã quét {result['total_scanned']} clone trong kho. Đã xóa {deleted} nick bị trùng UID!"
+            if deleted > 0
+            else f"Đã quét {result['total_scanned']} clone trong kho. Không phát hiện nick nào bị trùng UID!"
+        )
+        return {
+            "status": "success",
+            "message": msg,
             **result
         }

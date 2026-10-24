@@ -327,6 +327,12 @@ class BulkUploadAdminView(BaseView):
                     </div>
                     <div class="card-body">
                         <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="filterDuplicatesSwitch" checked>
+                            <label class="form-check-label fw-bold" for="filterDuplicatesSwitch">
+                                <i class="fa-solid fa-clone text-warning me-1"></i> Tự động Lọc & Chặn Trùng UID Facebook
+                            </label>
+                            <div class="form-text">Tự động loại bỏ các tài khoản bị trùng UID (trong file tải lên hoặc đã có trong kho).</div>
+                        </div>
                             <input class="form-check-input" type="checkbox" id="checkLiveSwitch" checked>
                             <label class="form-check-label fw-bold" for="checkLiveSwitch">
                                 <i class="fa-brands fa-facebook text-primary me-1"></i> Tự động Check Live Facebook qua Graph API
@@ -579,6 +585,7 @@ print(r.json())
             const desc = document.getElementById('itemDescription').value.trim() || 'Tài khoản chất lượng cao';
             const lines = getLines();
             const checkLive = document.getElementById('checkLiveSwitch').checked;
+            const filterDups = document.getElementById('filterDuplicatesSwitch') ? document.getElementById('filterDuplicatesSwitch').checked : true;
             const deleteDie = document.getElementById('deleteDieSwitch').checked;
 
             if (!catName) {{
@@ -627,6 +634,7 @@ print(r.json())
                     description: desc,
                     items: lines,
                     check_live: checkLive,
+                    filter_duplicates: filterDups,
                     delete_die: deleteDie
                 }};
 
@@ -655,26 +663,31 @@ print(r.json())
                             <div class=\"card-body\">
                                 <h5 class=\"card-title text-success fw-bold\">` + data.message + `</h5>
                                 <div class=\"row g-3 my-2 text-center\">
-                                    <div class=\"col-md-4\">
+                                    <div class=\"col-md-3\">
                                         <div class=\"p-3 bg-light rounded border\">
                                             <div class=\"text-muted small\">Tổng gửi lên</div>
                                             <div class=\"fs-3 fw-bold text-dark\">` + data.total_submitted.toLocaleString('vi-VN') + `</div>
                                         </div>
                                     </div>
-                                    <div class=\"col-md-4\">
+                                    <div class=\"col-md-3\">
                                         <div class=\"p-3 bg-light rounded border border-success\">
                                             <div class=\"text-success small fw-bold\">🟢 Nạp Vào Kho (LIVE)</div>
                                             <div class=\"fs-3 fw-bold text-success\">` + liveCount.toLocaleString('vi-VN') + `</div>
                                         </div>
                                     </div>
-                                    <div class=\"col-md-4\">
+                                    <div class=\"col-md-3\">
+                                        <div class=\"p-3 bg-light rounded border border-warning\">
+                                            <div class=\"text-warning small fw-bold\">🟡 Trùng UID (Đã Lọc)</div>
+                                            <div class=\"fs-3 fw-bold text-warning\">` + (data.duplicate_count || 0).toLocaleString('vi-VN') + `</div>
+                                        </div>
+                                    </div>
+                                    <div class=\"col-md-3\">
                                         <div class=\"p-3 bg-light rounded border border-danger\">
-                                            <div class=\"text-danger small fw-bold\">🔴 Đã Loại Bỏ (DIE)</div>
+                                            <div class=\"text-danger small fw-bold\">🔴 Nick DIE (Đã Xóa)</div>
                                             <div class=\"fs-3 fw-bold text-danger\">` + dieCount.toLocaleString('vi-VN') + `</div>
                                         </div>
                                     </div>
                                 </div>
-
                                 <div class=\"d-flex gap-2 mt-4\">
                                     <a href=\"/admin/item/list\" class=\"btn btn-success btn-lg flex-fill\">
                                         <i class=\"fa-solid fa-boxes-stacked me-2\"></i> Xem Danh Sách Kho Hàng Ngay

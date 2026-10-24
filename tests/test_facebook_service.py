@@ -92,3 +92,43 @@ async def test_scan_and_filter_facebook_raw_lines():
     assert len(kept_all) == 3
     assert len(dead2) == 2
     assert stats2["deleted"] == 0
+
+
+@pytest.mark.asyncio
+async def test_deduplicate_facebook_raw_lines():
+    from services.facebook import deduplicate_facebook_raw_lines
+    lines = [
+        "100088912345678|pass1|2FA",
+        "100088912345678|pass2|2FA",  # internal duplicate
+        "100099999999999|pass3|2FA",  # already in DB
+        "100077777777777|pass4|2FA",  # new unique
+    ]
+    existing = {"100099999999999"}
+    unique, dups, stats = await deduplicate_facebook_raw_lines(
+        lines, existing_uids=existing, check_db=False
+    )
+    assert len(unique) == 2
+    assert len(dups) == 2
+    assert "100088912345678|pass1|2FA" in unique
+    assert "100077777777777|pass4|2FA" in unique
+    assert stats["duplicates"] == 2
+    assert stats["internal_duplicates"] == 1
+    assert stats["db_duplicates"] == 1
+
+
+@pytest.mark.asyncio
+async def test_scan_and_filter_with_duplicates():
+    from services.facebook import scan_and_filter_facebook_raw_lines
+    lines = [
+        "4|live1",
+        "4|live1_duplicate",
+        "100000000000001|die1"
+    ]
+    kept, dead, stats = await scan_and_filter_facebook_raw_lines(
+        lines, check_live=True, delete_die=True, filter_duplicates=True
+    )
+    # Only 1 live (UID 4), 1 duplicate removed, 1 die removed
+    assert len(kept) == 1
+    assert "4|live1" in kept
+    assert stats["duplicates"] == 1
+    assert stats["die"] == 1
