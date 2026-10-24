@@ -60,9 +60,9 @@ class SubcategoryAdmin(ModelView, model=Subcategory):
     column_labels = {
         "id": "ID",
         "name": "Tên danh mục con",
-        "live_count": "Clone trong kho",
-        "sold_count": "Clone đã bán",
-        "price": "Giá bán ($)",
+        "live_count": "Số tài khoản đang có",
+        "sold_count": "Tài khoản đã bán",
+        "price": "Giá bán mặt hàng",
         "description": "Mô tả sản phẩm",
         "media_id": "Media ID",
         "items": "Danh sách clone",
