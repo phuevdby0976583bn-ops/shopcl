@@ -1,4 +1,4 @@
-import traceback
+﻿import traceback
 from aiogram import types, F, Router
 from aiogram.filters import Command, CommandStart, CommandObject
 from aiogram.types import ErrorEvent, Message, BufferedInputFile, CallbackQuery
@@ -35,7 +35,7 @@ main_router = Router()
 
 @main_router.message(CommandStart())
 @main_router.message(Command("help"))
-async def start(message: Message, command: CommandObject, session: AsyncSession, language: Language):
+async def start(message: Message, session: AsyncSession, language: Language, command: CommandObject = None):
     all_categories_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "all_categories"))
     my_profile_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "my_profile"))
     faq_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "faq"))
@@ -44,21 +44,30 @@ async def start(message: Message, command: CommandObject, session: AsyncSession,
     reviews_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "reviews"))
     cart_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "cart"))
     telegram_id = message.from_user.id
+    command_args = command.args if command else None
     await UserService.create_if_not_exist(UserDTO(
         telegram_username=message.from_user.username,
         telegram_id=telegram_id,
         language=language
-    ), command.args, session)
+    ), command_args, session)
     keyboard = [[all_categories_button, my_profile_button], [faq_button, help_button],
                 [reviews_button],
                 [cart_button]]
     if telegram_id in config.ADMIN_ID_LIST:
         keyboard.append([admin_menu_button])
     start_markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2, keyboard=keyboard)
-    bot_photo_id = get_bot_photo_id()
-    await message.answer_photo(photo=bot_photo_id,
-                               caption=get_text(language, BotEntity.COMMON, "start_message"),
-                               reply_markup=start_markup)
+    caption = get_text(language, BotEntity.COMMON, "start_message")
+    try:
+        bot_photo_id = get_bot_photo_id()
+        if bot_photo_id and bot_photo_id.strip() and bot_photo_id != "no_image_default":
+            await message.answer_photo(photo=bot_photo_id,
+                                       caption=caption,
+                                       reply_markup=start_markup)
+        else:
+            await message.answer(text=caption, reply_markup=start_markup)
+    except Exception as e:
+        logging.warning(f"Failed to send start photo, fallback to text: {e}")
+        await message.answer(text=caption, reply_markup=start_markup)
 
 
 @main_router.message(F.text.in_(KeyboardButton.get_localized_set(KeyboardButton.FAQ)), IsUserExistFilter())
@@ -80,7 +89,7 @@ async def support(message: Message, session: AsyncSession, language: Language):
 
 
 @main_router.message(F.text.in_(KeyboardButton.get_localized_set(KeyboardButton.REVIEWS)), IsUserExistFilter())
-async def support(message: Message, session: AsyncSession, language: Language):
+async def support_reviews(message: Message, session: AsyncSession, language: Language):
     media, kb_builder = await ReviewService.get_reviews_paginated(None, session, language)
     await NotificationService.answer_media(message, media, reply_markup=kb_builder.as_markup())
 
@@ -123,13 +132,18 @@ async def banned_message(message: Message, language: Language):
 
 
 @main_router.callback_query(IsUserBannedFilter())
-async def banned_message(callback: CallbackQuery, language: Language):
+async def banned_callback(callback: CallbackQuery, language: Language):
     banned_text = get_text(language, BotEntity.COMMON, "banned")
     if callback.message.text:
         await callback.message.edit_text(banned_text)
     else:
         await callback.message.delete()
         await callback.message.answer(banned_text)
+
+
+@main_router.message(F.text)
+async def fallback_any_text(message: Message, session: AsyncSession, language: Language):
+    await start(message, session, language, None)
 
 
 if __name__ == '__main__':
