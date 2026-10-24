@@ -66,9 +66,10 @@ class CategoryService:
         kb_builder = await add_sorting_buttons(
             kb_builder, [SortProperty.NAME], callback_data, sort_pairs, language
         )
+        back_btn = callback_data.get_back_button(language, 0) if (callback_data and callback_data.level > 1) else None
         kb_builder = await add_pagination_buttons(
             kb_builder, callback_data, CategoryRepository.get_maximum_page(filters, session),
-            callback_data.get_back_button(language, 0), language
+            back_btn, language
         )
         button_media = await ButtonMediaRepository.get_by_button(
             KeyboardButton.ALL_CATEGORIES, session

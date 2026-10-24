@@ -144,6 +144,18 @@ async def _startup() -> None:
     async with get_db_session() as db_sess:
         from services.settings import SettingsService
         await SettingsService.load_settings_into_config(db_sess)
+        try:
+            from sqlalchemy import update, or_
+            from models.user import User
+            await db_sess.execute(
+                update(User)
+                .where(or_(User.language == Language.EN, User.language.is_(None)))
+                .values(language=Language.VI)
+            )
+            await db_sess.commit()
+            logging.info("Synced users language to Vietnamese (VI)")
+        except Exception as e:
+            logging.warning(f"Note on user language sync: {e}")
 
     webhook_url = f"{config.WEBHOOK_HOST}{config.WEBHOOK_PATH}"
 

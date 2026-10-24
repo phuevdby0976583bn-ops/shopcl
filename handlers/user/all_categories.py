@@ -77,7 +77,7 @@ async def all_categories(**kwargs):
         await state.set_state()
         media, kb_builder = await CategoryService.get_buttons(callback_data, state, session, language)
 
-    caption = "📁 <b>Vui lòng chọn danh mục sản phẩm:</b>"
+    caption = getattr(media, "caption", "") or "📁 <b>Vui lòng chọn danh mục sản phẩm:</b>"
     await _send_or_edit_text(callback, caption, kb_builder.as_markup())
 
 

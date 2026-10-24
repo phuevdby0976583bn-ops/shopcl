@@ -17,8 +17,8 @@ class I18nMiddleware(BaseMiddleware):
         async with get_db_session() as session:
             user_dto = await UserRepository.get_by_tgid(event.from_user.id, session)
             if user_dto:
-                data["language"] = user_dto.language
+                data["language"] = user_dto.language or Language.VI
             else:
                 language = Language.from_locale(event.from_user.language_code)
-                data["language"] = language
+                data["language"] = language or Language.VI
             return await handler(event, data)

@@ -12,7 +12,7 @@ class Item(Base):
     __tablename__ = 'items'
 
     id = Column(Integer, primary_key=True)
-    item_type = Column(Enum(ItemType), nullable=False)
+    item_type = Column(Enum(ItemType), default=ItemType.DIGITAL, nullable=False)
     category_id = Column(Integer, ForeignKey("categories.id", ondelete="CASCADE"), nullable=False)
     category = relationship("Category", back_populates="items")
     subcategory_id = Column(Integer, ForeignKey("subcategories.id", ondelete="CASCADE"), nullable=False)
@@ -33,7 +33,7 @@ class Item(Base):
 
 class ItemDTO(BaseModel):
     id: int | None = None
-    item_type: ItemType | None = None
+    item_type: ItemType = ItemType.DIGITAL
     category_id: int | None = None
     category_name: str | None = None
     subcategory_id: int | None = None
@@ -112,6 +112,8 @@ class ItemAdmin(ModelView, model=Item):
     }
 
     async def insert_model(self, request, data: dict):
+        if not data.get("item_type"):
+            data["item_type"] = ItemType.DIGITAL
         from sqladmin._queries import Query
         raw_text = data.get("private_data") or ""
         lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
