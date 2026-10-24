@@ -1,3 +1,4 @@
+from typing import Any
 from pydantic import BaseModel
 from sqladmin import ModelView
 from sqlalchemy import Column, Integer, ForeignKey, JSON, ARRAY
@@ -46,6 +47,14 @@ class BuyItemAdmin(ModelView, model=BuyItem):
     }
     column_exclude_list = [BuyItem.buy_id]
     can_create = False
-    can_delete = False
+    can_delete = True
     can_edit = False
-    can_export = False
+    can_export = True
+
+    async def delete_model(self, request, pk: Any) -> None:
+        from models.review import Review
+        from sqlalchemy import delete
+        async with self.session_maker() as session:
+            await session.execute(delete(Review).where(Review.buyItem_id == int(pk)))
+            await session.execute(delete(BuyItem).where(BuyItem.id == int(pk)))
+            await session.commit()

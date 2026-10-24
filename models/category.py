@@ -1,3 +1,4 @@
+from typing import Any
 from pydantic import BaseModel
 from sqladmin import ModelView
 from sqlalchemy import Integer, Column, String
@@ -38,7 +39,17 @@ class CategoryAdmin(ModelView, model=Category):
     column_exclude_list = [Category.items,
                            Category.media_id,
                            Category.cart_items]
-    can_delete = False
+    can_delete = True
     can_edit = True
     can_create = True
-    can_export = False
+    can_export = True
+
+    async def delete_model(self, request, pk: Any) -> None:
+        from models.cartItem import CartItem
+        from models.item import Item
+        from sqlalchemy import delete
+        async with self.session_maker() as session:
+            await session.execute(delete(CartItem).where(CartItem.category_id == int(pk)))
+            await session.execute(delete(Item).where(Item.category_id == int(pk)))
+            await session.execute(delete(Category).where(Category.id == int(pk)))
+            await session.commit()

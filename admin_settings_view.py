@@ -1,4 +1,4 @@
-﻿from sqladmin import BaseView, expose
+from sqladmin import BaseView, expose
 from fastapi import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from utils.utils import decode_token
@@ -59,8 +59,15 @@ class PaymentApiConfigView(BaseView):
         krypto_api_url = cur_settings.get("KRYPTO_EXPRESS_API_URL") or "https://kryptoexpress.pro/api"
 
         fwd_mode = cur_settings.get("CRYPTO_FORWARDING_MODE", False)
+        only_usdt = cur_settings.get("ONLY_USDT_MODE", False)
         bnb_fwd = cur_settings.get("BNB_FORWARDING_ADDRESS") or ""
         sol_fwd = cur_settings.get("SOL_FORWARDING_ADDRESS") or ""
+        eth_fwd = cur_settings.get("ETH_FORWARDING_ADDRESS") or ""
+        btc_fwd = cur_settings.get("BTC_FORWARDING_ADDRESS") or ""
+        ltc_fwd = cur_settings.get("LTC_FORWARDING_ADDRESS") or ""
+        doge_fwd = cur_settings.get("DOGE_FORWARDING_ADDRESS") or ""
+
+        only_usdt_checked_attr = "checked" if only_usdt else ""
 
         fb_check_upload = cur_settings.get("FB_AUTO_CHECK_ON_UPLOAD", True)
         fb_delete_upload = cur_settings.get("FB_AUTO_DELETE_DIE_ON_UPLOAD", True)
@@ -305,24 +312,63 @@ class PaymentApiConfigView(BaseView):
                                 </div>
 
                                 <form id="forwardingForm" onsubmit="event.preventDefault(); saveForwardingSettings();">
-                                    <div class="form-check form-switch mb-3 p-2 bg-light rounded">
+                                    <div class="form-check form-switch mb-3 p-2 bg-light rounded border border-info">
+                                        <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="only_usdt_mode" {only_usdt_checked_attr}>
+                                        <label class="form-check-label fw-bold text-primary" for="only_usdt_mode">⚡ Chế độ Nạp Gọn: Chỉ hiện Binance Pay & USDT trên Bot</label>
+                                        <div class="small text-muted ms-4">Ẩn bớt các coin phí cao (BTC, ETH, LTC, DOGE...) để khách không nạp nhầm. Khi bật, bot chỉ hiện Binance Pay (0% phí) và các mạng USDT (BEP20, SOL).</div>
+                                    </div>
+
+                                    <div class="form-check form-switch mb-3 p-2 bg-light rounded border">
                                         <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="crypto_forwarding_mode" {fwd_checked_attr}>
-                                        <label class="form-check-label fw-bold" for="crypto_forwarding_mode">Bật tự động chuyển tiếp tiền về ví cá nhân</label>
+                                        <label class="form-check-label fw-bold text-success" for="crypto_forwarding_mode">🔁 Bật tự động chuyển tiếp tiền về ví cá nhân (Auto-Forwarding)</label>
+                                        <div class="small text-muted ms-4">Khi khách nạp coin nào, KryptoExpress sẽ tự động chuyển thẳng coin đó về đúng địa chỉ ví tương ứng bên dưới.</div>
                                     </div>
 
                                     <div class="mb-3">
-                                        <label class="form-label fw-bold small text-muted">Địa chỉ ví USDT (Mạng BNB Smart Chain - BEP20):</label>
+                                        <label class="form-label fw-bold small text-muted">1. Địa chỉ ví USDT / BNB (Mạng BNB Smart Chain - BEP20 - Rẻ nhất):</label>
                                         <div class="input-group">
                                             <span class="input-group-text"><i class="fa-brands fa-ethereum text-warning"></i></span>
-                                            <input type="text" class="form-control font-monospace small" id="bnb_forwarding_address" value="{bnb_fwd}" placeholder="0x... (Lấy trong mục Nạp USDT của Binance)">
+                                            <input type="text" class="form-control font-monospace small" id="bnb_forwarding_address" value="{bnb_fwd}" placeholder="0x... (Lấy trong mục Nạp USDT mạng BEP20 của Binance)">
                                         </div>
                                     </div>
 
                                     <div class="mb-3">
-                                        <label class="form-label fw-bold small text-muted">Địa chỉ ví USDT (Mạng Solana - SOL):</label>
+                                        <label class="form-label fw-bold small text-muted">2. Địa chỉ ví USDT / SOL (Mạng Solana - SOL):</label>
                                         <div class="input-group">
                                             <span class="input-group-text"><i class="fa-solid fa-sun text-info"></i></span>
                                             <input type="text" class="form-control font-monospace small" id="sol_forwarding_address" value="{sol_fwd}" placeholder="Địa chỉ ví SOL trên Binance">
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">3. Địa chỉ ví USDT / ETH / USDC (Mạng ERC-20 - Ethereum):</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-brands fa-ethereum text-primary"></i></span>
+                                            <input type="text" class="form-control font-monospace small" id="eth_forwarding_address" value="{eth_fwd}" placeholder="0x... (Địa chỉ ví ERC20 trên Binance)">
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">4. Địa chỉ ví Bitcoin (BTC):</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-brands fa-bitcoin text-warning"></i></span>
+                                            <input type="text" class="form-control font-monospace small" id="btc_forwarding_address" value="{btc_fwd}" placeholder="Địa chỉ ví BTC trên Binance">
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">5. Địa chỉ ví Litecoin (LTC):</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-solid fa-coins text-secondary"></i></span>
+                                            <input type="text" class="form-control font-monospace small" id="ltc_forwarding_address" value="{ltc_fwd}" placeholder="Địa chỉ ví LTC trên Binance">
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">6. Địa chỉ ví Dogecoin (DOGE):</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-solid fa-dog text-warning"></i></span>
+                                            <input type="text" class="form-control font-monospace small" id="doge_forwarding_address" value="{doge_fwd}" placeholder="Địa chỉ ví DOGE trên Binance">
                                         </div>
                                     </div>
 
@@ -626,8 +672,13 @@ class PaymentApiConfigView(BaseView):
         function saveForwardingSettings() {{
             const payload = {{
                 'CRYPTO_FORWARDING_MODE': document.getElementById('crypto_forwarding_mode').checked ? 'true' : 'false',
+                'ONLY_USDT_MODE': document.getElementById('only_usdt_mode').checked ? 'true' : 'false',
                 'BNB_FORWARDING_ADDRESS': document.getElementById('bnb_forwarding_address').value.trim(),
-                'SOL_FORWARDING_ADDRESS': document.getElementById('sol_forwarding_address').value.trim()
+                'SOL_FORWARDING_ADDRESS': document.getElementById('sol_forwarding_address').value.trim(),
+                'ETH_FORWARDING_ADDRESS': document.getElementById('eth_forwarding_address').value.trim(),
+                'BTC_FORWARDING_ADDRESS': document.getElementById('btc_forwarding_address').value.trim(),
+                'LTC_FORWARDING_ADDRESS': document.getElementById('ltc_forwarding_address').value.trim(),
+                'DOGE_FORWARDING_ADDRESS': document.getElementById('doge_forwarding_address').value.trim()
             }};
             saveSettingsPayload(payload, 'fwdSaveResult');
         }}

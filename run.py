@@ -1,4 +1,4 @@
-﻿import traceback
+import traceback
 import logging
 from aiogram import types, F, Router
 from aiogram.filters import Command, CommandStart, CommandObject

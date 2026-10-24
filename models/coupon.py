@@ -1,3 +1,4 @@
+from typing import Any
 from datetime import datetime, timezone, timedelta
 
 from pydantic import BaseModel
@@ -71,5 +72,13 @@ class CouponAdmin(ModelView, model=Coupon):
                             Coupon.usage_count]
     can_edit = True
     can_create = True
-    can_delete = False
-    can_export = False
+    can_delete = True
+    can_export = True
+
+    async def delete_model(self, request, pk: Any) -> None:
+        from models.buy import Buy
+        from sqlalchemy import update, delete
+        async with self.session_maker() as session:
+            await session.execute(update(Buy).where(Buy.coupon_id == int(pk)).values(coupon_id=None))
+            await session.execute(delete(Coupon).where(Coupon.id == int(pk)))
+            await session.commit()

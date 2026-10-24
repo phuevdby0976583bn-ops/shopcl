@@ -14,8 +14,13 @@ SUPPORTED_SETTING_KEYS = [
     "KRYPTO_EXPRESS_API_SECRET",
     "KRYPTO_EXPRESS_API_URL",
     "CRYPTO_FORWARDING_MODE",
+    "ONLY_USDT_MODE",
     "BNB_FORWARDING_ADDRESS",
     "SOL_FORWARDING_ADDRESS",
+    "ETH_FORWARDING_ADDRESS",
+    "BTC_FORWARDING_ADDRESS",
+    "LTC_FORWARDING_ADDRESS",
+    "DOGE_FORWARDING_ADDRESS",
     "SUPPORT_LINK",
     "FB_AUTO_CHECK_ON_UPLOAD",
     "FB_AUTO_DELETE_DIE_ON_UPLOAD",
@@ -28,6 +33,7 @@ SUPPORTED_SETTING_KEYS = [
 
 BOOLEAN_KEYS = {
     "CRYPTO_FORWARDING_MODE",
+    "ONLY_USDT_MODE",
     "FB_AUTO_CHECK_ON_UPLOAD",
     "FB_AUTO_DELETE_DIE_ON_UPLOAD",
     "FB_CHECK_LIVE_BEFORE_DELIVERY",
@@ -111,8 +117,17 @@ class SettingsService:
                 if "CRYPTO_FORWARDING_MODE" in db_settings
                 else getattr(config, "CRYPTO_FORWARDING_MODE", False)
             ),
+            "ONLY_USDT_MODE": (
+                db_settings.get("ONLY_USDT_MODE", "").lower() in ("true", "1", "yes")
+                if "ONLY_USDT_MODE" in db_settings
+                else getattr(config, "ONLY_USDT_MODE", False)
+            ),
             "BNB_FORWARDING_ADDRESS": db_settings.get("BNB_FORWARDING_ADDRESS") or getattr(config, "BNB_FORWARDING_ADDRESS", "") or "",
             "SOL_FORWARDING_ADDRESS": db_settings.get("SOL_FORWARDING_ADDRESS") or getattr(config, "SOL_FORWARDING_ADDRESS", "") or "",
+            "ETH_FORWARDING_ADDRESS": db_settings.get("ETH_FORWARDING_ADDRESS") or getattr(config, "ETH_FORWARDING_ADDRESS", "") or "",
+            "BTC_FORWARDING_ADDRESS": db_settings.get("BTC_FORWARDING_ADDRESS") or getattr(config, "BTC_FORWARDING_ADDRESS", "") or "",
+            "LTC_FORWARDING_ADDRESS": db_settings.get("LTC_FORWARDING_ADDRESS") or getattr(config, "LTC_FORWARDING_ADDRESS", "") or "",
+            "DOGE_FORWARDING_ADDRESS": db_settings.get("DOGE_FORWARDING_ADDRESS") or getattr(config, "DOGE_FORWARDING_ADDRESS", "") or "",
             "SUPPORT_LINK": db_settings.get("SUPPORT_LINK") or getattr(config, "SUPPORT_LINK", "https://t.me/truongdvfb") or "https://t.me/truongdvfb",
             "FB_AUTO_CHECK_ON_UPLOAD": (
                 db_settings.get("FB_AUTO_CHECK_ON_UPLOAD", "true").lower() in ("true", "1", "yes")

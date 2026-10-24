@@ -1,4 +1,4 @@
-﻿from enums.bot_entity import BotEntity
+from enums.bot_entity import BotEntity
 from enums.language import Language
 from models.item import ItemDTO
 from services.facebook import extract_uid

@@ -1,3 +1,4 @@
+from typing import Any
 from datetime import datetime
 
 from pydantic import BaseModel
@@ -102,6 +103,19 @@ class BuyAdmin(ModelView, model=Buy):
                             Buy.shipping_address,
                             Buy.track_number]
     can_create = False
-    can_delete = False
+    can_delete = True
     can_edit = False
-    can_export = False
+    can_export = True
+
+    async def delete_model(self, request, pk: Any) -> None:
+        from models.buyItem import BuyItem
+        from models.review import Review
+        from sqlalchemy import delete, select
+        async with self.session_maker() as session:
+            bi_res = await session.execute(select(BuyItem.id).where(BuyItem.buy_id == int(pk)))
+            bi_ids = bi_res.scalars().all()
+            if bi_ids:
+                await session.execute(delete(Review).where(Review.buyItem_id.in_(bi_ids)))
+                await session.execute(delete(BuyItem).where(BuyItem.id.in_(bi_ids)))
+            await session.execute(delete(Buy).where(Buy.id == int(pk)))
+            await session.commit()

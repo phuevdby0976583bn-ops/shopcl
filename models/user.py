@@ -1,3 +1,4 @@
+from typing import Any
 from datetime import datetime
 from pydantic import BaseModel
 from sqladmin import ModelView
@@ -113,10 +114,45 @@ class UserAdmin(ModelView, model=User):
                            User.referred_by_user_id,
                            User.payments,
                            User.cart]
-    can_delete = False
+    can_delete = True
     can_edit = True
     can_create = False
     can_export = True
+
+    async def delete_model(self, request, pk: Any) -> None:
+        from models.cart import Cart
+        from models.cartItem import CartItem
+        from models.deposit import Deposit
+        from models.binance_pay import BinancePayOrder
+        from models.buy import Buy
+        from models.buyItem import BuyItem
+        from models.review import Review
+        from models.payment import Payment
+        from models.referral import ReferralBonus
+        from sqlalchemy import delete, update, select
+        u_id = int(pk)
+        async with self.session_maker() as session:
+            await session.execute(update(User).where(User.referred_by_user_id == u_id).values(referred_by_user_id=None))
+            await session.execute(delete(BinancePayOrder).where(BinancePayOrder.user_id == u_id))
+            await session.execute(delete(Deposit).where(Deposit.user_id == u_id))
+            await session.execute(delete(Payment).where(Payment.user_id == u_id))
+            await session.execute(delete(ReferralBonus).where((ReferralBonus.referral_user_id == u_id) | (ReferralBonus.referrer_user_id == u_id)))
+            c_res = await session.execute(select(Cart.id).where(Cart.user_id == u_id))
+            c_ids = c_res.scalars().all()
+            if c_ids:
+                await session.execute(delete(CartItem).where(CartItem.cart_id.in_(c_ids)))
+                await session.execute(delete(Cart).where(Cart.id.in_(c_ids)))
+            b_res = await session.execute(select(Buy.id).where(Buy.buyer_id == u_id))
+            b_ids = b_res.scalars().all()
+            if b_ids:
+                bi_res = await session.execute(select(BuyItem.id).where(BuyItem.buy_id.in_(b_ids)))
+                bi_ids = bi_res.scalars().all()
+                if bi_ids:
+                    await session.execute(delete(Review).where(Review.buyItem_id.in_(bi_ids)))
+                    await session.execute(delete(BuyItem).where(BuyItem.id.in_(bi_ids)))
+                await session.execute(delete(Buy).where(Buy.id.in_(b_ids)))
+            await session.execute(delete(User).where(User.id == u_id))
+            await session.commit()
     column_searchable_list = [User.telegram_username]
     column_sortable_list = [User.id,
                             User.telegram_username,

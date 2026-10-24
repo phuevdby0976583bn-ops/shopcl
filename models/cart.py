@@ -1,3 +1,4 @@
+from typing import Any
 from pydantic import BaseModel
 from sqladmin import ModelView
 from sqlalchemy import Column, Integer, ForeignKey
@@ -33,7 +34,15 @@ class CartAdmin(ModelView, model=Cart):
     }
     column_sortable_list = [Cart.id]
     column_exclude_list = [Cart.user_id, Cart.cart_items]
-    can_delete = False
+    can_delete = True
     can_edit = False
     can_create = False
-    can_export = False
+    can_export = True
+
+    async def delete_model(self, request, pk: Any) -> None:
+        from models.cartItem import CartItem
+        from sqlalchemy import delete
+        async with self.session_maker() as session:
+            await session.execute(delete(CartItem).where(CartItem.cart_id == int(pk)))
+            await session.execute(delete(Cart).where(Cart.id == int(pk)))
+            await session.commit()

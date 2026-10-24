@@ -1,4 +1,4 @@
-﻿from types import SimpleNamespace
+from types import SimpleNamespace
 import pytest
 from services.facebook import (
     check_uid_live,

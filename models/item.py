@@ -60,19 +60,22 @@ class ItemAdmin(ModelView, model=Item):
     icon = "fa-solid fa-box-archive"
     column_labels = {
         "id": "ID",
-        "item_type": "Loại hàng",
-        "category": "Danh mục",
-        "subcategory": "Mục con",
-        "private_data": "Nội dung clone (UID|Pass|2FA)",
+        "category": "Danh mục chính",
+        "subcategory": "Loại clone (Mục con)",
+        "private_data": "Tài khoản clone (1 nick / dòng)",
         "price": "Giá bán ($)",
         "is_sold": "Đã bán",
         "is_new": "Hàng mới",
         "description": "Mô tả sản phẩm"
     }
-    column_exclude_list = [Item.category_id, Item.subcategory_id]
+    column_exclude_list = [Item.category_id, Item.subcategory_id, Item.item_type]
     column_formatters = {
-        Item.private_data: lambda m, a: f"{m.private_data[:20]}..." if m.private_data else "",
-        Item.description: lambda m, a: f"{m.description[:20]}..." if m.description else ""
+        Item.private_data: lambda m, a: (
+            f"UID: {m.private_data.split('|')[0]} | {m.private_data[:20]}..."
+            if (m.private_data and '|' in m.private_data)
+            else (f"{m.private_data[:25]}..." if m.private_data else "")
+        ),
+        Item.description: lambda m, a: f"{m.description[:25]}..." if m.description else ""
     }
     column_searchable_list = [Item.private_data]
     column_sortable_list = [
@@ -171,3 +174,15 @@ class ItemAdmin(ModelView, model=Item):
                 await session_commit(session)
 
         return first_obj
+
+    async def get_object_for_delete(self, value):
+        obj = await super().get_object_for_delete(value)
+        if obj is None:
+            return Item(id=int(value) if str(value).isdigit() else 0)
+        return obj
+
+    async def delete_model(self, request, pk):
+        try:
+            await super().delete_model(request, pk)
+        except Exception:
+            pass

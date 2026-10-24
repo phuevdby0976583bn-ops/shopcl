@@ -1,4 +1,4 @@
-﻿import os
+import os
 import ssl
 from contextlib import asynccontextmanager
 from typing import Any

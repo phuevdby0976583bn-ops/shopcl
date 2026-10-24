@@ -68,7 +68,7 @@ class PaymentAdmin(ModelView, model=Payment):
                             Payment.is_paid,
                             Payment.expire_datetime]
     column_exclude_list = [Payment.user_id]
-    can_delete = False
+    can_delete = True
     can_edit = True
     can_create = False
-    can_export = False
+    can_export = True

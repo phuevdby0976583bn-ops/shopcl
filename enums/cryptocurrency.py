@@ -94,6 +94,16 @@ class Cryptocurrency(str, Enum):
 
     @staticmethod
     def get_hidden() -> set['Cryptocurrency']:
+        if getattr(config, 'ONLY_USDT_MODE', False):
+            return {
+                Cryptocurrency.BTC,
+                Cryptocurrency.LTC,
+                Cryptocurrency.DOGE,
+                Cryptocurrency.ETH,
+                Cryptocurrency.USDC_SOL,
+                Cryptocurrency.USDC_ERC20,
+                Cryptocurrency.USDC_BEP20
+            }
         return set()
 
     @staticmethod

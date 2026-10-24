@@ -64,7 +64,7 @@ class DepositAdmin(ModelView, model=Deposit):
                             Deposit.fiat_amount]
     column_exclude_list = [Deposit.user_id,
                            Deposit.amount]
-    can_delete = False
+    can_delete = True
     can_edit = True
     can_create = False
-    can_export = False
+    can_export = True

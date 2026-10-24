@@ -40,7 +40,7 @@ class BinancePayOrderAdmin(ModelView, model=BinancePayOrder):
         "updated_at": "Cập nhật lúc"
     }
     column_sortable_list = [BinancePayOrder.id, BinancePayOrder.amount, BinancePayOrder.status, BinancePayOrder.created_at]
-    can_delete = False
+    can_delete = True
     can_edit = False
     can_create = False
     can_export = True

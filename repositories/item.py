@@ -1,4 +1,4 @@
-﻿from sqlalchemy import select, func, update, delete, and_, or_
+from sqlalchemy import select, func, update, delete, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 

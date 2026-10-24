@@ -1,3 +1,4 @@
+from typing import Any
 from pydantic import BaseModel
 from sqladmin import ModelView
 from sqlalchemy import Column, String, Float, Boolean, Integer
@@ -44,4 +45,12 @@ class ShippingOptionAdmin(ModelView, model=ShippingOption):
     can_delete = True
     can_edit = True
     can_create = True
-    can_export = False
+    can_export = True
+
+    async def delete_model(self, request, pk: Any) -> None:
+        from models.buy import Buy
+        from sqlalchemy import update, delete
+        async with self.session_maker() as session:
+            await session.execute(update(Buy).where(Buy.shipping_option_id == int(pk)).values(shipping_option_id=None))
+            await session.execute(delete(ShippingOption).where(ShippingOption.id == int(pk)))
+            await session.commit()
