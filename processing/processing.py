@@ -43,13 +43,18 @@ async def fetch_crypto_event(payment_dto: ProcessingPaymentDTO, request: Request
                 await session_commit(session)
                 await NotificationService.new_deposit(payment_dto, user, table_payment_dto, referral_bonus_dto)
                 if config.CRYPTO_FORWARDING_MODE:
-                    withdraw_dto = await CryptoApiWrapper.withdrawal(
-                        payment_dto.cryptoCurrency,
-                        payment_dto.cryptoCurrency.get_forwarding_address(),
-                        False,
-                        payment_dto.id,
-                    )
-                    await NotificationService.withdrawal(withdraw_dto)
+                    fwd_address = payment_dto.cryptoCurrency.get_forwarding_address()
+                    if fwd_address:
+                        try:
+                            withdraw_dto = await CryptoApiWrapper.withdrawal(
+                                payment_dto.cryptoCurrency,
+                                fwd_address,
+                                False,
+                                payment_dto.id,
+                            )
+                            await NotificationService.withdrawal(withdraw_dto)
+                        except Exception as e:
+                            print(f"Error forwarding crypto: {e}")
             elif payment_dto.isPaid is False:
                 await NotificationService.payment_expired(user, payment_dto, table_payment_dto)
             else:

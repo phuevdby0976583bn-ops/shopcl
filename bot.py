@@ -239,21 +239,25 @@ async def _startup() -> None:
 
             forwarding_address = cryptocurrency.get_forwarding_address()
 
-            is_addr_valid = WalletService.validate_withdrawal_address(forwarding_address, cryptocurrency)
+            if forwarding_address:
 
-            if is_addr_valid is False:
+                is_addr_valid = WalletService.validate_withdrawal_address(forwarding_address, cryptocurrency)
 
-                logging.error(
+                if is_addr_valid is False:
 
-                    "Your withdrawal address for %s cryptocurrency is not configured correctly: %s",
+                    logging.warning(
 
-                    cryptocurrency.name,
+                        "Your withdrawal address for %s cryptocurrency is not configured correctly: %s",
 
-                    forwarding_address
+                        cryptocurrency.name,
 
-                )
+                        forwarding_address
 
-                sys.exit(1)
+                    )
+
+                else:
+
+                    logging.info("Crypto forwarding configured for %s: %s", cryptocurrency.name, forwarding_address)
 
     for admin in config.ADMIN_ID_LIST:
 
