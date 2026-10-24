@@ -351,27 +351,50 @@ class NotificationService:
     async def answer_media(message: Message,
                            media: InputMediaPhoto | InputMediaVideo | InputMediaAnimation,
                            reply_markup: InlineKeyboardMarkup | None = None) -> Message:
+        raw_media = str(media.media) if (media and hasattr(media, 'media') and media.media) else ""
+        caption_text = media.caption if (media and hasattr(media, 'caption') and media.caption) else "..."
+
+        if not raw_media or "no_image_default" in raw_media or len(raw_media) < 10:
+            return await message.answer(text=caption_text, reply_markup=reply_markup)
+
         if isinstance(media, InputMediaPhoto):
             async def _answer(current_markup):
-                return await message.answer_photo(photo=media.media,
-                                                  caption=media.caption,
-                                                  reply_markup=current_markup)
-        elif isinstance(media, InputMediaVideo):
-            async def _answer(current_markup):
-                return await message.answer_video(video=media.media,
-                                                  caption=media.caption,
-                                                  reply_markup=current_markup)
-        else:
-            async def _answer(current_markup):
-                return await message.answer_animation(animation=media.media,
+                try:
+                    return await message.answer_photo(photo=media.media,
                                                       caption=media.caption,
                                                       reply_markup=current_markup)
-        return await NotificationService._execute_with_privacy_fallback(
-            operation_name="answer_media",
-            execute=_answer,
-            reply_markup=reply_markup,
-            chat_id=message.chat.id
-        )
+                except Exception as e:
+                    logging.warning(f"Failed to answer photo ({e}), fallback to text")
+                    return await message.answer(text=caption_text, reply_markup=current_markup)
+        elif isinstance(media, InputMediaVideo):
+            async def _answer(current_markup):
+                try:
+                    return await message.answer_video(video=media.media,
+                                                      caption=media.caption,
+                                                      reply_markup=current_markup)
+                except Exception as e:
+                    logging.warning(f"Failed to answer video ({e}), fallback to text")
+                    return await message.answer(text=caption_text, reply_markup=current_markup)
+        else:
+            async def _answer(current_markup):
+                try:
+                    return await message.answer_animation(animation=media.media,
+                                                          caption=media.caption,
+                                                          reply_markup=current_markup)
+                except Exception as e:
+                    logging.warning(f"Failed to answer animation ({e}), fallback to text")
+                    return await message.answer(text=caption_text, reply_markup=current_markup)
+
+        try:
+            return await NotificationService._execute_with_privacy_fallback(
+                operation_name="answer_media",
+                execute=_answer,
+                reply_markup=reply_markup,
+                chat_id=message.chat.id
+            )
+        except Exception as e:
+            logging.warning(f"answer_media execute failed ({e}), fallback to message.answer")
+            return await message.answer(text=caption_text, reply_markup=reply_markup)
 
     @staticmethod
     async def withdrawal(withdraw_dto: WithdrawalDTO):
