@@ -29,7 +29,10 @@ class CategoryAdmin(ModelView, model=Category):
     name = "Danh mục chính"
     name_plural = "Danh mục chính (Categories)"
     icon = "fa-solid fa-folder"
-    column_labels = {Category.id: "Mã ID", Category.name: "Tên danh mục"}
+    column_labels = {
+        "id": "Mã ID",
+        "name": "Tên danh mục chính"
+    }
     column_searchable_list = [Category.name]
     column_sortable_list = [Category.id, Category.name]
     column_exclude_list = [Category.items,

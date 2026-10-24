@@ -46,10 +46,16 @@ class CouponAdmin(ModelView, model=Coupon):
     name_plural = "Mã giảm giá (Coupons)"
     icon = "fa-solid fa-ticket"
     column_labels = {
-        Coupon.id: "Mã ID",
-        Coupon.code: "Mã Code",
-        Coupon.discount: "Giảm (%)",
-        Coupon.number_of_uses: "Số lượt dùng"
+        "id": "Mã ID",
+        "name": "Tên chương trình",
+        "code": "Mã Coupon",
+        "type": "Loại giảm giá",
+        "value": "Giá trị giảm",
+        "create_datetime": "Ngày tạo",
+        "expire_datetime": "Ngày hết hạn",
+        "is_active": "Đang kích hoạt",
+        "usage_limit": "Giới hạn dùng",
+        "usage_count": "Đã dùng"
     }
     column_exclude_list = [Coupon.buys]
     column_searchable_list = [Coupon.name]

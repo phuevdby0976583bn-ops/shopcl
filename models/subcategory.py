@@ -29,7 +29,10 @@ class SubcategoryAdmin(ModelView, model=Subcategory):
     name = "Danh mục con"
     name_plural = "Danh mục con (Subcategories)"
     icon = "fa-solid fa-folder-open"
-    column_labels = {Subcategory.id: "Mã ID", Subcategory.name: "Tên danh mục con"}
+    column_labels = {
+        "id": "Mã ID",
+        "name": "Tên danh mục con"
+    }
     column_searchable_list = [Subcategory.name]
     column_sortable_list = [Subcategory.id,
                             Subcategory.name]
