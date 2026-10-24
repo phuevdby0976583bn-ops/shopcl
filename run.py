@@ -20,9 +20,9 @@ from middleware.throttling_middleware import ThrottlingMiddleware
 from models.user import UserDTO
 from multibot import main as main_multibot
 from handlers.user.cart import cart_router
-from handlers.admin.admin import admin_router
+from handlers.admin.admin import admin_router, admin
 from handlers.user.all_categories import all_categories_router, all_types
-from handlers.user.my_profile import my_profile_router
+from handlers.user.my_profile import my_profile_router, my_profile
 from repositories.button_media import ButtonMediaRepository
 from repositories.user import UserRepository
 from services.media import MediaService
@@ -36,25 +36,57 @@ from utils.utils import get_bot_photo_id, get_text
 logging.basicConfig(level=logging.INFO)
 main_router = Router()
 
+BUTTON_PRODUCTS = {
+    Language.VI: "🛒 Sản phẩm",
+    Language.EN: "🛒 Products",
+    Language.HI: "🛒 उत्पाद",
+    Language.ZH: "🛒 商品",
+}
+
+BUTTON_ORDERS = {
+    Language.VI: "📦 Đơn hàng",
+    Language.EN: "📦 Orders",
+    Language.HI: "📦 ऑर्डर",
+    Language.ZH: "📦 订单",
+}
+
+BUTTON_WALLET = {
+    Language.VI: "💳 Ví",
+    Language.EN: "💳 Wallet",
+    Language.HI: "💳 वॉलेट",
+    Language.ZH: "💳 钱包",
+}
+
+BUTTON_WARRANTY = {
+    Language.VI: "🛡️ Bảo hành",
+    Language.EN: "🛡️ Warranty",
+    Language.HI: "🛡️ वारंटी",
+    Language.ZH: "🛡️ 售后",
+}
+
+BUTTON_ADMIN = {
+    Language.VI: "⚙️ Quản trị viên",
+    Language.EN: "⚙️ Admin Menu",
+    Language.HI: "⚙️ व्यवस्थापक",
+    Language.ZH: "⚙️ 管理员",
+}
+
 
 def get_start_keyboard(language: Language, telegram_id: int):
-    all_categories_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "all_categories"))
-    my_profile_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "my_profile"))
-    faq_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "faq"))
-    help_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "help"))
-    admin_menu_button = types.KeyboardButton(text=get_text(language, BotEntity.ADMIN, "menu"))
-    reviews_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "reviews"))
-    cart_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "cart"))
+    prod_btn = types.KeyboardButton(text=BUTTON_PRODUCTS.get(language, "🛒 Products"))
+    orders_btn = types.KeyboardButton(text=BUTTON_ORDERS.get(language, "📦 Orders"))
+    wallet_btn = types.KeyboardButton(text=BUTTON_WALLET.get(language, "💳 Wallet"))
+    warranty_btn = types.KeyboardButton(text=BUTTON_WARRANTY.get(language, "🛡️ Warranty"))
 
     keyboard = [
-        [all_categories_button, my_profile_button],
-        [faq_button, help_button],
-        [reviews_button],
-        [cart_button]
+        [prod_btn, orders_btn],
+        [wallet_btn, warranty_btn]
     ]
     if telegram_id in config.ADMIN_ID_LIST:
-        keyboard.append([admin_menu_button])
-    return types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2, keyboard=keyboard)
+        admin_btn = types.KeyboardButton(text=BUTTON_ADMIN.get(language, "⚙️ Admin Menu"))
+        keyboard.append([admin_btn])
+
+    return types.ReplyKeyboardMarkup(resize_keyboard=True, keyboard=keyboard)
 
 
 def get_language_inline_keyboard():
@@ -89,7 +121,6 @@ async def start(message: Message, session: AsyncSession, language: Language, com
 
     lang_markup = get_language_inline_keyboard()
 
-    # Gui tin kem ban phim menu va inline chon ngon ngu
     try:
         bot_photo_id = get_bot_photo_id()
         if bot_photo_id and bot_photo_id.strip() and bot_photo_id != "no_image_default":
@@ -104,13 +135,12 @@ async def start(message: Message, session: AsyncSession, language: Language, com
         logging.warning(f"Failed to send start photo, fallback to text: {e}")
         await message.answer(text=welcome_text, reply_markup=lang_markup)
 
-    # Dong thoi kich hoat ban phim reply keyboard menu
     menu_hint = {
-        Language.VI: "👇 Bấm vào menu bên dưới để chọn chức năng:",
-        Language.HI: "👇 फ़ंक्शन चुनने के लिए नीचे दिए गए मेनू पर क्लिक करें:",
-        Language.ZH: "👇 点击下方菜单选择功能：",
-        Language.EN: "👇 Use the menu below to navigate the shop:"
-    }.get(language, "👇 Use the menu below to navigate the shop:")
+        Language.VI: "👇 Bấm vào menu bên dưới để bắt đầu:",
+        Language.HI: "👇 शुरू करने के लिए नीचे दिए गए मेनू पर क्लिक करें:",
+        Language.ZH: "👇 点击下方菜单开始：",
+        Language.EN: "👇 Use the menu buttons below to get started:"
+    }.get(language, "👇 Use the menu buttons below to get started:")
     await message.answer(text=menu_hint, reply_markup=start_markup)
 
 
@@ -139,12 +169,64 @@ async def on_language_selected(callback: CallbackQuery, session: AsyncSession):
         await callback.message.edit_text(text=msg_text)
     except Exception:
         pass
-    await callback.message.answer(text=get_text(new_lang, BotEntity.COMMON, "start_message"), reply_markup=new_start_markup)
+    await callback.message.answer(text=msg_text, reply_markup=new_start_markup)
 
 
+@main_router.message(F.text.in_(set(BUTTON_PRODUCTS.values())))
 @main_router.message(Command("products"))
-async def cmd_products(message: Message, session: AsyncSession, state: FSMContext, language: Language):
+async def handle_products(message: Message, session: AsyncSession, state: FSMContext, language: Language):
     await all_types(callback=message, session=session, state=state, language=language)
+
+
+@main_router.message(F.text.in_(set(BUTTON_ORDERS.values())))
+async def handle_orders(message: Message, session: AsyncSession, state: FSMContext, language: Language):
+    caption, kb_builder = await UserService.get_purchase_history_buttons(
+        message.from_user.id, None, state, session, language
+    )
+    await message.answer(caption, reply_markup=kb_builder.as_markup())
+
+
+@main_router.message(F.text.in_(set(BUTTON_WALLET.values())))
+async def handle_wallet(message: Message, session: AsyncSession, state: FSMContext, language: Language):
+    await my_profile(message=message, session=session, state=state, language=language)
+
+
+@main_router.message(F.text.in_(set(BUTTON_WARRANTY.values())))
+@main_router.message(Command("warranty"))
+async def handle_warranty(message: Message, language: Language):
+    kb_builder = InlineKeyboardBuilder()
+    kb_builder.button(text="🛡️ Gửi yêu cầu bảo hành", url=SUPPORT_LINK)
+    warranty_info = {
+        Language.VI: (
+            "🛡️ **CHÍNH SÁCH BẢO HÀNH & ĐỔI TRẢ**\n\n"
+            "1. **Bảo hành 1 đổi 1** trong vòng 24 giờ kể từ lúc nhận hàng nếu tài khoản bị lỗi hệ thống.\n"
+            "2. Vui lòng giữ nguyên định dạng ban đầu khi nhận đơn.\n"
+            "3. Bấm nút bên dưới để gửi **Mã đơn hàng (Order ID)** cho Admin hỗ trợ."
+        ),
+        Language.HI: (
+            "🛡️ **वारंटी और रिटर्न नीति**\n\n"
+            "1. सिस्टम त्रुटि के मामले में 24 घंटे के भीतर **1-टू-1 वारंटी**।\n"
+            "2. समर्थन के लिए नीचे दिए गए बटन पर क्लिक करें।"
+        ),
+        Language.ZH: (
+            "🛡️ **售后保修政策**\n\n"
+            "1. 购买后24小时内如遇系统问题，**1对1换新**。\n"
+            "2. 点击下方按钮联系客服处理。"
+        ),
+        Language.EN: (
+            "🛡️ **WARRANTY & REPLACEMENT POLICY**\n\n"
+            "1. **1-to-1 replacement** within 24 hours of delivery if there is any system error.\n"
+            "2. Please keep the original format.\n"
+            "3. Click the button below to send your **Order ID** to Support."
+        )
+    }.get(language, "🛡️ **WARRANTY & REPLACEMENT POLICY**")
+    await message.answer(warranty_info, reply_markup=kb_builder.as_markup())
+
+
+@main_router.message(F.text.in_(set(BUTTON_ADMIN.values())))
+async def handle_admin(message: Message, state: FSMContext, language: Language):
+    if message.from_user.id in config.ADMIN_ID_LIST:
+        await admin(message=message, state=state, language=language)
 
 
 @main_router.message(Command("help"))
@@ -170,19 +252,6 @@ async def cmd_support(message: Message, language: Language):
         "👉 Bấm nút bên dưới để gặp nhân viên hỗ trợ:"
     )
     await message.answer(support_info, reply_markup=kb_builder.as_markup())
-
-
-@main_router.message(Command("warranty"))
-async def cmd_warranty(message: Message, language: Language):
-    kb_builder = InlineKeyboardBuilder()
-    kb_builder.button(text="🛡️ Gửi yêu cầu bảo hành", url=SUPPORT_LINK)
-    warranty_info = (
-        "🛡️ **CHÍNH SÁCH BẢO HÀNH & ĐỔI TRẢ**\n\n"
-        "1. **Bảo hành 1 đổi 1** trong vòng 24 giờ kể từ lúc nhận hàng nếu tài khoản bị lỗi hệ thống.\n"
-        "2. Vui lòng giữ nguyên thông tin ban đầu khi nhận đơn.\n"
-        "3. Để được xử lý nhanh nhất, gửi kèm **Mã đơn hàng (Order ID)** cho Admin."
-    )
-    await message.answer(warranty_info, reply_markup=kb_builder.as_markup())
 
 
 @main_router.message(Command("api"))
