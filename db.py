@@ -107,33 +107,47 @@ async def session_commit(session: AsyncSession | Session) -> None:
 
 
 async def check_all_tables_exist(session: AsyncSession | Session, schema: str = "public"):
-    for table in Base.metadata.tables.values():
-        sql_query = text("""
-            SELECT 1
-            FROM information_schema.tables
-            WHERE table_schema = :schema
-              AND table_name = :table_name
-            LIMIT 1;
-        """)
-
-        params = {
-            "schema": schema,
-            "table_name": table.name,
-        }
-
+    try:
+        for table in Base.metadata.tables.values():
+            sql_query = text("""
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = :schema
+                  AND table_name = :table_name
+                LIMIT 1;
+            """)
+            params = {
+                "schema": schema,
+                "table_name": table.name,
+            }
+            if isinstance(session, AsyncSession):
+                result = await session.execute(sql_query, params)
+                if result.scalar() is None:
+                    return False
+            else:
+                result = session.execute(sql_query, params)
+                if result.scalar() is None:
+                    return False
+        return True
+    except Exception:
         if isinstance(session, AsyncSession):
-            result = await session.execute(sql_query, params)
-            if result.scalar() is None:
-                return False
-        else:
-            result = session.execute(sql_query, params)
-            if result.scalar() is None:
-                return False
-
-    return True
+            try:
+                await session.rollback()
+            except Exception:
+                pass
+        return False
 
 
 async def create_db_and_tables():
+    # 1. Luon khoi tao Base.metadata qua engine.begin() de tao day du tables theo dung khoa ngoai
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as e:
+        import logging
+        logging.warning(f"Note on Base.metadata.create_all: {e}")
+
+    # 2. Dam bao cac bang ho tro luon ton tai va rollback neu co loi
     async with get_db_session() as session:
         try:
             await session.execute(text("""
@@ -142,6 +156,16 @@ async def create_db_and_tables():
                     value TEXT,
                     updated_at TIMESTAMPTZ DEFAULT NOW()
                 );
+            """))
+            await session.commit()
+        except Exception:
+            try:
+                await session.rollback()
+            except Exception:
+                pass
+
+        try:
+            await session.execute(text("""
                 CREATE TABLE IF NOT EXISTS binance_pay_orders (
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -158,10 +182,7 @@ async def create_db_and_tables():
             """))
             await session.commit()
         except Exception:
-            pass
-
-        if await check_all_tables_exist(session):
-            pass
-        else:
-            async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
+            try:
+                await session.rollback()
+            except Exception:
+                pass
