@@ -355,6 +355,8 @@ admin.add_model_view(CategoryAdmin)
 admin.add_model_view(SubcategoryAdmin)
 
 admin.add_model_view(ItemAdmin)
+from bulk_upload_view import BulkUploadAdminView
+admin.add_base_view(BulkUploadAdminView)
 
 admin.add_model_view(DepositAdmin)
 

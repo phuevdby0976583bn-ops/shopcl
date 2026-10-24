@@ -312,3 +312,24 @@ async def get_settings_endpoint(request: Request, x_api_key: str = Header(None))
     from services.settings import SettingsService
     async with get_db_session() as session:
         return await SettingsService.get_all_settings(session)
+
+
+@api_router.get("/categories/list")
+async def list_categories_and_subcategories(request: Request, x_api_key: str = Header(None)):
+    token = request.session.get("token") if hasattr(request, "session") else None
+    from utils.utils import decode_token
+    is_session_valid = bool(token and decode_token(token))
+    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
+    is_api_key_valid = bool(x_api_key and x_api_key in valid_keys)
+
+    if not is_session_valid and not is_api_key_valid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Chưa đăng nhập Admin!")
+
+    async with get_db_session() as session:
+        cats = (await session.execute(select(Category).order_by(Category.name))).scalars().all()
+        subcats = (await session.execute(select(Subcategory).order_by(Subcategory.name))).scalars().all()
+        return {
+            "status": "success",
+            "categories": [{"id": c.id, "name": c.name} for c in cats],
+            "subcategories": [{"id": s.id, "name": s.name} for s in subcats]
+        }
