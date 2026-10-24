@@ -41,10 +41,18 @@ class ReviewDTO(BaseModel):
 
 
 class ReviewAdmin(ModelView, model=Review):
+    name = "Đánh giá"
+    name_plural = "Đánh giá từ khách (Reviews)"
+    icon = "fa-solid fa-star"
+    column_labels = {
+        "id": "Mã ID",
+        "buy_item": "Mục đã mua",
+        "rating": "Số sao đánh giá",
+        "text": "Nội dung nhận xét",
+        "create_datetime": "Thời gian đánh giá"
+    }
     column_exclude_list = [Review.buyItem_id,
                            Review.image_id]
-    name = "Review"
-    name_plural = "Reviews"
     can_delete = True
     can_edit = True
     can_create = False

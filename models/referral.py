@@ -50,14 +50,23 @@ class ReferralBonusDTO(BaseModel):
 
 
 class ReferralBonusAdmin(ModelView, model=ReferralBonus):
+    name = "Hoa hồng"
+    name_plural = "Hoa hồng giới thiệu (Referral)"
+    icon = "fa-solid fa-handshake"
+    column_labels = {
+        "id": "Mã GD",
+        "referral_user_dto": "Người được mời",
+        "referrer_user_dto": "Người giới thiệu",
+        "payment_amount": "Số tiền nạp ($)",
+        "applied_referral_bonus": "Thưởng người mời ($)",
+        "applied_referrer_bonus": "Thưởng người được mời ($)"
+    }
     column_exclude_list = [ReferralBonus.referrer_user_id,
                            ReferralBonus.referral_user_id]
     column_sortable_list = [ReferralBonus.id,
                             ReferralBonus.payment_amount,
                             ReferralBonus.applied_referrer_bonus,
                             ReferralBonus.applied_referral_bonus]
-    name = "Referral Bonus"
-    name_plural = "Referral Bonuses"
     can_delete = False
     can_edit = False
     can_create = False

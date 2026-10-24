@@ -139,7 +139,7 @@ app.add_middleware(AntiDDoSMiddleware, max_requests_per_minute=120)
 async def health_check():
     return {"status": "ok", "message": "AiogramShopBot is running"}
 
-admin = Admin(app=app, engine=engine, authentication_backend=authentication_backend, title="Bảng Quản Trị - Bubba Gump Digital")
+admin = Admin(app=app, engine=engine, authentication_backend=authentication_backend, title="🦐 Bubba Gump")
 admin.add_model_view(UserAdmin)
 admin.add_model_view(BuyAdmin)
 admin.add_model_view(ShippingOptionAdmin)

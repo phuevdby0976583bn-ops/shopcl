@@ -27,6 +27,15 @@ class ShippingOptionDTO(BaseModel):
 
 
 class ShippingOptionAdmin(ModelView, model=ShippingOption):
+    name = "Vận chuyển"
+    name_plural = "Tùy chọn giao hàng (Shipping)"
+    icon = "fa-solid fa-truck"
+    column_labels = {
+        "id": "Mã ID",
+        "name": "Phương thức giao",
+        "price": "Phí ship ($)",
+        "is_disabled": "Tạm ngưng sử dụng"
+    }
     column_exclude_list = [ShippingOption.buys]
     column_searchable_list = [ShippingOption.name]
     column_sortable_list = [ShippingOption.name,

@@ -38,6 +38,17 @@ class CartItemDTO(BaseModel):
 
 
 class CartItemAdmin(ModelView, model=CartItem):
+    name = "Mục giỏ hàng"
+    name_plural = "Chi tiết giỏ hàng"
+    icon = "fa-solid fa-list-check"
+    column_labels = {
+        "id": "Mã ID",
+        "cart": "Thuộc giỏ hàng",
+        "item_type": "Loại mặt hàng",
+        "category": "Danh mục chính",
+        "subcategory": "Danh mục con",
+        "quantity": "Số lượng đặt"
+    }
     column_sortable_list = [CartItem.id,
                             CartItem.item_type,
                             CartItem.quantity,

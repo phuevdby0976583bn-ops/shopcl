@@ -33,6 +33,10 @@ class CartAdmin(ModelView, model=Cart):
     name = "Giỏ hàng"
     name_plural = "Giỏ hàng (Carts)"
     icon = "fa-solid fa-basket-shopping"
+    column_labels = {
+        "id": "Mã ID",
+        "user": "Khách hàng"
+    }
     column_sortable_list = [Cart.id]
     column_exclude_list = [Cart.user_id, Cart.cart_items]
     can_delete = False
