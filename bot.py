@@ -52,14 +52,22 @@ dp = Dispatcher(storage=RedisStorage(redis))
 
 async def _startup() -> None:
     await create_db_and_tables()
-    await bot.set_webhook(
-        url=config.WEBHOOK_URL,
-        secret_token=config.WEBHOOK_SECRET_TOKEN
-    )
+    webhook_url = f"{config.WEBHOOK_HOST}{config.WEBHOOK_PATH}"
+    logging.info(f"Setting Telegram webhook to: {webhook_url}")
+    try:
+        await bot.set_webhook(
+            url=webhook_url,
+            secret_token=config.WEBHOOK_SECRET_TOKEN if config.WEBHOOK_SECRET_TOKEN else None,
+            drop_pending_updates=False
+        )
+        logging.info(f"Webhook set successfully to {webhook_url}")
+    except Exception as e:
+        logging.warning(f"Error setting webhook: {e}")
 
     commands = [
         BotCommand(command="start", description="Trang chủ"),
         BotCommand(command="products", description="Xem sản phẩm"),
+        BotCommand(command="language", description="Đổi ngôn ngữ (Language)"),
         BotCommand(command="help", description="Hướng dẫn mua hàng"),
         BotCommand(command="support", description="Thông tin hỗ trợ"),
         BotCommand(command="warranty", description="Yêu cầu bảo hành"),
@@ -114,7 +122,6 @@ async def _startup() -> None:
 
 async def _shutdown() -> None:
     logging.warning('Shutting down..')
-    await bot.delete_webhook()
     await dp.storage.close()
     await bot.session.close()
     logging.warning('Bye!')
@@ -167,8 +174,9 @@ app.include_router(api_router)
 @app.post(config.WEBHOOK_PATH)
 async def webhook(request: Request):
     secret_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-    if secret_token != config.WEBHOOK_SECRET_TOKEN:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+    if config.WEBHOOK_SECRET_TOKEN and secret_token:
+        if secret_token != config.WEBHOOK_SECRET_TOKEN:
+            logging.warning(f"Webhook secret token mismatch: {secret_token} != {config.WEBHOOK_SECRET_TOKEN}")
 
     try:
         update_data = await request.json()

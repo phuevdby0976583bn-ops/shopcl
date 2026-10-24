@@ -71,6 +71,13 @@ BUTTON_ADMIN = {
     Language.ZH: "⚙️ 管理员",
 }
 
+BUTTON_LANGUAGE = {
+    Language.VI: "🌐 Ngôn ngữ",
+    Language.EN: "🌐 Language",
+    Language.HI: "🌐 भाषा",
+    Language.ZH: "🌐 语言",
+}
+
 
 def get_start_keyboard(language: Language, telegram_id: int):
     prod_btn = types.KeyboardButton(text=BUTTON_PRODUCTS.get(language, "🛒 Products"))
@@ -78,9 +85,12 @@ def get_start_keyboard(language: Language, telegram_id: int):
     wallet_btn = types.KeyboardButton(text=BUTTON_WALLET.get(language, "💳 Wallet"))
     warranty_btn = types.KeyboardButton(text=BUTTON_WARRANTY.get(language, "🛡️ Warranty"))
 
+    lang_btn = types.KeyboardButton(text=BUTTON_LANGUAGE.get(language, "🌐 Language"))
+
     keyboard = [
         [prod_btn, orders_btn],
-        [wallet_btn, warranty_btn]
+        [wallet_btn, warranty_btn],
+        [lang_btn]
     ]
     if telegram_id in config.ADMIN_ID_LIST:
         admin_btn = types.KeyboardButton(text=BUTTON_ADMIN.get(language, "⚙️ Admin Menu"))
@@ -189,6 +199,20 @@ async def handle_orders(message: Message, session: AsyncSession, state: FSMConte
 @main_router.message(F.text.in_(set(BUTTON_WALLET.values())))
 async def handle_wallet(message: Message, session: AsyncSession, state: FSMContext, language: Language):
     await my_profile(message=message, session=session, state=state, language=language)
+
+
+@main_router.message(F.text.in_(set(BUTTON_LANGUAGE.values())))
+@main_router.message(Command("language"))
+@main_router.message(Command("lang"))
+async def handle_change_language(message: Message, session: AsyncSession, language: Language):
+    lang_markup = get_language_inline_keyboard()
+    text = {
+        Language.VI: "🌐 **Chọn ngôn ngữ của bạn:**\nVui lòng chọn một trong các ngôn ngữ dưới đây để đổi giao diện bot:",
+        Language.EN: "🌐 **Select your language:**\nPlease choose one of the languages below to switch bot interface:",
+        Language.HI: "🌐 **अपनी भाषा चुनें:**\nकृपया बॉट इंटरफ़ेस बदलने के लिए नीचे दी गई भाषाओं में से एक चुनें:",
+        Language.ZH: "🌐 **选择您的语言：**\n请在下方选择一种语言以切换机器人界面："
+    }.get(language, "🌐 **Select your language:**")
+    await message.answer(text=text, reply_markup=lang_markup)
 
 
 @main_router.message(F.text.in_(set(BUTTON_WARRANTY.values())))

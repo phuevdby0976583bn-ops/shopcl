@@ -9,19 +9,11 @@ load_dotenv()
 load_dotenv('.env.bot.dev')
 
 # Lay Webhook Host tu bien moi truong (Render hoac domain rieng)
-WEBHOOK_HOST = os.environ.get('WEBHOOK_HOST')
-if not WEBHOOK_HOST:
-    runtime_env_str = os.environ.get('RUNTIME_ENVIRONMENT', 'PROD').upper()
-    try:
-        RUNTIME_ENVIRONMENT = RuntimeEnvironment(runtime_env_str)
-    except Exception:
-        RUNTIME_ENVIRONMENT = RuntimeEnvironment.PROD
-    if RUNTIME_ENVIRONMENT == RuntimeEnvironment.DEV:
-        WEBHOOK_HOST = start_ngrok()
-    else:
-        WEBHOOK_HOST = get_sslipio_external_url()
-else:
-    WEBHOOK_HOST = WEBHOOK_HOST.strip().strip('"').strip("'").rstrip('/')
+WEBHOOK_HOST = (
+    os.environ.get('WEBHOOK_HOST')
+    or os.environ.get('RENDER_EXTERNAL_URL')
+    or "https://shopcl.onrender.com"
+).strip().strip('"').strip("'").rstrip('/')
 
 WEBHOOK_PATH = os.environ.get('WEBHOOK_PATH', '/').strip().strip('"').strip("'")
 WEBAPP_HOST = os.environ.get('WEBAPP_HOST', '0.0.0.0').strip().strip('"').strip("'")

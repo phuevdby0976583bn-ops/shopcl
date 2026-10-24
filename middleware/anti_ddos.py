@@ -40,8 +40,13 @@ class AntiDDoSMiddleware(BaseHTTPMiddleware):
             else:
                 del _ip_banned_until[client_ip]
 
-        # 3. Chan bot quet lo hong web pho bien
         path_lower = request.url.path.lower()
+
+        # Bo qua Rate Limit va DDoS check cho Telegram Webhook va Health check
+        if path_lower in ["/", "/health", "/cryptoprocessing/event"]:
+            return await call_next(request)
+
+        # 3. Chan bot quet lo hong web pho bien
         if any(sp in path_lower for sp in SUSPICIOUS_PATHS):
             _ip_banned_until[client_ip] = now + 300 # Khoa 5 phut
             logging.warning(f"AntiDDoS: Chặn IP nghi ngờ tấn công {client_ip} truy cập {request.url.path}")
