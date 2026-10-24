@@ -4,18 +4,18 @@ import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 from aiogram.fsm.storage.redis import RedisStorage
-from aiogram.types import BufferedInputFile, URLInputFile
+from aiogram.types import BufferedInputFile, URLInputFile, Update
 from redis.asyncio import Redis
 from sqladmin import Admin
 
 import config
 from aiogram import Dispatcher
 from fastapi import FastAPI, Request, status, HTTPException
+from fastapi.responses import JSONResponse
 
 from admin import authentication_backend
 from db import create_db_and_tables, engine
 import uvicorn
-from fastapi.responses import JSONResponse
 from enums.cryptocurrency import Cryptocurrency
 from models.buy import BuyAdmin
 from models.buyItem import BuyItemAdmin
@@ -149,11 +149,13 @@ async def webhook(request: Request):
 
     try:
         update_data = await request.json()
-        await dp.feed_webhook_update(bot, update_data)
+        telegram_update = Update.model_validate(update_data, context={"bot": bot})
+        await dp.feed_update(bot=bot, update=telegram_update)
         return {"status": "ok"}
     except Exception as e:
-        logging.error(f"Error processing webhook: {e}")
-        return {"status": "error"}, status.HTTP_500_INTERNAL_SERVER_ERROR
+        tb = traceback.format_exc()
+        logging.error(f"Error processing webhook: {tb}")
+        return JSONResponse(status_code=500, content={"status": "error", "error": str(e), "traceback": tb})
 
 
 @app.exception_handler(Exception)
