@@ -95,14 +95,17 @@ class UserAdmin(ModelView, model=User):
     name_plural = "Khách hàng (Users)"
     icon = "fa-solid fa-users"
     column_labels = {
-        User.id: "Mã ID",
-        User.telegram_username: "Username Telegram",
-        User.telegram_id: "Telegram ID",
-        User.top_up_amount: "Tổng nạp ($)",
-        User.consume_records: "Đã tiêu ($)",
-        User.registered_at: "Ngày đăng ký",
-        User.language: "Ngôn ngữ",
-        User.is_banned: "Khóa tài khoản"
+        "id": "Mã ID",
+        "telegram_username": "Tên Telegram",
+        "telegram_id": "Telegram ID",
+        "top_up_amount": "Tổng nạp ($)",
+        "consume_records": "Đã chi tiêu ($)",
+        "registered_at": "Ngày tham gia",
+        "can_receive_messages": "Trạng thái nhận tin",
+        "language": "Ngôn ngữ",
+        "is_banned": "Đang bị khóa",
+        "referral_code": "Mã giới thiệu",
+        "referred_at": "Ngày được mời"
     }
     column_exclude_list = [User.buys,
                            User.deposits,

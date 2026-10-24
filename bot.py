@@ -129,7 +129,10 @@ async def lifespan(app: FastAPI):
         await _shutdown()
 
 
+from middleware.anti_ddos import AntiDDoSMiddleware
+
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(AntiDDoSMiddleware, max_requests_per_minute=120)
 
 @app.get("/")
 @app.get("/health")

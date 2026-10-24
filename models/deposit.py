@@ -52,11 +52,11 @@ class DepositAdmin(ModelView, model=Deposit):
     name_plural = "Lịch sử nạp tiền (Deposits)"
     icon = "fa-solid fa-money-bill-transfer"
     column_labels = {
-        Deposit.id: "Mã GD",
-        Deposit.user: "Khách nạp",
-        Deposit.network: "Mạng Crypto",
-        Deposit.fiat_amount: "Số tiền ($)",
-        Deposit.deposit_datetime: "Thời gian nạp"
+        "id": "Mã GD",
+        "user": "Khách hàng nạp",
+        "network": "Mạng Crypto",
+        "fiat_amount": "Số tiền quy đổi ($)",
+        "deposit_datetime": "Thời gian nạp tiền"
     }
     column_sortable_list = [Deposit.id,
                             Deposit.network,

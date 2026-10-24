@@ -58,15 +58,15 @@ class ItemAdmin(ModelView, model=Item):
     name_plural = "Kho sản phẩm (Items)"
     icon = "fa-solid fa-box-archive"
     column_labels = {
-        Item.id: "Mã ID",
-        Item.item_type: "Loại hàng",
-        Item.category: "Danh mục chính",
-        Item.subcategory: "Danh mục con",
-        Item.private_data: "Dữ liệu bàn giao (Account/Key)",
-        Item.price: "Giá bán ($)",
-        Item.is_sold: "Đã bán",
-        Item.is_new: "Hàng mới",
-        Item.description: "Mô tả sản phẩm"
+        "id": "Mã ID",
+        "item_type": "Loại mặt hàng",
+        "category": "Danh mục chính",
+        "subcategory": "Danh mục con",
+        "private_data": "Nội dung giao hàng (Account/Key)",
+        "price": "Giá bán ($)",
+        "is_sold": "Đã bán",
+        "is_new": "Hàng mới nạp",
+        "description": "Mô tả sản phẩm"
     }
     column_exclude_list = [Item.category_id, Item.subcategory_id]
     column_formatters = {Item.private_data: lambda m, a: f"{m.private_data[:20]}..." if m.private_data else "",
