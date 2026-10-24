@@ -4,6 +4,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import Message, CallbackQuery
 import redis.asyncio.client
 import time
+import config
 
 
 def rate_limit(limit: int, key=None):
@@ -54,6 +55,10 @@ class ThrottlingMiddleware(BaseMiddleware):
             event: Message,
             data: Dict[str, Any],
     ) -> Any:
+        # Neu la Admin thi tuyet doi KHONG BAO GIO bi throttle
+        user = getattr(event, 'from_user', None)
+        if user and user.id in getattr(config, 'ADMIN_ID_LIST', []):
+            return
 
         limit = getattr(data["handler"].callback, "throttling_rate_limit", self.rate_limit)
         key = getattr(data["handler"].callback, "throttling_key", f"{self.prefix}_message")

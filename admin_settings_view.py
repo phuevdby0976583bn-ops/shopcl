@@ -1,6 +1,7 @@
 from sqladmin import BaseView, expose
 from fastapi import Request
-from fastapi.responses import HTMLResponse
+from starlette.responses import HTMLResponse, RedirectResponse
+from utils.utils import decode_token
 import config
 
 
@@ -8,8 +9,31 @@ class PaymentApiConfigView(BaseView):
     name = "Nạp USDT & API"
     icon = "fa-solid fa-sliders"
 
+    def is_accessible(self, request: Request) -> bool:
+        try:
+            token = request.session.get("token")
+            return bool(token and decode_token(token))
+        except Exception:
+            return False
+
+    def is_visible(self, request: Request) -> bool:
+        try:
+            token = request.session.get("token")
+            return bool(token and decode_token(token))
+        except Exception:
+            return False
+
     @expose("/settings", methods=["GET"])
     async def settings_page(self, request: Request):
+        # Bat buoc xac thuc dang nhap Admin
+        try:
+            token = request.session.get("token")
+        except Exception:
+            token = None
+
+        if not token or not decode_token(token):
+            return RedirectResponse(url="/admin/login", status_code=302)
+
         webhook_host = config.WEBHOOK_HOST or "https://shopcl.onrender.com"
         api_upload_url = f"{webhook_host}/api/items/bulk-upload"
         api_inventory_url = f"{webhook_host}/api/inventory/status"
@@ -154,7 +178,8 @@ class PaymentApiConfigView(BaseView):
                                 <div class="mb-3">
                                     <label class="form-label fw-bold small text-muted">X-API-KEY Header:</label>
                                     <div class="input-group">
-                                        <input type="text" class="form-control font-monospace" value="{api_key}" readonly id="inputKey">
+                                        <input type="password" class="form-control font-monospace" value="{api_key}" readonly id="inputKey">
+                                        <button class="btn btn-outline-secondary" type="button" onclick="toggleKeyVisibility()" title="Hi?n/?n"><i class="fa-solid fa-eye" id="eyeIcon"></i></button>
                                         <button class="btn btn-outline-primary" onclick="copyId('inputKey')"><i class="fa-regular fa-copy"></i> Copy</button>
                                     </div>
                                 </div>
@@ -335,6 +360,18 @@ KRYPTO_EXPRESS_API_URL="https://kryptoexpress.pro/api"</pre>
             const val = document.getElementById("formItems").value;
             const lines = val.split('\n').map(s => s.trim()).filter(s => s.length > 0);
             document.getElementById("lineCounter").innerText = lines.length + " tài khoản";
+        }}
+
+        function toggleKeyVisibility() {{
+            const input = document.getElementById("inputKey");
+            const icon = document.getElementById("eyeIcon");
+            if (input.type === "password") {{
+                input.type = "text";
+                icon.className = "fa-solid fa-eye-slash";
+            }} else {{
+                input.type = "password";
+                icon.className = "fa-solid fa-eye";
+            }}
         }}
 
         function copyId(id) {{

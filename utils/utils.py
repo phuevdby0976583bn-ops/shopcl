@@ -143,9 +143,11 @@ def create_access_token(data: dict) -> str:
 
 
 def decode_token(token: str) -> dict | None:
+    if not token or not isinstance(token, str):
+        return None
     try:
         return jwt.decode(token, config.JWT_SECRET_KEY, algorithms=[config.JWT_ALGORITHM])
-    except JWTError:
+    except Exception:
         return None
 
 
