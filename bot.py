@@ -83,15 +83,13 @@ from utils.utils import validate_i18n
 
 
 redis = Redis(
-
     host=config.REDIS_HOST,
-
     port=config.REDIS_PORT,
-
     password=config.REDIS_PASSWORD,
-
-    ssl=config.REDIS_SSL
-
+    ssl=config.REDIS_SSL,
+    socket_timeout=3.0,
+    socket_connect_timeout=3.0,
+    retry_on_timeout=True
 )
 
 session = create_telegram_session()
@@ -105,6 +103,25 @@ dp = Dispatcher(storage=RedisStorage(redis))
 
 
 binance_task = None
+keep_alive_task = None
+
+
+async def keep_alive_background_worker():
+    """Tu dong ping /health moi 8 phut de Render Free Service khong bao gio bi ngu (spin-down)."""
+    await asyncio.sleep(60)
+    import aiohttp
+    while True:
+        try:
+            url = getattr(config, "WEBHOOK_HOST", "")
+            if url and ("onrender.com" in url or "render" in url):
+                health_url = f"{url.rstrip('/')}/health"
+                async with aiohttp.ClientSession() as s:
+                    async with s.get(health_url, timeout=10) as resp:
+                        logging.debug(f"Keep-alive ping /health: status {resp.status}")
+        except Exception as e:
+            logging.debug(f"Keep-alive ping note: {e}")
+        await asyncio.sleep(480)
+
 
 
 
@@ -286,9 +303,10 @@ async def _startup() -> None:
 
 
 
-    global binance_task
+    global binance_task, keep_alive_task
 
     binance_task = asyncio.create_task(binance_pay_background_worker())
+    keep_alive_task = asyncio.create_task(keep_alive_background_worker())
 
 
 
@@ -298,11 +316,12 @@ async def _shutdown() -> None:
 
     logging.warning('Shutting down..')
 
-    global binance_task
+    global binance_task, keep_alive_task
 
     if binance_task:
-
         binance_task.cancel()
+    if keep_alive_task:
+        keep_alive_task.cancel()
 
     await dp.storage.close()
 
@@ -432,8 +451,7 @@ async def webhook(request: Request):
 
         telegram_update = Update.model_validate(update_data, context={"bot": bot})
 
-        await dp.feed_update(bot=bot, update=telegram_update)
-
+        asyncio.create_task(dp.feed_update(bot=bot, update=telegram_update))
         return {"status": "ok"}
 
     except Exception as e:

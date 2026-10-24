@@ -169,6 +169,10 @@ async def start(message: Message, session: AsyncSession, language: Language, com
         telegram_id=telegram_id,
         language=language
     ), command_args, session)
+    from utils.custom_filters import cache_user_exists
+    from middleware.language import set_cached_user_language
+    cache_user_exists(telegram_id)
+    set_cached_user_language(telegram_id, language)
 
     start_markup = get_start_keyboard(language, telegram_id)
     bot_info = await bot.get_me()
@@ -238,6 +242,8 @@ async def on_language_selected(callback: CallbackQuery, session: AsyncSession):
         user_dto.language = new_lang
         await UserRepository.update(user_dto, session)
         await session_commit(session)
+        from middleware.language import set_cached_user_language
+        set_cached_user_language(callback.from_user.id, new_lang)
 
     Localizator.clear_cache()
 

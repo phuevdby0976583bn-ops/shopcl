@@ -198,6 +198,8 @@ class UserService:
             await session_commit(session)
             from utils.localizator import Localizator
             Localizator.clear_cache()
+            from middleware.language import set_cached_user_language
+            set_cached_user_language(telegram_id, new_lang)
             msg = get_text(new_lang, BotEntity.USER, "language_edited_successfully")
             kb_builder.row(callback_data.get_back_button(new_lang, 0))
             kb_builder.adjust(1)
