@@ -52,6 +52,11 @@ REDIS_PASSWORD = (os.environ.get('REDIS_PASSWORD') or '').strip().strip('"').str
 REDIS_SSL = os.environ.get('REDIS_SSL', '').lower() in ('true', '1', 'yes') or 'upstash.io' in REDIS_HOST
 
 TELEGRAM_PROXY_URL = os.environ.get('TELEGRAM_PROXY_URL')
+
+# BINANCE PAY CONFIGURATION (0% PHÍ CHUYỂN NỘI BỘ BINANCE)
+BINANCE_UID = os.environ.get('BINANCE_UID', '805398854').strip().strip('"').strip("'")
+BINANCE_API_KEY = os.environ.get('BINANCE_API_KEY', '').strip().strip('"').strip("'")
+BINANCE_API_SECRET = os.environ.get('BINANCE_API_SECRET', '').strip().strip('"').strip("'")
 # VARIABLES FOR CRYPTO FORWARDING
 CRYPTO_FORWARDING_MODE = os.environ.get('CRYPTO_FORWARDING_MODE', 'false').lower() == 'true'
 BTC_FORWARDING_ADDRESS = os.environ.get('BTC_FORWARDING_ADDRESS')

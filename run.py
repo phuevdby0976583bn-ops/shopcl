@@ -182,6 +182,52 @@ async def on_language_selected(callback: CallbackQuery, session: AsyncSession):
     await callback.message.answer(text=msg_text, reply_markup=new_start_markup)
 
 
+from services.binance_pay import BinancePayService
+
+
+@main_router.callback_query(F.data == "binance_pay:view")
+async def show_binance_pay_screen(callback: CallbackQuery, session: AsyncSession, language: Language):
+    media, kb_builder = await BinancePayService.build_payment_screen(callback.from_user.id, session, language)
+    try:
+        await callback.message.edit_media(media=media, reply_markup=kb_builder.as_markup())
+    except Exception:
+        await callback.message.delete()
+        await callback.message.answer_photo(photo=media.media, caption=media.caption, reply_markup=kb_builder.as_markup(), parse_mode="HTML")
+
+
+@main_router.callback_query(F.data == "binance_pay:check")
+async def check_binance_pay_payment(callback: CallbackQuery, session: AsyncSession, language: Language):
+    await callback.answer("🔍 Đang kiểm tra giao dịch trên Binance...")
+    credited = await BinancePayService.process_and_credit_transactions(bot, session, callback.from_user.id)
+    if credited:
+        total_credited = sum(item["amount"] for item in credited)
+        await callback.answer(f"🎉 Đã nhận được +{total_credited} USDT! Số dư đã được cộng.", show_alert=True)
+        from handlers.user.my_profile import my_profile
+        await my_profile(callback=callback, session=session, state=None, language=language)
+    else:
+        alert_msg = {
+            Language.VI: """⏳ Chưa phát hiện giao dịch mới!
+
+Nếu bạn vừa chuyển trên App Binance, vui lòng đợi 5-15 giây rồi bấm lại nút này.
+
+⚠️ Lưu ý: BẮT BUỘC phải điền đúng mã Ghi chú (Memo) khi chuyển tiền!""",
+            Language.EN: """⏳ No new transaction detected!
+
+If you just sent on Binance App, please wait 5-15 seconds and try again.
+
+⚠️ Note: You MUST enter the correct Remark/Memo when transferring!""",
+            Language.HI: """⏳ कोई नया लेनदेन नहीं मिला!
+
+यदि आपने अभी भेजा है, तो कृपया 5-15 सेकंड प्रतीक्षा करें और पुनः प्रयास करें।""",
+            Language.ZH: """⏳ 暂未检测到新交易！
+
+如果您刚刚完成转账，请等待5-15秒后重试。
+
+⚠️ 注意：转账时请务必填写正确的备注 Memo！"""
+        }.get(language, "⏳ No new transaction detected!")
+        await callback.answer(alert_msg, show_alert=True)
+
+
 @main_router.message(F.text.in_(set(BUTTON_PRODUCTS.values())))
 @main_router.message(Command("products"))
 async def handle_products(message: Message, session: AsyncSession, state: FSMContext, language: Language):

@@ -109,3 +109,47 @@ async def inventory_status(x_api_key: str = Header(None)):
             })
 
         return {"inventory": result}
+
+
+@api_router.get("/binancepay/status")
+async def binance_pay_status(x_api_key: str = Header(None)):
+    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
+    if not x_api_key or x_api_key not in valid_keys:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sai ma X-API-KEY!")
+
+    is_configured = bool(config.BINANCE_API_KEY and config.BINANCE_API_SECRET)
+    from models.binance_pay import BinancePayOrder
+    from sqlalchemy import func
+
+    async with get_db_session() as session:
+        stmt_pending = select(func.count(BinancePayOrder.id)).where(BinancePayOrder.status == "PENDING")
+        pending_cnt = (await session.execute(stmt_pending)).scalar_one()
+
+        stmt_comp = select(func.count(BinancePayOrder.id)).where(BinancePayOrder.status == "COMPLETED")
+        completed_cnt = (await session.execute(stmt_comp)).scalar_one()
+
+        return {
+            "status": "success",
+            "is_configured": is_configured,
+            "binance_uid": config.BINANCE_UID,
+            "pending_orders": pending_cnt,
+            "completed_orders": completed_cnt
+        }
+
+
+@api_router.post("/binancepay/check-now")
+async def binance_pay_check_now(x_api_key: str = Header(None)):
+    valid_keys = [config.SQLADMIN_RAW_PASSWORD, config.JWT_SECRET_KEY]
+    if not x_api_key or x_api_key not in valid_keys:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sai ma X-API-KEY!")
+
+    from services.binance_pay import BinancePayService
+    from bot import bot
+
+    async with get_db_session() as session:
+        credited = await BinancePayService.process_and_credit_transactions(bot, session)
+        return {
+            "status": "success",
+            "credited_count": len(credited),
+            "credited": credited
+        }

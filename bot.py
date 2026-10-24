@@ -50,6 +50,23 @@ bot = create_bot(config.TOKEN, session)
 dp = Dispatcher(storage=RedisStorage(redis))
 
 
+binance_task = None
+
+
+async def binance_pay_background_worker():
+    while True:
+        try:
+            await asyncio.sleep(25)
+            if config.BINANCE_API_KEY and config.BINANCE_API_SECRET:
+                from services.binance_pay import BinancePayService
+                async with get_db_session() as session:
+                    await BinancePayService.process_and_credit_transactions(bot, session)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logging.warning(f"Error in binance_pay_background_worker: {e}")
+
+
 async def _startup() -> None:
     await create_db_and_tables()
     webhook_url = f"{config.WEBHOOK_HOST}{config.WEBHOOK_PATH}"
@@ -119,9 +136,15 @@ async def _startup() -> None:
         except Exception as e:
             logging.warning(e)
 
+    global binance_task
+    binance_task = asyncio.create_task(binance_pay_background_worker())
+
 
 async def _shutdown() -> None:
     logging.warning('Shutting down..')
+    global binance_task
+    if binance_task:
+        binance_task.cancel()
     await dp.storage.close()
     await bot.session.close()
     logging.warning('Bye!')
@@ -161,6 +184,9 @@ admin.add_model_view(CartAdmin)
 admin.add_model_view(CartItemAdmin)
 admin.add_model_view(ReferralBonusAdmin)
 admin.add_model_view(ReviewAdmin)
+
+from models.binance_pay import BinancePayOrderAdmin
+admin.add_model_view(BinancePayOrderAdmin)
 
 from admin_settings_view import PaymentApiConfigView
 admin.add_base_view(PaymentApiConfigView)

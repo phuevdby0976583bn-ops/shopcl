@@ -13,14 +13,20 @@ class PaymentApiConfigView(BaseView):
         webhook_host = config.WEBHOOK_HOST or "https://shopcl.onrender.com"
         api_upload_url = f"{webhook_host}/api/items/bulk-upload"
         api_inventory_url = f"{webhook_host}/api/inventory/status"
+        api_binance_status = f"{webhook_host}/api/binancepay/status"
+        api_binance_check = f"{webhook_host}/api/binancepay/check-now"
         api_key = config.SQLADMIN_RAW_PASSWORD or "MatKhauAdminCuaBan123"
+
+        binance_uid = config.BINANCE_UID or "805398854"
+        is_binance_ready = bool(config.BINANCE_API_KEY and config.BINANCE_API_SECRET)
+        binance_badge = '<span class="badge bg-success"><i class="fa-solid fa-circle-check me-1"></i> Đang hoạt động tự động</span>' if is_binance_ready else '<span class="badge bg-warning text-dark"><i class="fa-solid fa-triangle-exclamation me-1"></i> Chờ điền API Key & Secret</span>'
 
         html_content = f"""<!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cấu Hình Nạp USDT & REST API - Bubba Gump</title>
+    <title>Cấu Hình Nạp USDT, Binance Pay & REST API - Bubba Gump</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -44,8 +50,8 @@ class PaymentApiConfigView(BaseView):
         <!-- Header -->
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom">
             <div>
-                <h3 class="fw-bold mb-1 text-dark"><i class="fa-solid fa-sliders text-primary me-2"></i>Cấu Hình Nạp USDT & REST API Bán Hàng</h3>
-                <p class="text-muted mb-0">Hệ thống nạp hàng tự động bằng Tool / API, cổng nạp Crypto tự động và App Binance</p>
+                <h3 class="fw-bold mb-1 text-dark"><i class="fa-solid fa-sliders text-primary me-2"></i>Cấu Hình Nạp USDT, Binance Pay & Tool API</h3>
+                <p class="text-muted mb-0">Hệ thống nạp hàng tự động bằng Tool / API, Nạp 0% phí qua Binance Pay và Cổng USDT Blockchain</p>
             </div>
             <div class="mt-2 mt-md-0">
                 <a href="/admin" class="btn btn-outline-secondary"><i class="fa-solid fa-arrow-left me-1"></i> Quay lại Dashboard</a>
@@ -60,13 +66,13 @@ class PaymentApiConfigView(BaseView):
                 </button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-usdt">
-                    <i class="fa-solid fa-coins text-success me-1"></i> 2. Nạp USDT Tự Động (KryptoExpress)
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-binance">
+                    <i class="fa-brands fa-bitcoin text-warning me-1"></i> 2. Nạp Binance Pay (0% Phí - Nhận 1s)
                 </button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-binance">
-                    <i class="fa-brands fa-bitcoin text-warning me-1"></i> 3. Quét Mã App Binance & Binance Pay
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-usdt">
+                    <i class="fa-solid fa-coins text-success me-1"></i> 3. Nạp USDT Tự Động (KryptoExpress)
                 </button>
             </li>
             <li class="nav-item">
@@ -183,15 +189,97 @@ print("Kết quả:", response.json())</pre>
                 </div>
             </div>
 
-            <!-- TAB 2: CẤU HÌNH USDT TỰ ĐỘNG -->
-            <div class="tab-pane fade" id="tab-usdt">
+            <!-- TAB 2: BINANCE PAY (0% PHÍ) -->
+            <div class="tab-pane fade" id="tab-binance">
                 <div class="card">
-                    <div class="card-header py-3 text-success">
-                        <h5 class="card-title mb-0 fw-bold"><i class="fa-solid fa-wallet me-2"></i>Hướng Dẫn Cấu Hình Nạp USDT & Crypto Tự Động (KryptoExpress)</h5>
+                    <div class="card-header py-3 text-warning d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0 fw-bold"><i class="fa-brands fa-bitcoin me-2"></i>Nạp Tự Động Bằng Binance Pay (0% Phí - Nhận Ngay 1s)</h5>
+                        {binance_badge}
                     </div>
                     <div class="card-body">
                         <div class="success-pill">
-                            <b>Cơ chế hoạt động:</b> Khách hàng bấm <b>💳 Ví</b> ➔ Chọn <b>Nạp tiền</b> ➔ Chọn <b>USDT (BEP20)</b> hoặc <b>USDT (Solana)</b>. Bot tự động tạo ví riêng kèm mã QR. Khách chuyển tiền -> Cổng thanh toán quét Blockchain và gửi Webhook về Bot -> Bot tự động cộng tiền cho khách trong 30 giây!
+                            <b>Ưu điểm vượt trội của Binance Pay:</b><br>
+                            • <b>0đ / 0 USDT phí giao dịch</b>: Cả người chuyển và bạn đều hoàn toàn miễn phí 100%.<br>
+                            • <b>Nhận ngay trong 1-5 giây</b>: Không cần chờ đợi xác nhận khối Blockchain.<br>
+                            • <b>Hạn mức từ 0.01 USDT</b>: Khách nạp bao nhiêu cũng nhận được, tiền về thẳng ví Binance cá nhân của bạn.
+                        </div>
+
+                        <!-- Thong tin UID -->
+                        <div class="row g-3 my-3">
+                            <div class="col-md-4">
+                                <div class="p-3 border rounded bg-light">
+                                    <div class="small text-muted fw-bold">Binance UID Của Bạn:</div>
+                                    <div class="fs-4 fw-bold text-warning font-monospace">{binance_uid}</div>
+                                    <small class="text-muted">Tài khoản ví Binance nhận tiền</small>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="p-3 border rounded bg-light">
+                                    <div class="small text-muted fw-bold">Trạng Thái Tự Động:</div>
+                                    <div class="fs-5 fw-bold text-success mt-1"><i class="fa-solid fa-robot me-1"></i> Background Polling (25s)</div>
+                                    <small class="text-muted">Tự quét lịch sử giao dịch và ting ting</small>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="p-3 border rounded bg-light">
+                                    <div class="small text-muted fw-bold">Đồng Bộ Nhanh:</div>
+                                    <button class="btn btn-warning w-100 mt-1 fw-bold" onclick="syncBinancePay()"><i class="fa-solid fa-rotate me-1"></i> Quét Binance Pay Ngay</button>
+                                    <div id="syncResult" class="small mt-1" style="display:none;"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h5 class="fw-bold text-dark mt-4 mb-3"><i class="fa-solid fa-shield-halved text-success me-2"></i>Hướng Dẫn Lấy API Key Binance (Chỉ Đọc - Cực Kỳ An Toàn)</h5>
+                        <p class="text-muted">Để Bot có thể đọc lịch sử giao dịch và tự động cộng tiền, bạn chỉ cần tạo 1 API Key <b>chỉ đọc (Enable Reading)</b>:</p>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="border rounded p-3 h-100 bg-light">
+                                    <h6 class="fw-bold text-dark"><span class="step-badge">1</span>Tạo API trên Binance</h6>
+                                    <ol class="small text-muted ps-3">
+                                        <li class="mb-2">Bấm vào avatar tròn cá nhân <b>User-9b21f</b> ở góc trên bên phải trang Binance.</li>
+                                        <li class="mb-2">Chọn mục <b>Account</b> ➔ <b>API Management</b>.</li>
+                                        <li class="mb-2">Bấm <b>Create API</b> ➔ Chọn loại <b>System generated (HMAC)</b>.</li>
+                                        <li class="mb-2">Đặt tên: <code>ShopBotTelegram</code> ➔ Bấm Next và xác minh OTP email / Authenticator.</li>
+                                    </ol>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="border rounded p-3 h-100 bg-light">
+                                    <h6 class="fw-bold text-dark"><span class="step-badge success">2</span>Cài đặt Quyền & Lưu Key</h6>
+                                    <ol class="small text-muted ps-3">
+                                        <li class="mb-2"><b>BẢO MẬT:</b> Chỉ tích chọn duy nhất ô <b>Enable Reading</b> (Đọc dữ liệu).</li>
+                                        <li class="mb-2"><b>TUYỆT ĐỐI KHÔNG</b> tích chọn ô <i>Enable Withdrawals</i> (Rút tiền) hoặc <i>Enable Spot & Margin Trading</i>. Như vậy ví của bạn an toàn 100%!</li>
+                                        <li class="mb-2">Sao chép ngay <b>API Key</b> và <b>Secret Key</b>.</li>
+                                    </ol>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="border rounded p-3 bg-light">
+                                    <h6 class="fw-bold text-dark"><span class="step-badge warning">3</span>Điền vào Biến Môi Trường Render</h6>
+                                    <p class="small text-muted mb-2">Vào Render Dashboard ➔ Chọn service <b>shopcl</b> ➔ Mục <b>Environment</b> ➔ Điền thêm 3 dòng sau:</p>
+                                    <div class="code-box">
+                                        <pre style="margin:0; color:#38bdf8;">BINANCE_UID="{binance_uid}"
+BINANCE_API_KEY="Dán_API_Key_của_bạn_vào_đây"
+BINANCE_API_SECRET="Dán_Secret_Key_của_bạn_vào_đây"</pre>
+                                    </div>
+                                    <small class="text-success mt-2 d-block"><i class="fa-solid fa-circle-check me-1"></i> Sau khi điền xong, Render sẽ tự động kết nối và kích hoạt nạp tự động Binance Pay 100%!</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: CẤU HÌNH USDT TỰ ĐỘNG -->
+            <div class="tab-pane fade" id="tab-usdt">
+                <div class="card">
+                    <div class="card-header py-3 text-success">
+                        <h5 class="card-title mb-0 fw-bold"><i class="fa-solid fa-wallet me-2"></i>Hướng Dẫn Cấu Hình Nạp USDT Blockchain (KryptoExpress)</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="info-pill">
+                            <b>Cơ chế On-chain:</b> Dành cho khách muốn nạp qua mạng Blockchain như BNB Smart Chain (BEP20) hoặc Solana (USDT-Solana). Cổng thanh toán KryptoExpress tự quét khối và bắn Webhook xác nhận sau 30 giây.
                         </div>
 
                         <div class="row g-4 mt-2">
@@ -199,13 +287,8 @@ print("Kết quả:", response.json())</pre>
                                 <div class="card h-100 border-0 bg-light">
                                     <div class="card-body">
                                         <h5 class="fw-bold text-dark"><span class="step-badge">1</span>Đăng ký tài khoản Merchant</h5>
-                                        <p class="text-muted">Đăng ký tài khoản hoàn toàn miễn phí, không yêu cầu giấy phép kinh doanh phức tạp.</p>
-                                        <ol>
-                                            <li>Truy cập <a href="https://kryptoexpress.pro" target="_blank" class="fw-bold">kryptoexpress.pro</a>.</li>
-                                            <li>Đăng ký tài khoản Merchant mới.</li>
-                                            <li>Vào mục <b>Settings</b> ➔ <b>API Keys</b> ➔ Nhấn <b>Create New Key</b>.</li>
-                                            <li>Sao chép: <code>API Key</code> và <code>API Secret</code>.</li>
-                                        </ol>
+                                        <p class="text-muted">Đăng ký tài khoản hoàn toàn miễn phí tại <a href="https://kryptoexpress.pro" target="_blank" class="fw-bold">kryptoexpress.pro</a>.</p>
+                                        <p class="small text-muted">Vào mục <b>Settings</b> ➔ <b>API Keys</b> ➔ Nhấn <b>Create New Key</b> để lấy <code>API Key</code> và <code>API Secret</code>.</p>
                                     </div>
                                 </div>
                             </div>
@@ -214,88 +297,12 @@ print("Kết quả:", response.json())</pre>
                                 <div class="card h-100 border-0 bg-light">
                                     <div class="card-body">
                                         <h5 class="fw-bold text-dark"><span class="step-badge success">2</span>Điền vào Biến Môi Trường Render</h5>
-                                        <p class="text-muted">Mở Render Dashboard ➔ Chọn service <b>shopcl</b> ➔ Tab <b>Environment</b> ➔ Điền thêm:</p>
                                         <div class="code-box">
                                             <pre style="margin:0; color:#38bdf8;">KRYPTO_EXPRESS_API_KEY="Dán_API_Key_Vào_Đây"
 KRYPTO_EXPRESS_API_SECRET="Dán_API_Secret_Vào_Đây"
 KRYPTO_EXPRESS_API_URL="https://kryptoexpress.pro/api"</pre>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-
-                            <div class="col-12">
-                                <div class="card border-0 bg-light">
-                                    <div class="card-body">
-                                        <h5 class="fw-bold text-dark"><span class="step-badge warning">3</span>Cấu Hình Tự Động Chuyển Tiền Về Ví Sàn Binance Của Bạn (Auto-Forwarding)</h5>
-                                        <p>Khi khách nạp tiền thành công, hệ thống có thể tự động bắn thẳng số USDT đó về địa chỉ ví Binance của bạn mà không cần bạn phải vào rút tay!</p>
-                                        <p class="mb-2">Điền thêm 3 dòng sau vào Environment trên Render:</p>
-                                        <div class="code-box">
-                                            <pre style="margin:0; color:#38bdf8;">CRYPTO_FORWARDING_MODE="true"
-BNB_FORWARDING_ADDRESS="Địa_chỉ_ví_USDT_mạng_BEP20_trên_Binance_của_bạn"
-SOL_FORWARDING_ADDRESS="Địa_chỉ_ví_USDT_mạng_Solana_trên_Binance_của_bạn"</pre>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- TAB 3: APP BINANCE TỰ ĐỘNG -->
-            <div class="tab-pane fade" id="tab-binance">
-                <div class="card">
-                    <div class="card-header py-3 text-warning">
-                        <h5 class="card-title mb-0 fw-bold"><i class="fa-brands fa-bitcoin me-2"></i>Hướng Dẫn Nạp Tiền Bằng Ứng Dụng Binance</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row g-4">
-                            <!-- Cách 1: Quét mã QR BEP20 -->
-                            <div class="col-lg-6">
-                                <div class="border rounded-3 p-4 h-100 bg-white shadow-sm">
-                                    <div class="d-flex align-items-center mb-3">
-                                        <span class="badge bg-success p-2 me-2"><i class="fa-solid fa-check fs-6"></i></span>
-                                        <div>
-                                            <h5 class="fw-bold mb-0 text-success">Cách 1: Khách Quét Mã QR Mạng BSC (BEP20)</h5>
-                                            <small class="text-muted">Khuyên Dùng Nhất - Chạy ngay 100% không cần đăng ký</small>
-                                        </div>
-                                    </div>
-                                    <p>Mạng <b>BNB Smart Chain (BEP20)</b> là mạng phổ biến nhất trên Binance vì tốc độ cực nhanh và phí rút siêu rẻ (chỉ khoảng <b>~0.19$</b>).</p>
-                                    
-                                    <h6 class="fw-bold text-dark mt-3">Quy trình nạp tiền của khách:</h6>
-                                    <ol class="ps-3 small text-muted">
-                                        <li class="mb-2">Khách mở bot Telegram, bấm <b>💳 Ví</b> ➔ Chọn <b>Nạp tiền</b> ➔ Chọn loại tiền: <b>USDT (BEP20)</b>.</li>
-                                        <li class="mb-2">Bot lập tức gửi ảnh <b>Mã QR</b> kèm địa chỉ ví nhận và số tiền cần chuyển.</li>
-                                        <li class="mb-2">Khách mở ứng dụng <b>Binance</b> trên điện thoại ➔ Bấm vào biểu tượng <b>[ — ] Quét mã QR</b> ở góc trên cùng bên phải màn hình chính.</li>
-                                        <li class="mb-2">Quét mã QR của bot ➔ Chọn mạng <b>BNB Smart Chain (BEP20)</b> ➔ Xác nhận rút tiền.</li>
-                                        <li class="mb-2">Trong vòng 30s - 1 phút, giao dịch hoàn tất ➔ Bot tự động ting ting cộng số dư tài khoản cho khách!</li>
-                                    </ol>
-                                </div>
-                            </div>
-
-                            <!-- Cách 2: Binance Pay Merchant -->
-                            <div class="col-lg-6">
-                                <div class="border rounded-3 p-4 h-100 bg-white shadow-sm">
-                                    <div class="d-flex align-items-center mb-3">
-                                        <span class="badge bg-primary p-2 me-2"><i class="fa-solid fa-mobile-screen fs-6"></i></span>
-                                        <div>
-                                            <h5 class="fw-bold mb-0 text-primary">Cách 2: Binance Pay Merchant API</h5>
-                                            <small class="text-muted">0% Phí - Deeplink 1 chạm mở thẳng App Binance</small>
-                                        </div>
-                                    </div>
-                                    <p>Binance Pay là cổng thanh toán nội bộ của Binance, tiền chuyển giữa các tài khoản Binance với <b>0% phí giao dịch</b>.</p>
-
-                                    <h6 class="fw-bold text-dark mt-3">Các bước tích hợp Binance Pay:</h6>
-                                    <ol class="ps-3 small text-muted">
-                                        <li class="mb-2">Truy cập cổng đối tác: <a href="https://merchant.binance.com/" target="_blank" class="fw-bold">merchant.binance.com</a>.</li>
-                                        <li class="mb-2">Đăng ký tài khoản Merchant và hoàn tất KYC doanh nghiệp hoặc cá nhân.</li>
-                                        <li class="mb-2">Vào mục <b>Developer</b> ➔ <b>API Management</b> ➔ Tạo <code>Binance Pay API Key</code> và <code>Secret Key</code>.</li>
-                                        <li class="mb-2">Webhook URL nhận kết quả thanh toán từ Binance:
-                                            <div class="bg-light p-2 rounded border font-monospace mt-1">{webhook_host}/api/binancepay/webhook</div>
-                                        </li>
-                                        <li class="mb-2">Khi khách bấm nạp ➔ Bot sinh Deeplink <code>binance://pay?...</code> ➔ Khách bấm vào là App Binance tự mở lên xác nhận bằng vân tay / FaceID!</li>
-                                    </ol>
                                 </div>
                             </div>
                         </div>
@@ -421,7 +428,31 @@ SOL_FORWARDING_ADDRESS="Địa_chỉ_ví_USDT_mạng_Solana_trên_Binance_của_
             }}
         }}
 
-        // Tự động load inventory khi mở tab
+        async function syncBinancePay() {{
+            const resBox = document.getElementById("syncResult");
+            resBox.style.display = "block";
+            resBox.innerHTML = '<span class="text-info"><i class="fa-solid fa-spinner fa-spin me-1"></i> Đang kết nối Binance API...</span>';
+
+            try {{
+                const res = await fetch("{api_binance_check}", {{
+                    method: "POST",
+                    headers: {{ "X-API-KEY": "{api_key}" }}
+                }});
+                const data = await res.json();
+                if (res.ok) {{
+                    if (data.credited_count > 0) {{
+                        resBox.innerHTML = '<span class="text-success fw-bold"><i class="fa-solid fa-circle-check me-1"></i> Đã tìm thấy và cộng tiền cho ' + data.credited_count + ' giao dịch!</span>';
+                    }} else {{
+                        resBox.innerHTML = '<span class="text-muted"><i class="fa-solid fa-check me-1"></i> Quét hoàn tất: Không có giao dịch mới cần xử lý.</span>';
+                    }}
+                }} else {{
+                    resBox.innerHTML = '<span class="text-danger"><i class="fa-solid fa-triangle-exclamation me-1"></i> ' + (data.detail || "Chưa cấu hình API Key trên Render") + '</span>';
+                }}
+            }} catch (err) {{
+                resBox.innerHTML = '<span class="text-danger">Lỗi kết nối: ' + err.message + '</span>';
+            }}
+        }}
+
         document.addEventListener("DOMContentLoaded", function() {{
             updateLineCount();
             fetchInventory();

@@ -86,6 +86,20 @@ class UserService:
     async def get_top_up_buttons(callback_data: MyProfileCallback,
                                  language: Language) -> tuple[str, InlineKeyboardBuilder]:
         kb_builder = InlineKeyboardBuilder()
+
+        # Nút nạp tự động qua Binance Pay (0% phí)
+        binance_btn_text = {
+            Language.VI: "🟡 Binance Pay (0% Phí - Nhận 1s)",
+            Language.EN: "🟡 Binance Pay (0% Fee - Instant 1s)",
+            Language.HI: "🟡 Binance Pay (0% शुल्क - तुरंत)",
+            Language.ZH: "🟡 币安支付 Binance Pay (0手续费 - 秒到)"
+        }.get(language, "🟡 Binance Pay (0% Fee - Instant 1s)")
+
+        kb_builder.button(
+            text=binance_btn_text,
+            callback_data="binance_pay:view"
+        )
+
         for cryptocurrency in Cryptocurrency.get_visible():
             kb_builder.button(
                 text=cryptocurrency.get_localized(language),
