@@ -14,6 +14,7 @@ def test_create_telegram_session_without_proxy(monkeypatch):
 
 
 def test_create_telegram_session_with_proxy(monkeypatch):
+    pytest.importorskip("aiohttp_socks")
     monkeypatch.setattr("config.TELEGRAM_PROXY_URL", "socks5://192.168.1.1:10808")
 
     session = create_telegram_session()

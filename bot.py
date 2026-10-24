@@ -208,6 +208,40 @@ async def _startup() -> None:
     await create_db_and_tables()
     async with get_db_session() as db_sess:
         from services.settings import SettingsService
+        try:
+            from sqlalchemy import text
+            await db_sess.execute(text("""
+                ALTER TABLE subcategories ADD COLUMN IF NOT EXISTS price FLOAT DEFAULT 0.0;
+                ALTER TABLE subcategories ADD COLUMN IF NOT EXISTS description VARCHAR DEFAULT '';
+                ALTER TABLE items ALTER COLUMN price DROP NOT NULL;
+                ALTER TABLE items ALTER COLUMN description DROP NOT NULL;
+            """))
+            await db_sess.execute(text("""
+                UPDATE subcategories s
+                SET price = sub.item_price
+                FROM (
+                    SELECT subcategory_id, MAX(price) AS item_price
+                    FROM items
+                    WHERE price IS NOT NULL AND price > 0
+                    GROUP BY subcategory_id
+                ) sub
+                WHERE s.id = sub.subcategory_id AND (s.price IS NULL OR s.price = 0);
+
+                UPDATE subcategories s
+                SET description = sub.item_desc
+                FROM (
+                    SELECT subcategory_id, MAX(description) AS item_desc
+                    FROM items
+                    WHERE description IS NOT NULL AND description != ''
+                    GROUP BY subcategory_id
+                ) sub
+                WHERE s.id = sub.subcategory_id AND (s.description IS NULL OR s.description = '');
+            """))
+            await db_sess.commit()
+            logging.info("Migrated subcategories table with price & description columns successfully")
+        except Exception as e:
+            logging.warning(f"Note on subcategories schema migration: {e}")
+
         await SettingsService.load_settings_into_config(db_sess)
         try:
             from sqlalchemy import update, or_

@@ -40,8 +40,8 @@ class SubcategoryRepository:
                 Item.item_type,
                 Item.category_id,
                 Item.subcategory_id,
-                Item.description,
-                Item.price,
+                func.coalesce(func.nullif(Subcategory.description, ""), Item.description).label("description"),
+                func.coalesce(func.nullif(Subcategory.price, 0), Item.price).label("price"),
                 Category.name.label("category_name"),
                 Subcategory.name.label("subcategory_name"),
                 func.row_number().over(

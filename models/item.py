@@ -18,10 +18,10 @@ class Item(Base):
     subcategory_id = Column(Integer, ForeignKey("subcategories.id", ondelete="CASCADE"), nullable=False)
     subcategory = relationship("Subcategory", back_populates="items")
     private_data = Column(String, nullable=True, unique=False)
-    price = Column(Float, nullable=False)
+    price = Column(Float, nullable=True, default=0.0)
     is_sold = Column(Boolean, nullable=False, default=False)
     is_new = Column(Boolean, nullable=False, default=True)
-    description = Column(String, nullable=False)
+    description = Column(String, nullable=True, default="")
 
     __table_args__ = (
         CheckConstraint('price > 0', name='check_price_positive'),
@@ -108,9 +108,14 @@ class ItemAdmin(ModelView, model=Item):
             ),
             "style": "font-family: Consolas, monospace; font-size: 13px; line-height: 1.4;"
         },
+        "price": {
+            "step": "0.01",
+            "min": "0",
+            "placeholder": "💡 TÙY CHỌN: Để trống sẽ tự động lấy Giá bán từ Danh mục con đã chọn"
+        },
         "description": {
             "rows": 3,
-            "placeholder": "Mô tả sản phẩm (ví dụ: Clone Facebook ngâm 6 tháng, 2FA đầy đủ, bao login)"
+            "placeholder": "💡 TÙY CHỌN: Để trống sẽ tự động lấy Mô tả từ Danh mục con đã chọn"
         }
     }
 
@@ -138,6 +143,36 @@ class ItemAdmin(ModelView, model=Item):
         subcat_obj = data.get("subcategory")
         cat_name = getattr(cat_obj, "name", "")
         subcat_name = getattr(subcat_obj, "name", "")
+
+        # TỰ ĐỘNG LẤY GIÁ BÁN & MÔ TẢ TỪ MỤC CON NẾU ĐỂ TRỐNG
+        subcat_price = getattr(subcat_obj, "price", None)
+        subcat_desc = getattr(subcat_obj, "description", None)
+
+        user_price = data.get("price")
+        if (user_price is None or str(user_price).strip() == "" or float(user_price or 0) <= 0):
+            if subcat_price and float(subcat_price) > 0:
+                data["price"] = float(subcat_price)
+            else:
+                data["price"] = 0.02
+        else:
+            data["price"] = float(user_price)
+            if subcat_obj and (not subcat_price or float(subcat_price) <= 0):
+                from models.subcategory import Subcategory
+                from sqlalchemy import update
+                async with self.session_maker() as session:
+                    await session.execute(
+                        update(Subcategory).where(Subcategory.id == subcat_obj.id).values(price=float(user_price))
+                    )
+                    await session.commit()
+
+        user_desc = data.get("description")
+        if not user_desc or not str(user_desc).strip():
+            if subcat_desc and str(subcat_desc).strip():
+                data["description"] = str(subcat_desc)
+            else:
+                data["description"] = f"Clone Facebook - {subcat_name}" if subcat_name else "Clone Facebook chất lượng cao"
+        else:
+            data["description"] = str(user_desc).strip()
 
         is_fb = is_facebook_product(cat_name, subcat_name) or any(
             is_facebook_clone(l) for l in lines[:10]

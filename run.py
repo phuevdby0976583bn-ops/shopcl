@@ -20,7 +20,6 @@ from middleware.throttling_middleware import ThrottlingMiddleware
 from models.user import UserDTO
 from multibot import main as main_multibot
 from handlers.user.cart import cart_router
-from handlers.user.deposit import deposit_router
 from handlers.admin.admin import admin_router, admin
 from handlers.user.all_categories import all_categories_router, all_types
 from handlers.user.my_profile import my_profile_router, my_profile
@@ -583,7 +582,6 @@ users_routers.include_routers(
     my_profile_router,
     cart_router,
     review_management_router,
-    deposit_router
 )
 users_routers.message.middleware(throttling_middleware)
 users_routers.callback_query.middleware(throttling_middleware)

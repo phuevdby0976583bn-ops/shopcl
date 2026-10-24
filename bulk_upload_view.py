@@ -53,6 +53,8 @@ class BulkUploadAdminView(BaseView):
                 select(
                     Subcategory.name.label("subcategory_name"),
                     Category.name.label("category_name"),
+                    Subcategory.price.label("subcat_price"),
+                    Subcategory.description.label("subcat_desc"),
                     func.count(Item.id).filter(Item.is_sold == False).label("live_count"),
                     func.count(Item.id).filter(Item.is_sold == True).label("sold_count"),
                     func.max(Item.price).label("latest_price"),
@@ -60,7 +62,7 @@ class BulkUploadAdminView(BaseView):
                 )
                 .join(Item, Item.subcategory_id == Subcategory.id, isouter=True)
                 .join(Category, Item.category_id == Category.id, isouter=True)
-                .group_by(Subcategory.name, Category.name)
+                .group_by(Subcategory.name, Category.name, Subcategory.price, Subcategory.description)
                 .order_by(Subcategory.name.asc())
             )
             rows = (await session.execute(stats_stmt)).all()
@@ -70,14 +72,16 @@ class BulkUploadAdminView(BaseView):
             name = r.subcategory_name
             if not name:
                 continue
+            chosen_price = float(r.subcat_price or r.latest_price or 0.25)
+            chosen_desc = r.subcat_desc or r.latest_desc or "Clone Facebook chất lượng cao, bao login, 2FA đầy đủ"
             if name not in subcat_dict:
                 subcat_dict[name] = {
                     "name": name,
                     "category": r.category_name or "",
                     "live_count": int(r.live_count or 0),
                     "sold_count": int(r.sold_count or 0),
-                    "price": float(r.latest_price or 0.25),
-                    "description": r.latest_desc or "Clone Facebook chất lượng cao, bao login, 2FA đầy đủ"
+                    "price": chosen_price,
+                    "description": chosen_desc
                 }
             else:
                 subcat_dict[name]["live_count"] += int(r.live_count or 0)

@@ -133,9 +133,19 @@ async def bulk_upload_items(payload: BulkUploadRequest, request: Request, x_api_
         subcat_res = await session.execute(subcat_stmt)
         subcategory = subcat_res.scalar_one_or_none()
         if not subcategory:
-            subcategory = Subcategory(name=payload.subcategory_name.strip(), media_id="0no_image_default")
+            subcategory = Subcategory(
+                name=payload.subcategory_name.strip(),
+                media_id="0no_image_default",
+                price=float(payload.price) if payload.price else 0.02,
+                description=payload.description or "Clone Facebook chất lượng cao"
+            )
             session.add(subcategory)
             await session.flush()
+        else:
+            if payload.price and float(payload.price) > 0:
+                subcategory.price = float(payload.price)
+            if payload.description:
+                subcategory.description = payload.description
 
         # 3. Tạo danh sách Items nạp vào kho
         items_to_add = []
