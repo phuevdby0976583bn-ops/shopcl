@@ -5,13 +5,13 @@ from aiogram.types import Message, CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 from callbacks import AllCategoriesCallback
 from enums.entity_type import EntityType
+from enums.item_type import ItemType
 from enums.keyboard_button import KeyboardButton as KB
 from enums.language import Language
 from handlers.common.common import enable_search
 from handlers.user.constants import UserStates
 from services.cart import CartService
 from services.category import CategoryService
-from services.item import ItemService
 from services.notification import NotificationService
 from services.subcategory import SubcategoryService
 from utils.custom_filters import IsUserExistFilter
@@ -40,25 +40,27 @@ async def _send_or_edit_text(target: Message | CallbackQuery, text: str, reply_m
 
 @all_categories_router.message(F.text.in_(KB.get_localized_set(KB.ALL_CATEGORIES)), IsUserExistFilter())
 async def all_categories_text_message(message: Message, session: AsyncSession, state: FSMContext, language: Language):
-    await all_types(callback=message, session=session, state=state, language=language)
+    # Bo qua buoc hoi "Pick Item Type: Digital / Physical", vao thang Danh muc san pham luon!
+    callback_data = AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL)
+    await all_categories(callback=message, callback_data=callback_data, session=session, state=state, language=language)
 
 
 async def all_types(**kwargs):
-    message: CallbackQuery | Message = kwargs.get("callback")
-    callback_data: AllCategoriesCallback = kwargs.get("callback_data")
-    session: AsyncSession = kwargs.get("session")
-    language: Language = kwargs.get("language")
-    media, kb_builder = await ItemService.get_all_types(callback_data, session, language)
-    caption = getattr(media, "caption", "") or "📦 Chọn danh mục sản phẩm:"
-    await _send_or_edit_text(message, caption, kb_builder.as_markup())
+    # Bo qua buoc hoi Item Type neu co callback tro ve level 0
+    kwargs["callback_data"] = AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL)
+    await all_categories(**kwargs)
 
 
 async def all_categories(**kwargs):
-    callback: CallbackQuery = kwargs.get("callback")
+    callback: CallbackQuery | Message = kwargs.get("callback")
     callback_data: AllCategoriesCallback = kwargs.get("callback_data")
     session: AsyncSession = kwargs.get("session")
     state: FSMContext = kwargs.get("state")
     language: Language = kwargs.get("language")
+
+    if callback_data is None:
+        callback_data = AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL)
+
     state_data = await state.get_data()
     if callback_data.is_filter_enabled and state_data.get('filter') is not None:
         media, kb_builder = await CategoryService.get_buttons(callback_data, state, session, language)
@@ -74,7 +76,8 @@ async def all_categories(**kwargs):
         await state.update_data(filter=None)
         await state.set_state()
         media, kb_builder = await CategoryService.get_buttons(callback_data, state, session, language)
-    caption = getattr(media, "caption", "") or "📦 Danh mục:"
+
+    caption = "📁 <b>Vui lòng chọn danh mục sản phẩm:</b>"
     await _send_or_edit_text(callback, caption, kb_builder.as_markup())
 
 
@@ -100,7 +103,8 @@ async def show_subcategories_in_category(**kwargs):
         await state.update_data(filter=None)
         await state.set_state()
         media, kb_builder = await SubcategoryService.get_buttons(callback_data, state, session, language)
-    caption = getattr(media, "caption", "") or "📦 Danh mục con:"
+
+    caption = getattr(media, "caption", "") or "📦 <b>Chọn loại sản phẩm:</b>"
     await _send_or_edit_text(callback, caption, kb_builder.as_markup())
 
 
@@ -110,7 +114,7 @@ async def select_quantity(**kwargs):
     session: AsyncSession = kwargs.get("session")
     language: Language = kwargs.get("language")
     media, kb_builder = await SubcategoryService.get_select_quantity_buttons(callback_data, session, language)
-    caption = getattr(media, "caption", "") or "Chọn số lượng:"
+    caption = getattr(media, "caption", "") or "🔢 <b>Chọn số lượng cần mua:</b>"
     await _send_or_edit_text(callback, caption, kb_builder.as_markup())
 
 
@@ -120,7 +124,7 @@ async def add_to_cart_confirmation(**kwargs):
     session: AsyncSession = kwargs.get("session")
     language: Language = kwargs.get("language")
     msg, kb_builder = await SubcategoryService.get_add_to_cart_buttons(callback_data, session, language)
-    await _send_or_edit_text(callback, msg or "Xác nhận thêm vào giỏ hàng:", kb_builder.as_markup())
+    await _send_or_edit_text(callback, msg or "🛒 <b>Xác nhận thêm vào giỏ hàng:</b>", kb_builder.as_markup())
 
 
 async def add_to_cart(**kwargs):
@@ -129,7 +133,7 @@ async def add_to_cart(**kwargs):
     session: AsyncSession = kwargs.get("session")
     language: Language = kwargs.get("language")
     media, kb_builder = await CartService.add_to_cart(callback, callback_data, session, language)
-    caption = getattr(media, "caption", "") or "Đã thêm vào giỏ hàng!"
+    caption = getattr(media, "caption", "") or "✅ <b>Đã thêm sản phẩm vào giỏ hàng!</b>"
     await _send_or_edit_text(callback, caption, kb_builder.as_markup())
 
 
@@ -163,7 +167,7 @@ async def navigate_categories(callback: CallbackQuery,
         5: add_to_cart
     }
 
-    current_level_function = levels[current_level]
+    current_level_function = levels.get(current_level, all_categories)
 
     kwargs = {
         "callback": callback,
