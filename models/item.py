@@ -54,6 +54,20 @@ class ItemAvailabilityDTO(BaseModel):
 
 
 class ItemAdmin(ModelView, model=Item):
+    name = "Sản phẩm"
+    name_plural = "Kho sản phẩm (Items)"
+    icon = "fa-solid fa-box-archive"
+    column_labels = {
+        Item.id: "Mã ID",
+        Item.item_type: "Loại hàng",
+        Item.category: "Danh mục chính",
+        Item.subcategory: "Danh mục con",
+        Item.private_data: "Dữ liệu bàn giao (Account/Key)",
+        Item.price: "Giá bán ($)",
+        Item.is_sold: "Đã bán",
+        Item.is_new: "Hàng mới",
+        Item.description: "Mô tả sản phẩm"
+    }
     column_exclude_list = [Item.category_id, Item.subcategory_id]
     column_formatters = {Item.private_data: lambda m, a: f"{m.private_data[:20]}..." if m.private_data else "",
                          Item.description: lambda m, a: f"{m.description[:20]}..."}
@@ -64,7 +78,7 @@ class ItemAdmin(ModelView, model=Item):
                             Item.is_new,
                             Item.price,
                             Item.description]
-    can_delete = False
+    can_delete = True
     can_create = True
     can_edit = True
     can_export = True

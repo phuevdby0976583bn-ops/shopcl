@@ -42,8 +42,15 @@ class CouponDTO(BaseModel):
 
 
 class CouponAdmin(ModelView, model=Coupon):
-    name = "Coupon"
-    name_plural = "Coupons"
+    name = "Mã giảm giá"
+    name_plural = "Mã giảm giá (Coupons)"
+    icon = "fa-solid fa-ticket"
+    column_labels = {
+        Coupon.id: "Mã ID",
+        Coupon.code: "Mã Code",
+        Coupon.discount: "Giảm (%)",
+        Coupon.number_of_uses: "Số lượt dùng"
+    }
     column_exclude_list = [Coupon.buys]
     column_searchable_list = [Coupon.name]
     column_sortable_list = [Coupon.id,

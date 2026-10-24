@@ -30,8 +30,9 @@ class CartDTO(BaseModel):
 
 
 class CartAdmin(ModelView, model=Cart):
-    name = "Cart"
-    name_plural = "Carts"
+    name = "Giỏ hàng"
+    name_plural = "Giỏ hàng (Carts)"
+    icon = "fa-solid fa-basket-shopping"
     column_sortable_list = [Cart.id]
     column_exclude_list = [Cart.user_id, Cart.cart_items]
     can_delete = False

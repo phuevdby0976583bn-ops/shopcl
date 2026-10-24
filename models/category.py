@@ -26,8 +26,10 @@ class CategoryDTO(BaseModel):
 
 
 class CategoryAdmin(ModelView, model=Category):
-    name = "Category"
-    name_plural = "Categories"
+    name = "Danh mục chính"
+    name_plural = "Danh mục chính (Categories)"
+    icon = "fa-solid fa-folder"
+    column_labels = {Category.id: "Mã ID", Category.name: "Tên danh mục"}
     column_searchable_list = [Category.name]
     column_sortable_list = [Category.id, Category.name]
     column_exclude_list = [Category.items,

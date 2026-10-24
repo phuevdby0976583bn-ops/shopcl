@@ -77,6 +77,18 @@ class RefundDTO(BaseModel):
 
 
 class BuyAdmin(ModelView, model=Buy):
+    name = "Đơn mua"
+    name_plural = "Đơn hàng đã bán (Buys)"
+    icon = "fa-solid fa-cart-shopping"
+    column_labels = {
+        Buy.id: "Mã đơn",
+        Buy.buyer: "Người mua",
+        Buy.total_price: "Tổng tiền ($)",
+        Buy.quantity: "Số lượng",
+        Buy.buy_datetime: "Thời gian mua",
+        Buy.status: "Trạng thái",
+        Buy.discount: "Giảm giá ($)"
+    }
     column_exclude_list = [Buy.shipping_option_id,
                            Buy.coupon_id,
                            Buy.buyer_id]

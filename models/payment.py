@@ -51,6 +51,16 @@ class TablePaymentDTO(BaseModel):
 
 
 class PaymentAdmin(ModelView, model=Payment):
+    name = "Thanh toán"
+    name_plural = "Thanh toán (Payments)"
+    icon = "fa-solid fa-credit-card"
+    column_labels = {
+        Payment.id: "Mã GD",
+        Payment.user: "Khách nạp",
+        Payment.processing_payment_id: "Mã cổng TT",
+        Payment.is_paid: "Đã thanh toán",
+        Payment.expire_datetime: "Hạn thanh toán"
+    }
     column_sortable_list = [Payment.id,
                             Payment.processing_payment_id,
                             Payment.message_id,

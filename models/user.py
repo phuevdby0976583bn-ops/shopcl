@@ -91,6 +91,19 @@ class UserDTO(BaseModel):
 
 
 class UserAdmin(ModelView, model=User):
+    name = "Khách hàng"
+    name_plural = "Khách hàng (Users)"
+    icon = "fa-solid fa-users"
+    column_labels = {
+        User.id: "Mã ID",
+        User.telegram_username: "Username Telegram",
+        User.telegram_id: "Telegram ID",
+        User.top_up_amount: "Tổng nạp ($)",
+        User.consume_records: "Đã tiêu ($)",
+        User.registered_at: "Ngày đăng ký",
+        User.language: "Ngôn ngữ",
+        User.is_banned: "Khóa tài khoản"
+    }
     column_exclude_list = [User.buys,
                            User.deposits,
                            User.earned_referral_bonuses,
@@ -114,5 +127,3 @@ class UserAdmin(ModelView, model=User):
                             User.is_banned,
                             User.registered_at,
                             User.referred_at]
-    name_plural = "Users"
-    name = "User"
