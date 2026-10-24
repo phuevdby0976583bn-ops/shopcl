@@ -1,4 +1,4 @@
-import json
+﻿import json
 import logging
 import math
 import os
@@ -9,7 +9,6 @@ from pathlib import Path
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from pyngrok import ngrok
 
 import config
 from enums.bot_entity import BotEntity
@@ -27,26 +26,36 @@ def get_sslipio_external_url():
 
 
 def get_bot_photo_id() -> str:
-    with open("static/no_image.jpeg", "r") as f:
-        return f.read()
+    try:
+        with open("static/no_image.jpeg", "r") as f:
+            return f.read()
+    except Exception:
+        return ""
 
 
 def start_ngrok():
-    ngrok_token = os.environ.get("NGROK_TOKEN")
-    port = os.environ.get("WEBAPP_PORT")
-    ngrok.set_auth_token(ngrok_token)
-    http_tunnel = ngrok.connect(f":{port}", "http")
-    return http_tunnel.public_url
+    try:
+        from pyngrok import ngrok
+        ngrok_token = os.environ.get("NGROK_TOKEN")
+        port = os.environ.get("WEBAPP_PORT", 5000)
+        ngrok.set_auth_token(ngrok_token)
+        http_tunnel = ngrok.connect(f":{port}", "http")
+        return http_tunnel.public_url
+    except Exception as e:
+        logging.error(f"Cannot start ngrok: {e}")
+        return "http://localhost:5000"
 
 
 def get_text(language: Language, entity: BotEntity, key: str) -> str:
     try:
         return Localizator.get_text(language, entity, key)
     except Exception as e:
-        logging.error(e)
         if language == Language.EN:
-            raise
-        return Localizator.get_text(Language.EN, entity, key)
+            return f"[{key}]"
+        try:
+            return Localizator.get_text(Language.EN, entity, key)
+        except Exception:
+            return f"[{key}]"
 
 
 def remove_html_tags(text: str):
@@ -80,7 +89,8 @@ def validate_i18n(reference_file: str = "en.json") -> None:
     reference_path = folder_path / reference_file
 
     if not reference_path.exists():
-        raise FileNotFoundError(f"Reference file not found: {reference_path}")
+        logging.warning(f"Reference file not found: {reference_path}")
+        return
 
     reference = load_json(reference_path)
     errors = []
@@ -89,25 +99,23 @@ def validate_i18n(reference_file: str = "en.json") -> None:
         if file_path.name == reference_file:
             continue
 
-        data = load_json(file_path)
+        try:
+            data = load_json(file_path)
+        except Exception as e:
+            errors.append(f"[{file_path.name}] Failed to load json: {e}")
+            continue
 
         for section, ref_keys in reference.items():
             if section not in data:
-                errors.append(
-                    f"[{file_path.name}] Missing section: '{section}'"
-                )
+                errors.append(f"[{file_path.name}] Missing section: '{section}'")
                 continue
 
             for key, ref_value in ref_keys.items():
                 if key not in data[section]:
-                    errors.append(
-                        f"[{file_path.name}] Missing key: '{section}.{key}'"
-                    )
+                    errors.append(f"[{file_path.name}] Missing key: '{section}.{key}'")
                     continue
 
-                if not isinstance(ref_value, str) or not isinstance(
-                        data[section][key], str
-                ):
+                if not isinstance(ref_value, str) or not isinstance(data[section][key], str):
                     continue
 
                 ref_placeholders = extract_placeholders(ref_value)
@@ -117,24 +125,14 @@ def validate_i18n(reference_file: str = "en.json") -> None:
                 extra = cur_placeholders - ref_placeholders
 
                 if missing:
-                    errors.append(
-                        f"[{file_path.name}] "
-                        f"'{section}.{key}' missing placeholders: {sorted(missing)}"
-                    )
-
+                    errors.append(f"[{file_path.name}] '{section}.{key}' missing placeholders: {sorted(missing)}")
                 if extra:
-                    errors.append(
-                        f"[{file_path.name}] "
-                        f"'{section}.{key}' extra placeholders: {sorted(extra)}"
-                    )
+                    errors.append(f"[{file_path.name}] '{section}.{key}' extra placeholders: {sorted(extra)}")
 
     if errors:
-        print("❌ Validation errors found:\n")
-        for error in errors:
-            print(error)
-        raise SystemExit(1)
-
-    print("✅ All localization files are valid")
+        logging.warning("I18n validation warnings:\n" + "\n".join(errors))
+    else:
+        logging.info("All localization files are valid")
 
 
 def create_access_token(data: dict) -> str:

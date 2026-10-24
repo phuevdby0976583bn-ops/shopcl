@@ -4,7 +4,7 @@ import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 from aiogram.fsm.storage.redis import RedisStorage
-from aiogram.types import BufferedInputFile, URLInputFile, Update
+from aiogram.types import BufferedInputFile, URLInputFile, Update, BotCommand
 from redis.asyncio import Redis
 from sqladmin import Admin
 
@@ -56,6 +56,20 @@ async def _startup() -> None:
         url=config.WEBHOOK_URL,
         secret_token=config.WEBHOOK_SECRET_TOKEN
     )
+
+    commands = [
+        BotCommand(command="start", description="Trang chủ"),
+        BotCommand(command="products", description="Xem sản phẩm"),
+        BotCommand(command="help", description="Hướng dẫn mua hàng"),
+        BotCommand(command="support", description="Thông tin hỗ trợ"),
+        BotCommand(command="warranty", description="Yêu cầu bảo hành"),
+        BotCommand(command="api", description="Quản lý API key"),
+    ]
+    try:
+        await bot.set_my_commands(commands)
+    except Exception as e:
+        logging.warning(f"Failed to set bot commands: {e}")
+
     static = Path("static")
     if static.exists() is False:
         static.mkdir()
