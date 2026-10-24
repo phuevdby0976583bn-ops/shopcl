@@ -24,7 +24,11 @@ TOKEN = os.environ.get('TOKEN', '').strip().strip('"').strip("'")
 
 admin_id_raw = os.environ.get('ADMIN_ID_LIST', '').strip().strip('"').strip("'")
 ADMIN_ID_LIST = [int(admin_id.strip()) for admin_id in admin_id_raw.split(',') if admin_id.strip().isdigit()]
-SUPPORT_LINK = os.environ.get('SUPPORT_LINK', 'https://t.me/').strip().strip('"').strip("'")
+raw_support = os.environ.get('SUPPORT_LINK', '').strip().strip('"').strip("'")
+if not raw_support or raw_support.rstrip('/') == 'https://t.me':
+    SUPPORT_LINK = 'https://t.me/truongdvfb'
+else:
+    SUPPORT_LINK = raw_support
 
 # POSTGRESQL / SUPABASE
 DB_USER = os.environ.get('POSTGRES_USER', 'postgres').strip().strip('"').strip("'")
@@ -54,9 +58,9 @@ REDIS_SSL = os.environ.get('REDIS_SSL', '').lower() in ('true', '1', 'yes') or '
 TELEGRAM_PROXY_URL = os.environ.get('TELEGRAM_PROXY_URL')
 
 # BINANCE PAY CONFIGURATION (0% PHÍ CHUYỂN NỘI BỘ BINANCE)
-BINANCE_UID = os.environ.get('BINANCE_UID', '805398854').strip().strip('"').strip("'")
-BINANCE_API_KEY = os.environ.get('BINANCE_API_KEY', '').strip().strip('"').strip("'")
-BINANCE_API_SECRET = os.environ.get('BINANCE_API_SECRET', '').strip().strip('"').strip("'")
+BINANCE_UID = (os.environ.get('BINANCE_UID') or os.environ.get('BINANCE_PAY_UID') or '805398854').strip().strip('"').strip("'")
+BINANCE_API_KEY = (os.environ.get('BINANCE_API_KEY') or '').strip().strip('"').strip("'")
+BINANCE_API_SECRET = (os.environ.get('BINANCE_API_SECRET') or os.environ.get('BINANCE_SECRET_KEY') or '').strip().strip('"').strip("'")
 # VARIABLES FOR CRYPTO FORWARDING
 CRYPTO_FORWARDING_MODE = os.environ.get('CRYPTO_FORWARDING_MODE', 'false').lower() == 'true'
 BTC_FORWARDING_ADDRESS = os.environ.get('BTC_FORWARDING_ADDRESS')

@@ -26,6 +26,7 @@ from models.coupon import Coupon
 from models.shipping_option import ShippingOption
 from models.review import Review
 from models.referral import ReferralBonus
+from models.binance_pay import BinancePayOrder
 
 connect_args = {}
 # Tu dong bat SSL va cau hinh pooler cho Supabase / Cloud DB

@@ -195,3 +195,31 @@ async def navigate(callback: CallbackQuery,
     }
 
     await current_level_function(**kwargs)
+
+
+@my_profile_router.callback_query(F.data == "binance_pay:view", IsUserExistFilter())
+async def binance_pay_view_handler(callback: CallbackQuery, session: AsyncSession, language: Language):
+    from services.binance_pay import BinancePayService
+    media, kb_builder = await BinancePayService.build_payment_screen(callback.from_user.id, session, language)
+    await callback.message.edit_media(media=media, reply_markup=kb_builder.as_markup())
+
+
+@my_profile_router.callback_query(F.data == "binance_pay:check", IsUserExistFilter())
+async def binance_pay_check_handler(callback: CallbackQuery, session: AsyncSession, language: Language):
+    from services.binance_pay import BinancePayService
+    credited = await BinancePayService.process_and_credit_transactions(
+        bot=callback.bot,
+        session=session,
+        target_telegram_id=callback.from_user.id
+    )
+    if credited:
+        total_credited = sum(item["amount"] for item in credited)
+        await callback.answer(f"🎉 Đã nhận và cộng thành công +{total_credited} USDT vào tài khoản!", show_alert=True)
+        await my_profile(callback=callback, session=session, language=language)
+    else:
+        await callback.answer(
+            f"⏳ Chưa thấy giao dịch mới trên Binance!\n\n"
+            f"Nếu bạn vừa chuyển, vui lòng đợi 10-20 giây rồi bấm kiểm tra lại nhé.\n"
+            f"Lưu ý: Bắt buộc phải có nội dung Note: NAP {callback.from_user.id}",
+            show_alert=True
+        )
