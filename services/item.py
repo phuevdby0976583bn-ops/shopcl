@@ -173,8 +173,50 @@ class ItemService:
                 items += await ItemService.parse_items_json(path_to_file, session)
             else:
                 items += await ItemService.parse_items_txt(path_to_file, session)
-            await ItemRepository.add_many(items, session)
-            await session_commit(session)
+
+            from services.facebook import is_facebook_product, extract_uid, check_uid_live_async
+            import aiohttp
+            import asyncio
+
+            check_upload = getattr(config, 'FB_AUTO_CHECK_ON_UPLOAD', True)
+            delete_die_upload = getattr(config, 'FB_AUTO_DELETE_DIE_ON_UPLOAD', True)
+
+            fb_candidates = [
+                it for it in items
+                if it.item_type == ItemType.DIGITAL and it.private_data and is_facebook_product(private_data=it.private_data)
+            ]
+
+            dead_items = []
+            if fb_candidates and check_upload:
+                semaphore = asyncio.Semaphore(15)
+
+                async def _chk(item, aio_session):
+                    uid = extract_uid(item.private_data)
+                    async with semaphore:
+                        st = await check_uid_live_async(uid, aio_session)
+                        return item, st
+
+                async with aiohttp.ClientSession() as aio_session:
+                    tasks = [_chk(it, aio_session) for it in fb_candidates]
+                    results = await asyncio.gather(*tasks)
+
+                for it, st in results:
+                    if st == "DIE":
+                        dead_items.append(it)
+
+                if delete_die_upload and dead_items:
+                    items = [it for it in items if it not in dead_items]
+
+            if items:
+                await ItemRepository.add_many(items, session)
+                await session_commit(session)
+
+            if fb_candidates and check_upload and delete_die_upload and dead_items:
+                return (
+                    f"✅ <b>Đã nạp thành công {len(items)} tài khoản LIVE vào kho!</b>\n\n"
+                    f"🔴 Hệ thống đã tự động quét và loại bỏ <b>{len(dead_items)}</b> tài khoản DIE."
+                )
+
             return get_text(language, BotEntity.ADMIN, "add_items_success").format(adding_result=len(items))
         except Exception as e:
             return get_text(language, BotEntity.ADMIN, "add_items_err").format(adding_result=e)

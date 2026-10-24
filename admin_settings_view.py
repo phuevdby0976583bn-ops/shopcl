@@ -6,8 +6,8 @@ import config
 
 
 class PaymentApiConfigView(BaseView):
-    name = "Nạp USDT & Binance"
-    icon = "fa-solid fa-coins"
+    name = "Cài đặt & Clone FB"
+    icon = "fa-solid fa-sliders"
 
     def is_accessible(self, request: Request) -> bool:
         try:
@@ -37,6 +37,9 @@ class PaymentApiConfigView(BaseView):
         webhook_host = config.WEBHOOK_HOST or "https://shopcl.onrender.com"
         api_binance_check = f"{webhook_host}/api/binancepay/check-now"
         api_settings_save = f"{webhook_host}/api/settings/save"
+        api_fb_check_uid = f"{webhook_host}/api/facebook/check-uid"
+        api_fb_scan_stock = f"{webhook_host}/api/facebook/scan-stock"
+        api_fb_clean_die = f"{webhook_host}/api/facebook/clean-die"
         api_key = config.SQLADMIN_RAW_PASSWORD or "MatKhauAdminCuaBan123"
 
         from db import get_db_session
@@ -56,6 +59,17 @@ class PaymentApiConfigView(BaseView):
         fwd_mode = cur_settings.get("CRYPTO_FORWARDING_MODE", False)
         bnb_fwd = cur_settings.get("BNB_FORWARDING_ADDRESS") or ""
         sol_fwd = cur_settings.get("SOL_FORWARDING_ADDRESS") or ""
+
+        fb_check_upload = cur_settings.get("FB_AUTO_CHECK_ON_UPLOAD", True)
+        fb_delete_upload = cur_settings.get("FB_AUTO_DELETE_DIE_ON_UPLOAD", True)
+        fb_check_delivery = cur_settings.get("FB_CHECK_LIVE_BEFORE_DELIVERY", True)
+        fb_delete_delivery = cur_settings.get("FB_AUTO_DELETE_DIE_ON_DELIVERY", True)
+        fb_keywords = cur_settings.get("FB_CATEGORY_KEYWORDS", "facebook, fb, clone, via, bm")
+
+        fb_check_up_attr = "checked" if fb_check_upload else ""
+        fb_del_up_attr = "checked" if fb_delete_upload else ""
+        fb_check_deliv_attr = "checked" if fb_check_delivery else ""
+        fb_del_deliv_attr = "checked" if fb_delete_delivery else ""
 
         is_binance_ready = bool(binance_api_key and binance_api_secret)
         binance_badge = '<span class="badge bg-success"><i class="fa-solid fa-circle-check me-1"></i> Đang hoạt động tự động</span>' if is_binance_ready else '<span class="badge bg-warning text-dark"><i class="fa-solid fa-triangle-exclamation me-1"></i> Chưa cấu hình API Key & Secret</span>'
@@ -104,6 +118,11 @@ class PaymentApiConfigView(BaseView):
             <li class="nav-item">
                 <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-usdt">
                     <i class="fa-solid fa-wallet text-success me-1"></i> 2. Cổng Nạp USDT Tự Động (KryptoExpress) & Rút Ví
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-facebook">
+                    <i class="fa-brands fa-facebook text-primary me-1"></i> 3. Cấu Hình Clone Facebook (Check Live & Tự Động Xóa DIE)
                 </button>
             </li>
         </ul>
@@ -309,6 +328,112 @@ class PaymentApiConfigView(BaseView):
                                         </button>
                                     </div>
                                 </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: FACEBOOK CLONE SETTINGS & AUTO CHECK LIVE -->
+            <div class="tab-pane fade" id="tab-facebook">
+                <div class="row g-4">
+                    <!-- Cột 1: Cấu hình Bật/Tắt Check Live & Xóa DIE -->
+                    <div class="col-lg-6">
+                        <div class="card border-primary h-100 shadow-sm">
+                            <div class="card-header bg-primary bg-opacity-10 py-3">
+                                <h5 class="card-title mb-0 fw-bold text-dark"><i class="fa-brands fa-facebook text-primary me-2"></i>Cấu Hình Tự Động Check Live & Xóa Nick DIE</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info py-2 small mb-3">
+                                    <i class="fa-solid fa-circle-check me-1"></i> Tự động kiểm tra trực tiếp qua <b>Facebook Graph API</b> (tốc độ cao, không cần cookie, không sợ bị khóa).
+                                </div>
+
+                                <form id="facebookForm" onsubmit="event.preventDefault(); saveFacebookSettings();">
+                                    <h6 class="fw-bold text-primary border-bottom pb-1 mb-3">1. Khi Nạp / Đăng Hàng Vào Kho:</h6>
+                                    
+                                    <div class="form-check form-switch mb-3 p-2 bg-light rounded">
+                                        <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="fb_auto_check_on_upload" {fb_check_up_attr}>
+                                        <label class="form-check-label fw-bold" for="fb_auto_check_on_upload">Tự động check LIVE UID khi nạp hàng</label>
+                                        <div class="small text-muted ms-4">Khi nạp clone qua Web, API, Bot hoặc File TXT, hệ thống sẽ tự động quét trạng thái từng UID.</div>
+                                    </div>
+
+                                    <div class="form-check form-switch mb-4 p-2 bg-light rounded">
+                                        <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="fb_auto_delete_die_on_upload" {fb_del_up_attr}>
+                                        <label class="form-check-label fw-bold text-danger" for="fb_auto_delete_die_on_upload">Tự động XÓA / LOẠI BỎ tài khoản DIE khi nạp</label>
+                                        <div class="small text-muted ms-4">Nếu bật, các nick DIE sẽ bị lọc bỏ ngay lập tức, chỉ những nick <b>LIVE 100%</b> mới được đưa vào kho.</div>
+                                    </div>
+
+                                    <h6 class="fw-bold text-success border-bottom pb-1 mb-3">2. Khi Khách Mua Hàng (Giao Cho Khách):</h6>
+
+                                    <div class="form-check form-switch mb-3 p-2 bg-light rounded">
+                                        <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="fb_check_live_before_delivery" {fb_check_deliv_attr}>
+                                        <label class="form-check-label fw-bold" for="fb_check_live_before_delivery">Check LIVE UID trước khi giao hàng cho khách</label>
+                                        <div class="small text-muted ms-4">Khi khách thanh toán, Bot sẽ quét lại ngay tại thời điểm giao để đảm bảo khách không bao giờ nhận phải acc DIE.</div>
+                                    </div>
+
+                                    <div class="form-check form-switch mb-4 p-2 bg-light rounded">
+                                        <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="fb_auto_delete_die_on_delivery" {fb_del_deliv_attr}>
+                                        <label class="form-check-label fw-bold text-danger" for="fb_auto_delete_die_on_delivery">Tự động xóa nick DIE và lấy nick LIVE khác bù vào</label>
+                                        <div class="small text-muted ms-4">Nếu acc trong kho bị die sau thời gian lưu trữ, bot sẽ xóa nick die đó và tự động bốc nick LIVE khác giao cho khách.</div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">Từ khóa nhận diện danh mục Facebook (phân cách bằng dấu phẩy):</label>
+                                        <input type="text" class="form-control font-monospace small" id="fb_category_keywords" value="{fb_keywords}" placeholder="facebook, fb, clone, via, bm">
+                                        <div class="form-text small">Các danh mục chứa từ khóa này sẽ tự động được áp dụng cơ chế lọc Facebook clone.</div>
+                                    </div>
+
+                                    <div id="fbSaveResult" class="mb-3" style="display:none;"></div>
+
+                                    <div class="pt-2 border-top">
+                                        <button type="submit" class="btn btn-primary fw-bold px-4">
+                                            <i class="fa-solid fa-floppy-disk me-1"></i> Lưu Cấu Hình Facebook Ngay
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cột 2: Công cụ kiểm tra UID & Quản trị kho trực tiếp -->
+                    <div class="col-lg-6">
+                        <!-- Widget 1: Kiểm tra nhanh 1 UID -->
+                        <div class="card shadow-sm mb-4">
+                            <div class="card-header py-3">
+                                <h5 class="card-title mb-0 fw-bold text-dark"><i class="fa-solid fa-magnifying-glass text-info me-2"></i>Kiểm Tra Nhanh 1 Tài Khoản Facebook</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label small text-muted fw-bold">Nhập UID hoặc chuỗi Clone (UID|Pass|2FA...):</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control font-monospace" id="quickUidInput" placeholder="VD: 100088912345678|Password|2FA...">
+                                        <button class="btn btn-info text-white fw-bold" type="button" onclick="checkSingleUid()">
+                                            <i class="fa-solid fa-circle-play me-1"></i> Kiểm Tra
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="quickUidResult" style="display:none;" class="p-3 bg-light rounded border"></div>
+                            </div>
+                        </div>
+
+                        <!-- Widget 2: Quét & Dọn Dẹp Kho Hàng Facebook -->
+                        <div class="card border-danger shadow-sm">
+                            <div class="card-header bg-danger bg-opacity-10 py-3">
+                                <h5 class="card-title mb-0 fw-bold text-dark"><i class="fa-solid fa-broom text-danger me-2"></i>Quét & Xóa Sạch Nick DIE Trong Kho</h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="small text-muted">Quét toàn bộ tài khoản clone Facebook đang tồn trong database để kiểm tra trạng thái sống/chết và dọn sạch nick DIE để đảm bảo uy tín shop.</p>
+                                
+                                <div class="d-flex flex-wrap gap-2 mb-3">
+                                    <button class="btn btn-outline-primary fw-bold" type="button" onclick="scanFbStock()">
+                                        <i class="fa-solid fa-magnifying-glass-chart me-1"></i> Quét Toàn Kho (Chỉ Xem)
+                                    </button>
+                                    <button class="btn btn-danger fw-bold" type="button" onclick="cleanFbDieStock()">
+                                        <i class="fa-solid fa-trash-can me-1"></i> Quét & XÓA Nick DIE Ngay
+                                    </button>
+                                </div>
+
+                                <div id="stockScanResult" style="display:none;" class="p-3 bg-light rounded border"></div>
                             </div>
                         </div>
                     </div>

@@ -1,4 +1,4 @@
-from services.facebook import filter_live_facebook_items, is_facebook_clone
+from services.facebook import filter_live_facebook_items, is_facebook_clone, is_facebook_product
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InputMediaPhoto, InputMediaVideo, InputMediaAnimation, Message, \
     InlineKeyboardButton
@@ -352,14 +352,26 @@ class CartService:
                         limit=max(cart_item.quantity * 3, 50),
                         session=session
                     )
-                    is_fb = any(is_facebook_clone(c.private_data) for c in candidates)
-                    if is_fb:
+                    category = await CategoryRepository.get_by_id(cart_item.category_id, session)
+                    subcategory = await SubcategoryRepository.get_by_id(cart_item.subcategory_id, session)
+                    is_fb = (
+                        is_facebook_product(category.name if category else "", subcategory.name if subcategory else "")
+                        or any(is_facebook_clone(c.private_data) for c in candidates)
+                    )
+
+                    check_live_delivery = getattr(config, 'FB_CHECK_LIVE_BEFORE_DELIVERY', True)
+                    auto_delete_delivery = getattr(config, 'FB_AUTO_DELETE_DIE_ON_DELIVERY', True)
+
+                    if is_fb and check_live_delivery:
                         live_items, dead_items = await filter_live_facebook_items(
                             candidates,
                             required_qty=cart_item.quantity
                         )
                         if dead_items:
-                            await ItemRepository.mark_items_as_dead([d.id for d in dead_items], session)
+                            if auto_delete_delivery:
+                                await ItemRepository.delete_items_by_ids([d.id for d in dead_items], session)
+                            else:
+                                await ItemRepository.mark_items_as_dead([d.id for d in dead_items], session)
 
                         checked_ids = {item.id for item in live_items} | {item.id for item in dead_items}
                         while len(live_items) < cart_item.quantity:
@@ -380,19 +392,22 @@ class CartService:
                                 required_qty=(cart_item.quantity - len(live_items))
                             )
                             if new_dead:
-                                await ItemRepository.mark_items_as_dead([d.id for d in new_dead], session)
+                                if auto_delete_delivery:
+                                    await ItemRepository.delete_items_by_ids([d.id for d in new_dead], session)
+                                else:
+                                    await ItemRepository.mark_items_as_dead([d.id for d in new_dead], session)
                             live_items.extend(new_live)
 
                         if len(live_items) < cart_item.quantity:
                             await session_commit(session)
                             kb_builder.row(callback_data.get_back_button(language, 0))
-                            subcategory = await SubcategoryRepository.get_by_id(cart_item.subcategory_id, session)
+                            subcat_name = subcategory.name if subcategory else "Facebook Clone"
                             msg = (
                                 f"❌ <b>Kho không đủ tài khoản LIVE!</b>\n\n"
-                                f"Sản phẩm: <b>{subcategory.name}</b>\n"
-                                f"Số lượng yêu cầu: <b>{cart_item.quantity}</b> tài khoản\n"
+                                f"Sản phẩm: <b>{subcat_name}</b>\n"
+                                f"Số lượng bạn đặt: <b>{cart_item.quantity}</b> tài khoản\n"
                                 f"Số tài khoản LIVE thực tế còn lại: <b>{len(live_items)}</b>\n\n"
-                                f"<i>⚡ Bot đã tự động check Live qua Facebook Graph API và lọc bỏ các tài khoản DIE khỏi kho hàng. Số dư của bạn chưa bị trừ. Vui lòng đặt lại đơn hàng với số lượng phù hợp!</i>"
+                                f"<i>⚡ Bot đã tự động check Live qua Facebook Graph API trước khi giao để đảm bảo bạn luôn nhận được nick LIVE 100%. Các tài khoản DIE đã được tự động loại bỏ. Số dư của bạn chưa bị trừ! Vui lòng đặt mua với số lượng phù hợp.</i>"
                             )
                             return msg, kb_builder
 

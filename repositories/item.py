@@ -85,6 +85,19 @@ class ItemRepository:
         return [ItemDTO.model_validate(item, from_attributes=True) for item in items.scalars().all()]
 
     @staticmethod
+    async def delete_items_by_ids(item_ids: list[int], session: AsyncSession | Session):
+        if not item_ids:
+            return
+        stmt = delete(Item).where(Item.id.in_(item_ids))
+        await session_execute(stmt, session)
+
+    @staticmethod
+    async def get_all_unsold_facebook_items(session: AsyncSession | Session) -> list[ItemDTO]:
+        stmt = select(Item).where(Item.is_sold == False, Item.item_type == ItemType.DIGITAL)
+        items = await session_execute(stmt, session)
+        return [ItemDTO.model_validate(item, from_attributes=True) for item in items.scalars().all()]
+
+    @staticmethod
     async def mark_items_as_dead(item_ids: list[int], session: AsyncSession | Session):
         if not item_ids:
             return

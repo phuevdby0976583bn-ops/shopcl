@@ -125,9 +125,16 @@ async def edit_language(**kwargs):
     callback: CallbackQuery = kwargs.get("callback")
     session: AsyncSession = kwargs.get("session")
     callback_data: MyProfileCallback = kwargs.get("callback_data")
-    msg, kb_builder = await UserService.edit_language(callback.from_user.id, callback_data, session)
+    language: Language = kwargs.get("language")
+    msg, kb_builder = await UserService.edit_language(callback.from_user.id, callback_data, session, language)
     await callback.message.edit_caption(caption=msg, reply_markup=kb_builder.as_markup())
-
+    if callback_data.language is not None and callback_data.confirmation is True:
+        try:
+            from run import get_start_keyboard
+            reply_markup = get_start_keyboard(callback_data.language, callback.from_user.id)
+            await callback.message.answer(text=msg, reply_markup=reply_markup)
+        except Exception:
+            pass
 
 async def referral_system(**kwargs):
     callback: CallbackQuery = kwargs.get("callback")

@@ -1,4 +1,4 @@
-﻿import os
+import os
 from dotenv import load_dotenv
 
 from enums.currency import Currency
@@ -86,3 +86,10 @@ SQLADMIN_HASHED_PASSWORD = hash_password(SQLADMIN_RAW_PASSWORD)
 JWT_EXPIRE_MINUTES = int(os.environ.get('JWT_EXPIRE_MINUTES', '30'))
 JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
 JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'default_jwt_secret_key_123').strip().strip('"').strip("'")
+
+# FACEBOOK CLONE SETTINGS (CHECK LIVE & TU DONG XOA DIE)
+FB_AUTO_CHECK_ON_UPLOAD = os.environ.get('FB_AUTO_CHECK_ON_UPLOAD', 'true').lower() in ('true', '1', 'yes')
+FB_AUTO_DELETE_DIE_ON_UPLOAD = os.environ.get('FB_AUTO_DELETE_DIE_ON_UPLOAD', 'true').lower() in ('true', '1', 'yes')
+FB_CHECK_LIVE_BEFORE_DELIVERY = os.environ.get('FB_CHECK_LIVE_BEFORE_DELIVERY', 'true').lower() in ('true', '1', 'yes')
+FB_AUTO_DELETE_DIE_ON_DELIVERY = os.environ.get('FB_AUTO_DELETE_DIE_ON_DELIVERY', 'true').lower() in ('true', '1', 'yes')
+FB_CATEGORY_KEYWORDS = os.environ.get('FB_CATEGORY_KEYWORDS', 'facebook, fb, clone, via, bm').strip()

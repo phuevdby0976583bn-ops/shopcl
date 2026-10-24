@@ -57,3 +57,38 @@ async def test_filter_live_facebook_items():
     assert len(live) == 1
     assert live[0].id == 2
     assert any(d.id == 1 for d in dead)
+
+def test_extract_uid_email_first():
+    assert extract_uid("user@gmail.com|mypassword|100088912345678|2FAKEY") == "100088912345678"
+
+
+def test_is_facebook_product():
+    from services.facebook import is_facebook_product
+    assert is_facebook_product(category_name="Clone Facebook Nuôi") is True
+    assert is_facebook_product(subcategory_name="Via Cổ 2FA") is True
+    assert is_facebook_product(private_data="100088912345678|pass|2fa") is True
+    assert is_facebook_product(category_name="Tài khoản Telegram", subcategory_name="Session+Json") is False
+
+
+@pytest.mark.asyncio
+async def test_scan_and_filter_facebook_raw_lines():
+    from services.facebook import scan_and_filter_facebook_raw_lines
+    lines = [
+        "100000000000001|die_pass",
+        "4|live_pass",
+        "100000000000002|die_pass2"
+    ]
+    # Delete DIE enabled
+    kept, dead, stats = await scan_and_filter_facebook_raw_lines(lines, check_live=True, delete_die=True)
+    assert len(kept) == 1
+    assert "4|live_pass" in kept
+    assert len(dead) == 2
+    assert stats["live"] == 1
+    assert stats["die"] == 2
+    assert stats["deleted"] == 2
+
+    # Delete DIE disabled
+    kept_all, dead2, stats2 = await scan_and_filter_facebook_raw_lines(lines, check_live=True, delete_die=False)
+    assert len(kept_all) == 3
+    assert len(dead2) == 2
+    assert stats2["deleted"] == 0

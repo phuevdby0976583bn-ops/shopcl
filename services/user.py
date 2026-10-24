@@ -66,9 +66,9 @@ class UserService:
                           callback_data=MyProfileCallback.create(level=1))
         kb_builder.button(text=get_text(language, BotEntity.USER, "purchase_history_button"),
                           callback_data=MyProfileCallback.create(level=3))
-        kb_builder.button(text=get_text(Language.EN, BotEntity.USER, "referral_button"),
+        kb_builder.button(text=get_text(language, BotEntity.USER, "referral_button"),
                           callback_data=MyProfileCallback.create(level=7))
-        kb_builder.button(text=get_text(Language.EN, BotEntity.USER, "language"),
+        kb_builder.button(text=get_text(language, BotEntity.USER, "language"),
                           callback_data=MyProfileCallback.create(level=6))
         kb_builder.adjust(2)
         user = await UserRepository.get_by_tgid(telegram_id, session)
@@ -87,13 +87,17 @@ class UserService:
                                  language: Language) -> tuple[str, InlineKeyboardBuilder]:
         kb_builder = InlineKeyboardBuilder()
 
-        # Nút nạp tự động qua Binance Pay (0% phí)
+        # N?t n?p t? ??ng qua Binance Pay (0% ph?)
         binance_btn_text = {
-            Language.VI: "🟡 Binance Pay (0% Phí - Nhận 1s)",
-            Language.EN: "🟡 Binance Pay (0% Fee - Instant 1s)",
-            Language.HI: "🟡 Binance Pay (0% शुल्क - तुरंत)",
-            Language.ZH: "🟡 币安支付 Binance Pay (0手续费 - 秒到)"
-        }.get(language, "🟡 Binance Pay (0% Fee - Instant 1s)")
+            Language.VI: "?? Binance Pay (0% Ph? - Nh?n 1s)",
+            Language.EN: "?? Binance Pay (0% Fee - Instant 1s)",
+            Language.HI: "?? Binance Pay (0% ????? - ?????)",
+            Language.ZH: "?? ???? Binance Pay (0??? - ??)",
+            Language.FR: "?? Binance Pay (0% Frais - Instant 1s)",
+            Language.DE: "?? Binance Pay (0% Geb?hr - Sofort 1s)",
+            Language.IT: "?? Binance Pay (0% Commissioni - Immediato 1s)",
+            Language.ES: "?? Binance Pay (0% Comisi?n - Instant?neo 1s)"
+        }.get(language, "?? Binance Pay (0% Fee - Instant 1s)")
 
         kb_builder.button(
             text=binance_btn_text,
@@ -156,38 +160,43 @@ class UserService:
     @staticmethod
     async def edit_language(telegram_id: int,
                             callback_data: MyProfileCallback,
-                            session: AsyncSession) -> tuple[str, InlineKeyboardBuilder]:
+                            session: AsyncSession,
+                            language: Language = Language.EN) -> tuple[str, InlineKeyboardBuilder]:
         kb_builder = InlineKeyboardBuilder()
-        default_language = Language.EN
-        back_button = callback_data.get_back_button(default_language, 0)
+        current_lang = language
+        back_button = callback_data.get_back_button(current_lang, 0)
         if callback_data.language is None:
-            msg = get_text(default_language, BotEntity.USER, "edit_language")
+            msg = get_text(current_lang, BotEntity.USER, "edit_language")
             for language_object in Language:
                 kb_builder.button(
-                    text=f"{language_object.get_flag_emoji()} {language_object.name}",
+                    text=f"{language_object.get_flag_emoji()} {language_object.get_display_name()}",
                     callback_data=callback_data.model_copy(update={"language": language_object})
                 )
-            kb_builder.row(callback_data.get_back_button(default_language, 0))
+            kb_builder.adjust(2)
+            kb_builder.row(back_button)
         elif callback_data.language is not None and callback_data.confirmation is False:
             user_dto = await UserRepository.get_by_tgid(telegram_id, session)
-            msg = get_text(default_language, BotEntity.USER, "edit_language_confirmation").format(
-                current_language=user_dto.language.name,
-                update_language=callback_data.language.name
+            target_lang = callback_data.language
+            msg = get_text(current_lang, BotEntity.USER, "edit_language_confirmation").format(
+                current_language=user_dto.language.get_display_name(),
+                update_language=target_lang.get_display_name()
             )
             kb_builder.button(
-                text=get_text(default_language, BotEntity.COMMON, "confirm"),
+                text=get_text(current_lang, BotEntity.COMMON, "confirm"),
                 callback_data=callback_data.model_copy(update={"confirmation": True})
             )
             kb_builder.button(
-                text=get_text(default_language, BotEntity.COMMON, "cancel"),
+                text=get_text(current_lang, BotEntity.COMMON, "cancel"),
                 callback_data=back_button.callback_data
             )
+            kb_builder.adjust(2)
         else:
             user_dto = await UserRepository.get_by_tgid(telegram_id, session)
-            user_dto.language = callback_data.language
+            new_lang = callback_data.language
+            user_dto.language = new_lang
             await UserRepository.update(user_dto, session)
             await session_commit(session)
-            msg = get_text(default_language, BotEntity.USER, "language_edited_successfully")
-            kb_builder.row(back_button)
-        kb_builder.adjust(1)
+            msg = get_text(new_lang, BotEntity.USER, "language_edited_successfully")
+            kb_builder.row(callback_data.get_back_button(new_lang, 0))
+            kb_builder.adjust(1)
         return msg, kb_builder

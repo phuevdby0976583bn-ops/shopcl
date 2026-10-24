@@ -1,12 +1,14 @@
-﻿import asyncio
+import asyncio
 import logging
 import re
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 import aiohttp
 import requests
+import config
 
 if TYPE_CHECKING:
     from models.item import ItemDTO
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +16,6 @@ logger = logging.getLogger(__name__)
 def check_uid_live(uid: str) -> str:
     """
     Kiểm tra trạng thái LIVE/DIE của UID Facebook (đồng bộ bằng requests).
-    Hàm chuẩn theo yêu cầu của bạn, được tối ưu thêm để bắt link avatar rỗng dạng .jpg và rsrc.php.
     """
     url = f"https://graph.facebook.com/{uid}/picture?type=normal&redirect=false"
     headers = {
@@ -29,7 +30,6 @@ def check_uid_live(uid: str) -> str:
         if "error" in data:
             return "DIE"
 
-        # Kiểm tra URL avatar nếu trả về ảnh rỗng mặc định
         image_url = data.get("data", {}).get("url", "")
         if "static.xx.fbcdn.net" in image_url or "rsrc.php" in image_url or "gif" in image_url:
             return "DIE"
@@ -83,26 +83,35 @@ def extract_uid(text: Optional[str]) -> Optional[str]:
     - Cookie chứa c_user=UID...
     - Link facebook.com/UID...
     - Chuỗi số UID thuần túy
+    - Email|Pass|UID|2FA...
     """
     if not text:
         return None
 
     text = text.strip()
 
-    # Định dạng phổ biến nhất: UID|... hoặc UID:... hoặc UID;...
-    first_part = re.split(r'[:|;,\s]', text)[0].strip()
-    if first_part.isdigit():
-        return first_part
-
-    # Định dạng Cookie có c_user=1000xxxx
+    # 1. Cookie chứa c_user=1000xxxx
     c_user_match = re.search(r'c_user=(\d+)', text)
     if c_user_match:
         return c_user_match.group(1)
 
-    # Link profile facebook.com/1000xxxx hoặc facebook.com/profile.php?id=1000xxxx
+    # 2. Link profile facebook.com/1000xxxx hoặc facebook.com/profile.php?id=1000xxxx
     url_match = re.search(r'facebook\.com/(?:profile\.php\?id=)?(\d+)', text)
     if url_match:
         return url_match.group(1)
+
+    # 3. Phân tách theo ký tự phân cách thông dụng
+    parts = re.split(r'[:|;\t\s]', text)
+    parts = [p.strip() for p in parts if p.strip()]
+    if parts:
+        first = parts[0]
+        if first.isdigit():
+            return first
+
+    # 4. Quét các phần tử tiếp theo nếu phần đầu là email/username
+    for p in parts[1:]:
+        if p.isdigit() and len(p) >= 4:
+            return p
 
     return None
 
@@ -110,6 +119,33 @@ def extract_uid(text: Optional[str]) -> Optional[str]:
 def is_facebook_clone(private_data: Optional[str]) -> bool:
     """Kiểm tra xem dữ liệu mặt hàng có phải là clone Facebook có UID hay không."""
     return extract_uid(private_data) is not None
+
+
+def is_facebook_product(category_name: Optional[str] = None, subcategory_name: Optional[str] = None, private_data: Optional[str] = None) -> bool:
+    """
+    Kiểm tra xem một mặt hàng / danh mục có phải là Facebook Clone hay không:
+    - Kiểm tra từ khóa trong category/subcategory name (facebook, fb, via, clone, bm, meta, nick fb...)
+    - Hoặc kiểm tra xem private_data có chứa UID Facebook hợp lệ hay không.
+    """
+    raw_keywords = getattr(config, 'FB_CATEGORY_KEYWORDS', 'facebook, fb, clone, via, bm') or 'facebook, fb, clone, via, bm'
+    keywords = [kw.strip().lower() for kw in raw_keywords.split(',') if kw.strip()]
+    if not keywords:
+        keywords = ['facebook', 'fb', 'via', 'clone', 'bm']
+
+    if category_name:
+        c_lower = category_name.lower()
+        if any(kw in c_lower for kw in keywords):
+            return True
+
+    if subcategory_name:
+        s_lower = subcategory_name.lower()
+        if any(kw in s_lower for kw in keywords):
+            return True
+
+    if private_data and is_facebook_clone(private_data):
+        return True
+
+    return False
 
 
 async def filter_live_facebook_items(
@@ -138,7 +174,6 @@ async def filter_live_facebook_items(
             return item, status
 
     async with aiohttp.ClientSession() as session:
-        # Chia thành từng batch nhỏ để không kiểm tra thừa nếu đã đủ số lượng
         batch_size = max(required_qty * 2, 10)
         for i in range(0, len(candidate_items), batch_size):
             if len(live_items) >= required_qty:
@@ -155,8 +190,136 @@ async def filter_live_facebook_items(
                 elif status == "DIE":
                     dead_items.append(item)
                 else:
-                    # Gặp lỗi mạng hoặc timeout -> tạm coi là không an toàn, bỏ qua không cấp cho khách
+                    # Gặp lỗi mạng hoặc timeout -> tạm coi là không an toàn để giao cho khách
                     logger.warning(f"Check live UID {extract_uid(item.private_data)} error: {status}")
                     dead_items.append(item)
 
     return live_items, dead_items
+
+
+async def scan_and_filter_facebook_raw_lines(
+    lines: List[str],
+    check_live: bool = True,
+    delete_die: bool = True,
+    concurrency_limit: int = 15
+) -> Tuple[List[str], List[str], dict]:
+    """
+    Quét danh sách các dòng clone Facebook (chuỗi thô):
+    - Trả về (kept_lines, dead_lines, stats_dict)
+    - Nếu check_live=False: giữ nguyên tất cả dòng
+    - Nếu delete_die=True: kept_lines chỉ chứa các tài khoản LIVE (loại bỏ nick DIE)
+    - Nếu delete_die=False: kept_lines chứa toàn bộ dòng ban đầu
+    """
+    cleaned_input = [line.strip() for line in lines if line and line.strip()]
+    if not cleaned_input:
+        return [], [], {"total": 0, "live": 0, "die": 0, "deleted": 0}
+
+    if not check_live:
+        return cleaned_input, [], {"total": len(cleaned_input), "live": len(cleaned_input), "die": 0, "deleted": 0}
+
+    live_lines = []
+    dead_lines = []
+    semaphore = asyncio.Semaphore(concurrency_limit)
+
+    async def _check_line(line: str, session: aiohttp.ClientSession):
+        uid = extract_uid(line)
+        if not uid:
+            # Không trích xuất được UID -> coi như item thường, giữ lại
+            return line, "LIVE", None
+        async with semaphore:
+            status = await check_uid_live_async(uid, session)
+            return line, status, uid
+
+    async with aiohttp.ClientSession() as session:
+        tasks = [_check_line(line, session) for line in cleaned_input]
+        results = await asyncio.gather(*tasks)
+
+    for line, status, uid in results:
+        if status == "LIVE":
+            live_lines.append(line)
+        elif status == "DIE":
+            dead_lines.append(line)
+        else:
+            # Gặp lỗi tạm thời (mạng timeout...), giữ lại để không xóa nhầm tài khoản của admin
+            logger.warning(f"Check live UID {uid} got error '{status}', keeping line safely.")
+            live_lines.append(line)
+
+    kept_lines = live_lines if delete_die else cleaned_input
+    stats = {
+        "total": len(cleaned_input),
+        "live": len(live_lines),
+        "die": len(dead_lines),
+        "deleted": len(dead_lines) if delete_die else 0
+    }
+    return kept_lines, dead_lines, stats
+
+
+async def scan_facebook_inventory(
+    session: Any,
+    auto_delete_die: bool = False,
+    concurrency_limit: int = 15
+) -> dict:
+    """
+    Quét toàn bộ tài khoản clone Facebook chưa bán trong kho.
+    - Đếm số lượng LIVE và DIE
+    - Nếu auto_delete_die=True, xóa vĩnh viễn các tài khoản DIE khỏi DB
+    """
+    from repositories.item import ItemRepository
+    from repositories.subcategory import SubcategoryRepository
+
+    unsold_items = await ItemRepository.get_all_unsold_clones(session)
+    fb_items = [item for item in unsold_items if is_facebook_clone(item.private_data)]
+
+    if not fb_items:
+        return {
+            "total_scanned": 0,
+            "live_count": 0,
+            "die_count": 0,
+            "die_items": [],
+            "deleted_count": 0
+        }
+
+    semaphore = asyncio.Semaphore(concurrency_limit)
+    live_items = []
+    dead_items = []
+
+    async def _check(item: Any, http_session: aiohttp.ClientSession):
+        uid = extract_uid(item.private_data)
+        async with semaphore:
+            status = await check_uid_live_async(uid, http_session)
+            return item, status, uid
+
+    async with aiohttp.ClientSession() as http_session:
+        tasks = [_check(item, http_session) for item in fb_items]
+        results = await asyncio.gather(*tasks)
+
+    for item, status, uid in results:
+        if status == "LIVE":
+            live_items.append(item)
+        elif status == "DIE":
+            dead_items.append({"id": item.id, "uid": uid, "private_data": item.private_data, "subcategory_id": item.subcategory_id})
+        else:
+            live_items.append(item)
+
+    deleted_count = 0
+    if dead_items and auto_delete_die:
+        dead_ids = [d["id"] for d in dead_items]
+        await ItemRepository.delete_items_by_ids(dead_ids, session)
+        await session.commit()
+        deleted_count = len(dead_ids)
+
+    # Lấy tên subcategory cho các item die để hiển thị đẹp
+    if dead_items:
+        sub_ids = list({d["subcategory_id"] for d in dead_items})
+        subcats = await SubcategoryRepository.get_by_ids(sub_ids, session)
+        sub_map = {s.id: s.name for s in subcats}
+        for d in dead_items:
+            d["subcategory_name"] = sub_map.get(d["subcategory_id"], "Facebook")
+
+    return {
+        "total_scanned": len(fb_items),
+        "live_count": len(live_items),
+        "die_count": len(dead_items),
+        "die_items": dead_items,
+        "deleted_count": deleted_count
+    }

@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 import config
@@ -17,7 +17,20 @@ SUPPORTED_SETTING_KEYS = [
     "BNB_FORWARDING_ADDRESS",
     "SOL_FORWARDING_ADDRESS",
     "SUPPORT_LINK",
+    "FB_AUTO_CHECK_ON_UPLOAD",
+    "FB_AUTO_DELETE_DIE_ON_UPLOAD",
+    "FB_CHECK_LIVE_BEFORE_DELIVERY",
+    "FB_AUTO_DELETE_DIE_ON_DELIVERY",
+    "FB_CATEGORY_KEYWORDS",
 ]
+
+BOOLEAN_KEYS = {
+    "CRYPTO_FORWARDING_MODE",
+    "FB_AUTO_CHECK_ON_UPLOAD",
+    "FB_AUTO_DELETE_DIE_ON_UPLOAD",
+    "FB_CHECK_LIVE_BEFORE_DELIVERY",
+    "FB_AUTO_DELETE_DIE_ON_DELIVERY",
+}
 
 
 class SettingsService:
@@ -35,8 +48,8 @@ class SettingsService:
                 k = item.key.strip()
                 v = item.value.strip()
 
-                if k == "CRYPTO_FORWARDING_MODE":
-                    config.CRYPTO_FORWARDING_MODE = v.lower() in ("true", "1", "yes")
+                if k in BOOLEAN_KEYS:
+                    setattr(config, k, v.lower() in ("true", "1", "yes"))
                     loaded_count += 1
                 elif hasattr(config, k):
                     setattr(config, k, v)
@@ -75,6 +88,31 @@ class SettingsService:
             "BNB_FORWARDING_ADDRESS": db_settings.get("BNB_FORWARDING_ADDRESS") or getattr(config, "BNB_FORWARDING_ADDRESS", "") or "",
             "SOL_FORWARDING_ADDRESS": db_settings.get("SOL_FORWARDING_ADDRESS") or getattr(config, "SOL_FORWARDING_ADDRESS", "") or "",
             "SUPPORT_LINK": db_settings.get("SUPPORT_LINK") or getattr(config, "SUPPORT_LINK", "https://t.me/truongdvfb") or "https://t.me/truongdvfb",
+            "FB_AUTO_CHECK_ON_UPLOAD": (
+                db_settings.get("FB_AUTO_CHECK_ON_UPLOAD", "true").lower() in ("true", "1", "yes")
+                if "FB_AUTO_CHECK_ON_UPLOAD" in db_settings
+                else getattr(config, "FB_AUTO_CHECK_ON_UPLOAD", True)
+            ),
+            "FB_AUTO_DELETE_DIE_ON_UPLOAD": (
+                db_settings.get("FB_AUTO_DELETE_DIE_ON_UPLOAD", "true").lower() in ("true", "1", "yes")
+                if "FB_AUTO_DELETE_DIE_ON_UPLOAD" in db_settings
+                else getattr(config, "FB_AUTO_DELETE_DIE_ON_UPLOAD", True)
+            ),
+            "FB_CHECK_LIVE_BEFORE_DELIVERY": (
+                db_settings.get("FB_CHECK_LIVE_BEFORE_DELIVERY", "true").lower() in ("true", "1", "yes")
+                if "FB_CHECK_LIVE_BEFORE_DELIVERY" in db_settings
+                else getattr(config, "FB_CHECK_LIVE_BEFORE_DELIVERY", True)
+            ),
+            "FB_AUTO_DELETE_DIE_ON_DELIVERY": (
+                db_settings.get("FB_AUTO_DELETE_DIE_ON_DELIVERY", "true").lower() in ("true", "1", "yes")
+                if "FB_AUTO_DELETE_DIE_ON_DELIVERY" in db_settings
+                else getattr(config, "FB_AUTO_DELETE_DIE_ON_DELIVERY", True)
+            ),
+            "FB_CATEGORY_KEYWORDS": (
+                db_settings.get("FB_CATEGORY_KEYWORDS")
+                or getattr(config, "FB_CATEGORY_KEYWORDS", "facebook, fb, clone, via, bm")
+                or "facebook, fb, clone, via, bm"
+            ),
         }
         return res
 
@@ -94,8 +132,8 @@ class SettingsService:
             await session.execute(sql, {"k": k, "v": str_val})
 
             # Cap nhat config in-memory ngay lap tuc
-            if k == "CRYPTO_FORWARDING_MODE":
-                config.CRYPTO_FORWARDING_MODE = str_val.lower() in ("true", "1", "yes")
+            if k in BOOLEAN_KEYS:
+                setattr(config, k, str_val.lower() in ("true", "1", "yes"))
             elif hasattr(config, k):
                 setattr(config, k, str_val)
 

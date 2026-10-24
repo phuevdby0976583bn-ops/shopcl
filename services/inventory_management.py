@@ -179,13 +179,51 @@ class InventoryManagementService:
                                           price=float(state_data['price']),
                                           private_data=None) for _ in range(state_data['items_qty'])]
                 else:
-                    items_list = [ItemDTO(item_type=item_type,
-                                          category_id=category.id,
-                                          subcategory_id=subcategory.id,
-                                          description=state_data['description'],
-                                          price=float(state_data['price']),
-                                          private_data=private_data) for private_data in
-                                  state_data['private_data'].split('\n')]
+                    raw_lines = [p.strip() for p in state_data['private_data'].split('\n') if p.strip()]
+                    from services.facebook import is_facebook_product, scan_and_filter_facebook_raw_lines
+                    is_fb = (
+                        is_facebook_product(category.name, subcategory.name)
+                        or any(is_facebook_product(private_data=line) for line in raw_lines[:5])
+                    )
+
+                    check_upload = getattr(config, 'FB_AUTO_CHECK_ON_UPLOAD', True)
+                    delete_die_upload = getattr(config, 'FB_AUTO_DELETE_DIE_ON_UPLOAD', True)
+
+                    if is_fb and check_upload:
+                        kept_lines, dead_lines, stats = await scan_and_filter_facebook_raw_lines(
+                            raw_lines,
+                            check_live=True,
+                            delete_die=delete_die_upload
+                        )
+                        items_list = [ItemDTO(item_type=item_type,
+                                              category_id=category.id,
+                                              subcategory_id=subcategory.id,
+                                              description=state_data['description'],
+                                              price=float(state_data['price']),
+                                              private_data=line) for line in kept_lines]
+                        if items_list:
+                            await ItemRepository.add_many(items_list, session)
+                            await session_commit(session)
+                        await state.clear()
+                        cancel_button.text = get_text(language, BotEntity.COMMON, "back_button")
+                        kb_builder.row(cancel_button)
+                        if delete_die_upload and dead_lines:
+                            msg = (
+                                f"✅ <b>Đã nạp thành công {len(items_list)} tài khoản LIVE vào kho!</b>\n\n"
+                                f"🔴 Hệ thống đã tự động lọc bỏ và xóa <b>{len(dead_lines)}</b> tài khoản DIE."
+                            )
+                        elif not items_list:
+                            msg = f"⚠️ <b>Toàn bộ {len(dead_lines)} tài khoản đều DIE!</b> Không có tài khoản nào được thêm vào kho."
+                        else:
+                            msg = f"✅ <b>Đã nạp thành công {len(items_list)} tài khoản LIVE vào kho!</b>"
+                        return msg, kb_builder
+                    else:
+                        items_list = [ItemDTO(item_type=item_type,
+                                              category_id=category.id,
+                                              subcategory_id=subcategory.id,
+                                              description=state_data['description'],
+                                              price=float(state_data['price']),
+                                              private_data=line) for line in raw_lines]
                 await ItemRepository.add_many(items_list, session)
                 await session_commit(session)
                 await state.clear()
