@@ -39,6 +39,8 @@ SUPPORTED_SETTING_KEYS = [
     "BANK_CODE",
     "BANK_EXCHANGE_RATE",
     "BANK_AUTO_CHECK",
+    "DEPOSIT_BONUS_ENABLED",
+    "DEPOSIT_BONUS_TIERS",
 ]
 
 BOOLEAN_KEYS = {
@@ -50,6 +52,7 @@ BOOLEAN_KEYS = {
     "FB_AUTO_DELETE_DIE_ON_DELIVERY",
     "FB_CRON_NOTIFY_ADMIN",
     "BANK_AUTO_CHECK",
+    "DEPOSIT_BONUS_ENABLED",
 }
 
 
@@ -196,6 +199,12 @@ class SettingsService:
                 if "BANK_AUTO_CHECK" in db_settings
                 else getattr(config, "BANK_AUTO_CHECK", True)
             ),
+            "DEPOSIT_BONUS_ENABLED": (
+                db_settings.get("DEPOSIT_BONUS_ENABLED", "false").lower() in ("true", "1", "yes")
+                if "DEPOSIT_BONUS_ENABLED" in db_settings
+                else getattr(config, "DEPOSIT_BONUS_ENABLED", False)
+            ),
+            "DEPOSIT_BONUS_TIERS": db_settings.get("DEPOSIT_BONUS_TIERS") or getattr(config, "DEPOSIT_BONUS_TIERS", "100:2,200:5,300:6,500:7,1000:8"),
         }
         return res
 

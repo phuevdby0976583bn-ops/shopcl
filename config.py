@@ -90,6 +90,10 @@ BANK_CODE = (os.environ.get('BANK_CODE') or 'BIDV').strip().strip('"').strip("'"
 BANK_EXCHANGE_RATE = float(os.environ.get('BANK_EXCHANGE_RATE', '26000'))
 BANK_AUTO_CHECK = os.environ.get('BANK_AUTO_CHECK', 'true').lower() in ('true', '1', 'yes')
 
+# DEPOSIT PROMOTION / BONUS CONFIGURATION
+DEPOSIT_BONUS_ENABLED = os.environ.get('DEPOSIT_BONUS_ENABLED', 'false').lower() in ('true', '1', 'yes')
+DEPOSIT_BONUS_TIERS = os.environ.get('DEPOSIT_BONUS_TIERS', '100:2,200:5,300:6,500:7,1000:8').strip().strip('"').strip("'")
+
 # SQLADMIN
 SQLADMIN_RAW_PASSWORD = os.environ.get('SQLADMIN_RAW_PASSWORD', 'admin123').strip().strip('"').strip("'")
 SQLADMIN_HASHED_PASSWORD = hash_password(SQLADMIN_RAW_PASSWORD)

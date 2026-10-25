@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 from wtforms import TextAreaField
 from models.item import Item, ItemAdmin
 from processing.api_items import BulkUploadRequest
@@ -27,3 +27,9 @@ def test_bulk_upload_request_model():
     assert len(req.items) == 2
     assert req.price == 0.25
     assert req.check_live is True
+
+
+def test_bulk_upload_admin_view_not_registered_in_bot():
+    with open("bot.py", "r", encoding="utf-8") as f:
+        content = f.read()
+    assert "admin.add_base_view(BulkUploadAdminView)" not in content
