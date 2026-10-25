@@ -294,3 +294,57 @@ async def test_web_recharge_authorized_flow(test_app):
                     r_cnc = await ac.post("/api/web/recharge/cancel", json={"order_id": 1, "order_type": "binance"})
                     assert r_cnc.status_code == 200
                     assert r_cnc.json()["status"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_web_register_page_and_terms_checkbox(test_app):
+    @asynccontextmanager
+    async def reg_db_ctx(*args, **kwargs):
+        yield SmartMockDbSession()
+
+    with patch("web_shop.get_db_session", reg_db_ctx):
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+            r = await ac.get("/register")
+            assert r.status_code == 200
+            # Must NOT contain Telegram ID field
+            assert "regTelegramId" not in r.text
+            assert "Nhập ID bot để đồng bộ số dư" not in r.text
+            # Must contain terms agreement checkbox linking to /policy
+            assert "agreeTermsCheck" in r.text
+            assert 'href="/policy"' in r.text
+            assert "Điều khoản dịch vụ" in r.text
+
+            # Test submit without agreeing to terms -> should fail
+            r_no_terms = await ac.post("/register", data={
+                "username": "testuser99",
+                "password": "password123",
+                "confirm_password": "password123"
+            })
+            assert r_no_terms.status_code == 302
+            assert "register?error=" in r_no_terms.headers.get("location", "")
+
+            # Test submit with agreeing to terms
+            with patch("web_shop.session_commit", AsyncMock()):
+                r_ok = await ac.post("/register", data={
+                    "username": "testuser99",
+                    "password": "password123",
+                    "confirm_password": "password123",
+                    "agree_terms": "1"
+                })
+                assert r_ok.status_code == 302
+                assert r_ok.headers.get("location", "") == "/"
+
+
+@pytest.mark.asyncio
+async def test_web_login_page_no_admin_notice(test_app):
+    @asynccontextmanager
+    async def login_db_ctx(*args, **kwargs):
+        yield SmartMockDbSession()
+
+    with patch("web_shop.get_db_session", login_db_ctx):
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+            r = await ac.get("/login?next=/")
+            assert r.status_code == 200
+            # Must NOT contain the admin notice alert box
+            assert "Dành cho Admin" not in r.text
+            assert "Chuyển sang Admin Panel" not in r.text

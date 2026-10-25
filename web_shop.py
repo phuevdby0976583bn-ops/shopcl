@@ -2901,11 +2901,6 @@ async def web_login_page(request: Request, next: str = Query("/"), error: Option
                             </button>
                         </form>
 
-                        <div class="alert alert-light border small text-muted rounded-3 mb-4">
-                            <i class="fa-solid fa-circle-info text-primary me-1"></i>
-                            <strong>Dành cho Admin:</strong> Khi đăng nhập với tài khoản Admin, trên thanh điều hướng sẽ tự động xuất hiện nút <strong>[ ⚙️ Chuyển sang Admin Panel ]</strong> để quản lý toàn bộ hệ thống!
-                        </div>
-
                         <div class="card border border-2 border-primary-subtle bg-purple-subtle shadow-sm rounded-4 p-4 text-center mt-4">
                             <h6 class="fw-bold text-purple mb-2"><i class="fa-solid fa-user-plus me-2"></i>Chưa có tài khoản Bubba Gump Shop?</h6>
                             <p class="text-muted small mb-3">Tạo tài khoản chỉ mất 10 giây để mua clone Facebook và nạp tiền tự động 24/7!</p>
@@ -3083,17 +3078,11 @@ async def web_register_page(request: Request, next: str = Query("/"), error: Opt
                                 </div>
                             </div>
 
-                            <div class="mb-4">
-                                <label for="regTelegramId" class="form-label fw-bold small text-muted">
-                                    Telegram ID <span class="badge bg-light text-muted border">Tùy chọn</span>:
+                            <div class="mb-4 form-check">
+                                <input type="checkbox" class="form-check-input" id="agreeTermsCheck" name="agree_terms" value="1" required checked>
+                                <label class="form-check-label small text-muted user-select-none" for="agreeTermsCheck">
+                                    Tôi đồng ý với <a href="/policy" target="_blank" class="text-purple fw-bold text-decoration-underline">Điều khoản dịch vụ &amp; Chính sách bảo hành</a>
                                 </label>
-                                <div class="input-group">
-                                    <span class="input-group-text bg-light border-end-0"><i class="fa-brands fa-telegram text-purple"></i></span>
-                                    <input type="text" class="form-control border-start-0" id="regTelegramId" name="telegram_id" placeholder="Nhập ID bot để đồng bộ số dư">
-                                </div>
-                                <div class="form-text small text-muted">
-                                    <i class="fa-solid fa-link me-1 text-purple"></i> Nhập Telegram ID của bạn để <strong>đồng bộ ngay số dư</strong> đang có trên Bot sang Web!
-                                </div>
                             </div>
 
                             <button type="submit" class="btn btn-purple w-100 py-3 fw-bold rounded-3 shadow-sm mb-3">
@@ -3127,6 +3116,7 @@ async def web_register_submit(
     username: str = Form(...),
     password: str = Form(...),
     confirm_password: str = Form(...),
+    agree_terms: Optional[str] = Form(None),
     telegram_id: Optional[str] = Form(None),
     next: str = Form("/")
 ):
@@ -3134,6 +3124,9 @@ async def web_register_submit(
     clean_pw = password.strip()
     clean_cpw = confirm_password.strip()
     target_url = next if next and next.startswith("/") else "/"
+
+    if not agree_terms:
+        return RedirectResponse(url=f"/register?error=B%E1%BA%A1n%20c%E1%BA%A7n%20%C4%91%E1%BB%93ng%20%C3%BD%20v%E1%BB%9Bi%20%C4%91i%E1%BB%81u%20kho%E1%BA%A3n%20d%E1%BB%8Bch%20v%E1%BB%A5%20%C4%91%E1%BB%83%20%C4%91%C4%83ng%20k%C3%BD&next={quote(target_url)}", status_code=302)
 
     if len(clean_un) < 3 or len(clean_un) > 30:
         return RedirectResponse(url=f"/register?error=T%C3%AAn%20%C4%91%C4%83ng%20nh%E1%BA%ADp%20ph%E1%BA%A3i%20t%E1%BB%AB%203%20%C4%91%E1%BA%BFn%2030%20k%C3%BD%20t%E1%BB%B1&next={quote(target_url)}", status_code=302)
