@@ -1,3 +1,5 @@
+from unittest.mock import patch, AsyncMock
+import models.cartItem
 from types import SimpleNamespace
 
 import pytest
@@ -93,3 +95,58 @@ async def test_create_announcement_message_splits_large_single_category_without_
     assert len(messages) > 1
     assert all("Single Category" in message for message in messages)
     assert all(len(message) < ItemService.ANNOUNCEMENT_MESSAGE_LIMIT for message in messages)
+
+
+def test_item_admin_list_and_count_query_filter_status():
+    import models.cart
+    import models.cartItem
+    from models.item import Item, ItemAdmin
+    admin_view = ItemAdmin()
+
+    req_sold = SimpleNamespace(query_params={"status": "sold"})
+    q_sold = admin_view.list_query(req_sold)
+    assert any("is_sold = true" in str(crit).lower() or "is_sold = :is_sold_1" in str(crit).lower() for crit in q_sold._where_criteria)
+
+    req_new = SimpleNamespace(query_params={"status": "new"})
+    q_new = admin_view.list_query(req_new)
+    assert any("is_sold = false" in str(crit).lower() or "is_sold = :is_sold_1" in str(crit).lower() for crit in q_new._where_criteria)
+
+    req_all = SimpleNamespace(query_params={})
+    q_all = admin_view.list_query(req_all)
+    assert len(q_all._where_criteria) == 0
+
+
+@pytest.mark.asyncio
+async def test_item_admin_update_model_consistency():
+    from models.item import Item, ItemAdmin
+    admin_view = ItemAdmin()
+    ItemAdmin.__bases__[0].update_model = AsyncMock()
+
+    # Neu danh dau is_sold = True, thi is_new bat buoc = False
+    data1 = {"is_sold": True, "is_new": True}
+    await admin_view.update_model(None, "1", data1)
+    assert data1["is_sold"] is True
+    assert data1["is_new"] is False
+
+    # Neu danh dau is_new = True va is_sold khong True, thi is_sold = False
+    data2 = {"is_sold": False, "is_new": True}
+    await admin_view.update_model(None, "1", data2)
+    assert data2["is_sold"] is False
+    assert data2["is_new"] is True
+
+
+def test_item_admin_column_formatters():
+    from models.item import Item, ItemAdmin
+    admin_view = ItemAdmin()
+
+    item_sold = SimpleNamespace(id=1, private_data="1000|Pass|2FA", is_sold=True, is_new=False, description="Test")
+    fmt_sold = admin_view.column_formatters[Item.is_sold](item_sold, "is_sold")
+    fmt_new1 = admin_view.column_formatters[Item.is_new](item_sold, "is_new")
+    assert "?? b?n" in str(fmt_sold)
+    assert "?? xu?t kho" in str(fmt_new1)
+
+    item_unsold = SimpleNamespace(id=2, private_data="1000|Pass|2FA", is_sold=False, is_new=True, description="Test")
+    fmt_unsold = admin_view.column_formatters[Item.is_sold](item_unsold, "is_sold")
+    fmt_new2 = admin_view.column_formatters[Item.is_new](item_unsold, "is_new")
+    assert "Ch?a b?n" in str(fmt_unsold)
+    assert "H?ng m?i" in str(fmt_new2)

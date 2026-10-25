@@ -445,6 +445,7 @@ class CartService:
                 await BuyItemRepository.create_single(buy_item_dto, session)
                 for item in purchased_items:
                     item.is_sold = True
+                    item.is_new = False
                 await ItemRepository.update(purchased_items, session)
                 await CartItemRepository.remove_from_cart(cart_item.id, session)
             kb_builder.button(

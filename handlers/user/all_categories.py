@@ -359,6 +359,7 @@ async def execute_instant_buy(**kwargs):
 
         for it in purchased_items:
             it.is_sold = True
+            it.is_new = False
         await ItemRepository.update(purchased_items, session)
 
         buy_dto = BuyDTO(

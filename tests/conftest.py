@@ -81,6 +81,7 @@ sqladmin_auth_module = ModuleType("sqladmin.authentication")
 sqladmin_auth_module.AuthenticationBackend = type("AuthenticationBackend", (), {"__init__": lambda *args, **kwargs: None})
 sys.modules.setdefault("sqladmin.authentication", sqladmin_auth_module)
 sqladmin_module.expose = lambda *args, **kwargs: (lambda fn: fn)
+sqladmin_module.action = lambda *args, **kwargs: (lambda fn: fn)
 sys.modules.setdefault("sqladmin", sqladmin_module)
 
 jose_module = ModuleType("jose")

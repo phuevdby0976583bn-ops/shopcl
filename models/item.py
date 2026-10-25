@@ -1,3 +1,10 @@
+from typing import Any
+from markupsafe import Markup
+try:
+    from sqladmin import action
+except ImportError:
+    def action(*args, **kwargs):
+        return lambda fn: fn
 from pydantic import BaseModel
 from sqladmin import ModelView
 from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, CheckConstraint, Enum
@@ -75,8 +82,19 @@ class ItemAdmin(ModelView, model=Item):
             if (m.private_data and '|' in m.private_data)
             else (f"{m.private_data[:25]}..." if m.private_data else "")
         ),
-        Item.description: lambda m, a: f"{m.description[:25]}..." if m.description else ""
+        Item.description: lambda m, a: f"{m.description[:25]}..." if m.description else "",
+        Item.is_sold: lambda m, a: Markup(
+            '<span class="badge bg-danger text-white"><i class="fa-solid fa-check me-1"></i> ?? b?n</span>'
+            if m.is_sold
+            else '<span class="badge bg-success text-white"><i class="fa-solid fa-box-open me-1"></i> Ch?a b?n</span>'
+        ),
+        Item.is_new: lambda m, a: Markup(
+            '<span class="badge bg-secondary text-white"><i class="fa-solid fa-minus me-1"></i> ?? xu?t kho</span>'
+            if m.is_sold
+            else '<span class="badge bg-primary text-white"><i class="fa-solid fa-sparkles me-1"></i> H?ng m?i</span>'
+        )
     }
+    column_filters = [Item.is_sold, Item.is_new, Item.subcategory]
     column_searchable_list = [Item.private_data]
     column_sortable_list = [
         Item.id,
@@ -119,6 +137,76 @@ class ItemAdmin(ModelView, model=Item):
             "placeholder": "💡 TÙY CHỌN: Để trống sẽ tự động lấy Mô tả từ Danh mục con đã chọn"
         }
     }
+
+    
+    def list_query(self, request) -> Any:
+        from sqlalchemy import select
+        query = select(Item)
+        status = request.query_params.get("status", "").lower() if hasattr(request, "query_params") else ""
+        if status == "sold":
+            query = query.where(Item.is_sold == True)
+        elif status in ("new", "available", "unsold"):
+            query = query.where(Item.is_sold == False)
+        return query
+
+    def count_query(self, request) -> Any:
+        from sqlalchemy import func, select
+        query = select(func.count(self.pk_columns[0]))
+        status = request.query_params.get("status", "").lower() if hasattr(request, "query_params") else ""
+        if status == "sold":
+            query = query.where(Item.is_sold == True)
+        elif status in ("new", "available", "unsold"):
+            query = query.where(Item.is_sold == False)
+        return query
+
+    async def update_model(self, request, pk: str, data: dict):
+        if data.get("is_sold") is True:
+            data["is_new"] = False
+        elif data.get("is_new") is True and data.get("is_sold") is not True:
+            data["is_sold"] = False
+        return await super().update_model(request, pk, data)
+
+    @action(
+        name="mark_sold",
+        label="?? ??nh d?u ?? B?N",
+        confirmation_message="B?n c? ch?c mu?n chuy?n c?c nick ?? ch?n th?nh tr?ng th?i ?? B?N?",
+        add_in_detail=True,
+        add_in_list=True,
+    )
+    async def mark_as_sold(self, request):
+        from starlette.responses import RedirectResponse
+        from sqlalchemy import update
+        pks = request.query_params.get("pks", "").split(",")
+        valid_ids = [int(pk) for pk in pks if pk.strip().isdigit()]
+        if valid_ids:
+            async with self.session_maker() as session:
+                await session.execute(
+                    update(Item).where(Item.id.in_(valid_ids)).values(is_sold=True, is_new=False)
+                )
+                await session.commit()
+        referer = request.headers.get("Referer") or "/admin/item/list"
+        return RedirectResponse(referer, status_code=302)
+
+    @action(
+        name="mark_new",
+        label="?? ??nh d?u H?NG M?I (Ch?a b?n)",
+        confirmation_message="B?n c? ch?c mu?n chuy?n c?c nick ?? ch?n th?nh H?NG M?I (Ch?a b?n)?",
+        add_in_detail=True,
+        add_in_list=True,
+    )
+    async def mark_as_new(self, request):
+        from starlette.responses import RedirectResponse
+        from sqlalchemy import update
+        pks = request.query_params.get("pks", "").split(",")
+        valid_ids = [int(pk) for pk in pks if pk.strip().isdigit()]
+        if valid_ids:
+            async with self.session_maker() as session:
+                await session.execute(
+                    update(Item).where(Item.id.in_(valid_ids)).values(is_sold=False, is_new=True)
+                )
+                await session.commit()
+        referer = request.headers.get("Referer") or "/admin/item/list"
+        return RedirectResponse(referer, status_code=302)
 
     async def insert_model(self, request, data: dict):
         if not data.get("item_type"):

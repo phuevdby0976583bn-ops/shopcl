@@ -43,8 +43,9 @@
               </div>
             </div>
             <div class="card-body border-bottom py-3">
-              <div class="d-flex justify-content-between">
-                <div class="dropdown col-4">
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                  <div class="dropdown">
                   <button {% if not model_view.can_delete and not model_view._custom_actions_in_list %} disabled {% endif %}
                     class="btn btn-light dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" data-toggle="dropdown"
                     aria-haspopup="true" aria-expanded="false">
@@ -73,6 +74,27 @@
                   </div>
                   {% endif %}
                 </div>
+
+                <!-- B? l?c nhanh tr?ng th?i Kho h?ng -->
+                {% if model_view.identity == 'item' %}
+                {% set cur_status = request.query_params.get('status', 'all') %}
+                <div class="btn-group" role="group" aria-label="L?c tr?ng th?i kho">
+                  <a href="{{ url_for('admin:list', identity='item') }}" 
+                     class="btn btn-sm {% if not request.query_params.get('status') or cur_status == 'all' %}btn-primary active text-white fw-bold{% else %}btn-outline-secondary{% endif %}">
+                    <i class="fa-solid fa-boxes-stacked me-1"></i> T?t c?
+                  </a>
+                  <a href="{{ url_for('admin:list', identity='item') }}?status=new" 
+                     class="btn btn-sm {% if cur_status in ['new', 'available'] %}btn-success active text-white fw-bold{% else %}btn-outline-success{% endif %}">
+                    <i class="fa-solid fa-sparkles me-1"></i> H?ng m?i (Ch?a b?n)
+                  </a>
+                  <a href="{{ url_for('admin:list', identity='item') }}?status=sold" 
+                     class="btn btn-sm {% if cur_status == 'sold' %}btn-danger active text-white fw-bold{% else %}btn-outline-danger{% endif %}">
+                    <i class="fa-solid fa-check-double me-1"></i> T?i kho?n ?? b?n
+                  </a>
+                </div>
+                {% endif %}
+                </div>
+
                 {% if model_view.column_searchable_list %}
                 <div class="col-md-4 text-muted">
                   <div class="input-group">
