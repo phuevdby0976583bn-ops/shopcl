@@ -198,3 +198,20 @@ async def test_unified_views_settings_and_policy():
     assert "form_fb_hours" in html_policy
     assert "generateAndSaveFromEasyForm" in html_settings
     assert "generateAndSaveFromEasyForm" in html_policy
+
+
+def test_warranty_policy_hidden_from_outside_sidebar_and_no_mojibake():
+    from admin_policy_view import WarrantyPolicyAdminView
+    from admin_settings_view import PaymentApiConfigView
+    from unittest.mock import MagicMock
+
+    policy_view = WarrantyPolicyAdminView()
+    req = MagicMock()
+    req.session = {"token": "some_token"}
+    # Tab on outside sidebar must be hidden
+    assert policy_view.is_visible(req) is False
+
+    settings_view = PaymentApiConfigView()
+    # Name must not contain mojibake question marks
+    assert settings_view.name == "Cài đặt & Clone FB"
+    assert "?" not in settings_view.name

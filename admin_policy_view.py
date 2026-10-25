@@ -17,11 +17,8 @@ class WarrantyPolicyAdminView(BaseView):
             return False
 
     def is_visible(self, request: Request) -> bool:
-        try:
-            token = request.session.get("token")
-            return bool(token and decode_token(token))
-        except Exception:
-            return False
+        # Không hiển thị tab riêng bên ngoài sidebar nữa vì đã có sẵn trong Tab 6 của Cài đặt & Clone FB
+        return False
 
     @expose("/policy", methods=["GET"])
     async def policy_page(self, request: Request):

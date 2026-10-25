@@ -272,7 +272,7 @@ async def render_unified_settings_page(request: Request, default_active_tab: str
             </li>
                     <li class="nav-item">
                 <button class="{policy_nav_cls}" id="tab-policy-nav" data-bs-toggle="pill" data-bs-target="#tab-policy" type="button" role="tab">
-                    <i class="fa-solid fa-shield-halved text-primary me-1"></i> 6. Ch?nh S?ch & B?o H?nh (Ph?p L? & Telegram)
+                    <i class="fa-solid fa-shield-halved text-primary me-1"></i> 6. Chính Sách & Bảo Hành (Pháp Lý & Telegram)
                 </button>
             </li>
         </ul>
@@ -899,7 +899,7 @@ async def render_unified_settings_page(request: Request, default_active_tab: str
                 </div>
             </div>
 
-            <!-- TAB 6: CH?NH S?CH B?O H?NH & PH?P L? -->
+            <!-- TAB 6: CHÍNH SÁCH BẢO HÀNH & PHÁP LÝ -->
             <div class="{policy_pane_cls}" id="tab-policy" role="tabpanel">
         <ul class="nav nav-pills mb-4" id="policyTabs" role="tablist">
             <li class="nav-item" role="presentation">
@@ -1768,7 +1768,7 @@ function saveBankSettings() {{
 
 
 class PaymentApiConfigView(BaseView):
-    name = "C?i ??t & Clone FB"
+    name = "Cài đặt & Clone FB"
     icon = "fa-solid fa-sliders"
 
     def is_accessible(self, request: Request) -> bool:
