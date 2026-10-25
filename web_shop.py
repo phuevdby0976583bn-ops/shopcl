@@ -70,6 +70,19 @@ from services.notification import NotificationService
 from services.policy_defaults import DEFAULT_WARRANTY_LEGAL_POLICY
 from utils.utils import create_access_token, decode_token, hash_password, verify_password
 
+
+import base64
+from services.binance_pay import BinancePayService
+from services.bank_deposit import BankDepositService
+from services.deposit_flow import DepositFlowService
+
+def get_bot_instance():
+    try:
+        from bot import bot
+        return bot
+    except Exception:
+        return None
+
 logger = logging.getLogger(__name__)
 
 web_router = APIRouter(tags=["Web Shop"])
@@ -876,7 +889,24 @@ async def web_home(request: Request):
     top_up_str = format_vnd(user.top_up_amount) if user else "0 đ"
     spent_str = format_vnd(user.consume_records) if user else "0 đ"
 
+    register_card_html = ""
+    if not user:
+        register_card_html = """
+    <div class="card border-2 border-warning shadow-sm rounded-4 mb-3 text-center p-3" style="background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);">
+        <div class="badge bg-warning text-dark fw-bold mb-2 py-1 px-2 d-inline-block"><i class="fa-solid fa-sparkles me-1"></i> THÀNH VIÊN MỚI</div>
+        <h6 class="fw-bold text-dark mb-1">Chưa có tài khoản?</h6>
+        <p class="text-muted small mb-3">Đăng ký chỉ mất 10 giây để mua clone và nạp tiền tự động!</p>
+        <a href="/register" class="btn btn-warning text-dark fw-bold w-100 py-2 shadow-sm mb-2">
+            <i class="fa-solid fa-user-plus me-1"></i> ✨ ĐĂNG KÝ NGAY (MIỄN PHÍ)
+        </a>
+        <a href="/login" class="btn btn-outline-dark btn-sm w-100 fw-bold">
+            <i class="fa-solid fa-right-to-bracket me-1"></i> Đã có tài khoản? Đăng nhập
+        </a>
+    </div>
+    """
+
     right_widget_html = f"""
+    {register_card_html}
     <div class="balance-widget-card">
         <div class="balance-title"><i class="fa-solid fa-wallet text-purple me-1"></i> Số dư khả dụng</div>
         <div class="balance-amount currency-toggle-val" data-vnd="{balance_vnd_str}" data-usd="{balance_usd_str}">{balance_vnd_str}</div>
@@ -1350,35 +1380,43 @@ from urllib.parse import quote
 async def web_home_head():
     return Response(status_code=200)
 
+RECHARGE_JS_TEMPLATE = '\n<script>\nlet currentPollingInterval = null;\nlet activeOrderId = null;\nlet activeOrderType = null;\n\nfunction copyText(val, label) {\n    if (!val) return;\n    navigator.clipboard.writeText(val).then(() => {\n        Swal.fire({\n            icon: \'success\',\n            title: \'Đã sao chép \' + label + \'!\',\n            showConfirmButton: false,\n            timer: 1200\n        });\n    }).catch(() => {\n        showWebToast(\'Đã sao chép \' + label, true);\n    });\n}\n\nfunction setBinanceAmount(val) {\n    document.getElementById(\'binanceAmountInput\').value = val;\n    calcBinanceVnd();\n}\n\nfunction calcBinanceVnd() {\n    const val = parseFloat(document.getElementById(\'binanceAmountInput\').value) || 0;\n    const rate = __RATE__;\n    const vnd = Math.round(val * rate);\n    document.getElementById(\'binanceVndEstimate\').innerText = \'≈ \' + vnd.toLocaleString(\'vi-VN\') + \' đ\';\n}\n\nfunction setBankAmount(val) {\n    document.getElementById(\'bankAmountInput\').value = val;\n    calcBankUsd();\n}\n\nfunction calcBankUsd() {\n    const val = parseInt(document.getElementById(\'bankAmountInput\').value) || 0;\n    const bankRate = __BANK_RATE__;\n    const usd = (val / bankRate).toFixed(2);\n    document.getElementById(\'bankUsdEstimate\').innerText = \'≈ $\' + usd;\n}\n\nfunction setCryptoAmount(val) {\n    document.getElementById(\'cryptoAmountInput\').value = val;\n    calcCryptoVnd();\n}\n\nfunction calcCryptoVnd() {\n    const val = parseFloat(document.getElementById(\'cryptoAmountInput\').value) || 0;\n    const rate = __RATE__;\n    const vnd = Math.round(val * rate);\n    document.getElementById(\'cryptoVndEstimate\').innerText = \'≈ \' + vnd.toLocaleString(\'vi-VN\') + \' đ\';\n}\n\nasync function createBinanceInvoice() {\n    const amt = parseFloat(document.getElementById(\'binanceAmountInput\').value) || 0;\n    if (amt < 1.0) {\n        Swal.fire({ icon: \'warning\', title: \'Số tiền không hợp lệ\', text: \'Số tiền nạp tối thiểu qua Binance Pay là 1.0 USDT!\' });\n        return;\n    }\n\n    const btn = document.getElementById(\'createBinanceBtn\');\n    btn.disabled = true;\n    btn.innerHTML = \'<span class="spinner-border spinner-border-sm me-2" role="status"></span> Đang tạo hoá đơn...\';\n\n    try {\n        const resp = await fetch(\'/api/web/recharge/create-binance\', {\n            method: \'POST\',\n            headers: { \'Content-Type\': \'application/json\' },\n            body: JSON.stringify({ amount_usd: amt })\n        });\n        const data = await resp.json();\n        if (resp.ok && data.status === \'success\') {\n            activeOrderId = data.order_id;\n            activeOrderType = \'binance\';\n\n            document.getElementById(\'binanceFormSection\').classList.add(\'d-none\');\n            document.getElementById(\'binanceInvoiceSection\').classList.remove(\'d-none\');\n\n            document.getElementById(\'invBinanceQrImg\').src = data.qr_src;\n            document.getElementById(\'invBinancePayId\').innerText = data.binance_uid;\n            document.getElementById(\'invBinanceAmount\').innerText = data.exact_amount + \' USDT\';\n            document.getElementById(\'invBinanceVnd\').innerText = data.vnd_amount.toLocaleString(\'vi-VN\') + \' đ\';\n            document.getElementById(\'invBinanceMemo\').innerText = data.memo;\n\n            startPollingStatus(\'binance\', data.order_id);\n        } else {\n            Swal.fire({ icon: \'error\', title: \'Lỗi\', text: data.message || \'Không thể tạo hoá đơn nạp tiền.\' });\n        }\n    } catch (e) {\n        Swal.fire({ icon: \'error\', title: \'Lỗi kết nối\', text: \'Vui lòng kiểm tra đường truyền và thử lại!\' });\n    } finally {\n        btn.disabled = false;\n        btn.innerHTML = \'<i class="fa-solid fa-bolt me-1"></i> Tạo mã thanh toán Binance Pay\';\n    }\n}\n\nasync function createBankInvoice() {\n    const vnd = parseInt(document.getElementById(\'bankAmountInput\').value) || 0;\n    if (vnd < 10000) {\n        Swal.fire({ icon: \'warning\', title: \'Số tiền không hợp lệ\', text: \'Số tiền nạp tối thiểu là 10.000 VNĐ!\' });\n        return;\n    }\n\n    const btn = document.getElementById(\'createBankBtn\');\n    btn.disabled = true;\n    btn.innerHTML = \'<span class="spinner-border spinner-border-sm me-2" role="status"></span> Đang tạo mã VietQR...\';\n\n    try {\n        const resp = await fetch(\'/api/web/recharge/create-bank\', {\n            method: \'POST\',\n            headers: { \'Content-Type\': \'application/json\' },\n            body: JSON.stringify({ amount_vnd: vnd })\n        });\n        const data = await resp.json();\n        if (resp.ok && data.status === \'success\') {\n            activeOrderId = data.order_id;\n            activeOrderType = \'bank\';\n\n            document.getElementById(\'bankFormSection\').classList.add(\'d-none\');\n            document.getElementById(\'bankInvoiceSection\').classList.remove(\'d-none\');\n\n            document.getElementById(\'invBankQrImg\').src = data.qr_url;\n            document.getElementById(\'invBankStk\').innerText = data.account_number;\n            document.getElementById(\'invBankName\').innerText = data.bank_code + \' (Ngân hàng BIDV)\';\n            document.getElementById(\'invBankAccName\').innerText = data.account_name || \'HỆ THỐNG TỰ ĐỘNG\';\n            document.getElementById(\'invBankAmount\').innerText = data.exact_vnd.toLocaleString(\'vi-VN\') + \' đ\';\n            document.getElementById(\'invBankMemo\').innerText = data.memo;\n\n            startPollingStatus(\'bank\', data.order_id);\n        } else {\n            Swal.fire({ icon: \'error\', title: \'Lỗi\', text: data.message || \'Không thể tạo hoá đơn VietQR.\' });\n        }\n    } catch (e) {\n        Swal.fire({ icon: \'error\', title: \'Lỗi kết nối\', text: \'Vui lòng kiểm tra đường truyền và thử lại!\' });\n    } finally {\n        btn.disabled = false;\n        btn.innerHTML = \'<i class="fa-solid fa-building-columns me-1"></i> Tạo mã VietQR BIDV\';\n    }\n}\n\nasync function createCryptoInvoice() {\n    const net = document.getElementById(\'cryptoNetworkSelect\').value;\n    const amt = parseFloat(document.getElementById(\'cryptoAmountInput\').value) || 0;\n    if (amt < 10.0) {\n        Swal.fire({ icon: \'warning\', title: \'Số tiền không hợp lệ\', text: \'Số tiền nạp tối thiểu On-chain là 10.0 USDT!\' });\n        return;\n    }\n\n    const btn = document.getElementById(\'createCryptoBtn\');\n    btn.disabled = true;\n    btn.innerHTML = \'<span class="spinner-border spinner-border-sm me-2" role="status"></span> Đang tạo mã nạp...\';\n\n    try {\n        const resp = await fetch(\'/api/web/recharge/create-onchain\', {\n            method: \'POST\',\n            headers: { \'Content-Type\': \'application/json\' },\n            body: JSON.stringify({ network: net, amount_usd: amt })\n        });\n        const data = await resp.json();\n        if (resp.ok && data.status === \'success\') {\n            document.getElementById(\'cryptoFormSection\').classList.add(\'d-none\');\n            document.getElementById(\'cryptoInvoiceSection\').classList.remove(\'d-none\');\n\n            document.getElementById(\'invCryptoQrImg\').src = data.qr_url;\n            document.getElementById(\'invCryptoNetwork\').innerText = data.network_name;\n            document.getElementById(\'invCryptoWalletAddr\').innerText = data.wallet_address;\n            document.getElementById(\'invCryptoAmount\').innerText = data.exact_amount + \' USDT\';\n            document.getElementById(\'invCryptoVnd\').innerText = data.vnd_amount.toLocaleString(\'vi-VN\') + \' đ\';\n        } else {\n            Swal.fire({ icon: \'error\', title: \'Lỗi\', text: data.message || \'Không thể tạo hoá đơn nạp On-chain.\' });\n        }\n    } catch (e) {\n        Swal.fire({ icon: \'error\', title: \'Lỗi kết nối\', text: \'Vui lòng kiểm tra đường truyền và thử lại!\' });\n    } finally {\n        btn.disabled = false;\n        btn.innerHTML = \'<i class="fa-solid fa-coins me-1"></i> Tạo mã nạp On-chain\';\n    }\n}\n\nfunction startPollingStatus(type, orderId) {\n    if (currentPollingInterval) clearInterval(currentPollingInterval);\n    currentPollingInterval = setInterval(() => {\n        checkInvoiceStatus(type, orderId, false);\n    }, 5000);\n}\n\nasync function checkInvoiceStatus(type, orderId, isManualClick = false) {\n    if (!orderId) return;\n\n    if (isManualClick) {\n        const btnId = type === \'binance\' ? \'manualCheckBinanceBtn\' : \'manualCheckBankBtn\';\n        const checkBtn = document.getElementById(btnId);\n        if (checkBtn) {\n            checkBtn.disabled = true;\n            checkBtn.innerHTML = \'<span class="spinner-border spinner-border-sm me-1"></span> Đang kiểm tra...\';\n            setTimeout(() => {\n                if (checkBtn) {\n                    checkBtn.disabled = false;\n                    checkBtn.innerHTML = \'<i class="fa-solid fa-rotate me-1"></i> Tôi đã chuyển tiền (Kiểm tra ngay)\';\n                }\n            }, 3000);\n        }\n    }\n\n    try {\n        const resp = await fetch(\'/api/web/recharge/check-status\', {\n            method: \'POST\',\n            headers: { \'Content-Type\': \'application/json\' },\n            body: JSON.stringify({ order_id: orderId, order_type: type })\n        });\n        const data = await resp.json();\n\n        if (resp.ok && data.status === \'COMPLETED\') {\n            if (currentPollingInterval) clearInterval(currentPollingInterval);\n\n            const balBadges = document.querySelectorAll(\'.balance-badge\');\n            balBadges.forEach(b => {\n                b.setAttribute(\'data-usd\', \'$\' + data.new_balance.toFixed(2));\n                b.setAttribute(\'data-vnd\', data.new_balance_vnd);\n                b.innerText = data.new_balance_vnd;\n            });\n            const topBal = document.getElementById(\'userTopBalText\');\n            if (topBal) topBal.innerText = data.new_balance_vnd;\n\n            Swal.fire({\n                icon: \'success\',\n                title: \'Nạp tiền thành công!\',\n                html: \'Hệ thống đã tự động cộng số dư vào ví của bạn.<br><b>Số dư mới: \' + data.new_balance_vnd + \' (\' + data.new_balance_usd + \')</b>\',\n                confirmButtonText: \'Tiếp tục mua hàng\',\n                confirmButtonColor: \'#6366f1\'\n            }).then(() => {\n                window.location.href = \'/\';\n            });\n        } else if (isManualClick && data.status === \'PENDING\') {\n            Swal.fire({\n                icon: \'info\',\n                title: \'Đang chờ nhận tiền...\',\n                text: \'Hệ thống chưa nhận được giao dịch khớp nội dung. Nếu bạn vừa chuyển tiền, vui lòng đợi 10-30 giây rồi bấm kiểm tra lại nhé!\',\n                timer: 3500\n            });\n        }\n    } catch (e) {\n        console.warn(\'Check status error:\', e);\n    }\n}\n\nasync function cancelInvoice(type, orderId) {\n    if (currentPollingInterval) clearInterval(currentPollingInterval);\n    if (orderId) {\n        try {\n            await fetch(\'/api/web/recharge/cancel\', {\n                method: \'POST\',\n                headers: { \'Content-Type\': \'application/json\' },\n                body: JSON.stringify({ order_id: orderId, order_type: type })\n            });\n        } catch (e) {}\n    }\n\n    if (type === \'binance\') {\n        document.getElementById(\'binanceInvoiceSection\').classList.add(\'d-none\');\n        document.getElementById(\'binanceFormSection\').classList.remove(\'d-none\');\n    } else if (type === \'bank\') {\n        document.getElementById(\'bankInvoiceSection\').classList.add(\'d-none\');\n        document.getElementById(\'bankFormSection\').classList.remove(\'d-none\');\n    } else if (type === \'crypto\') {\n        document.getElementById(\'cryptoInvoiceSection\').classList.add(\'d-none\');\n        document.getElementById(\'cryptoFormSection\').classList.remove(\'d-none\');\n    }\n    activeOrderId = null;\n    activeOrderType = null;\n}\n</script>\n'
+
 @web_router.get("/recharge", response_class=HTMLResponse)
 async def web_recharge(request: Request, tab: str = Query("binance")):
     rate = get_rate()
+    bank_rate = int(getattr(config, "BANK_EXCHANGE_RATE", 26000) or 26000)
     async with get_db_session() as session:
         user, balance, is_admin = await get_current_user_info(request, session)
         stmt_cats = select(Category).order_by(Category.id)
         categories = (await session.execute(stmt_cats)).scalars().all()
 
     binance_uid = getattr(config, "BINANCE_UID", "805398854") or "805398854"
-    bank_stk = getattr(config, "BANK_BIDV_STK", "8838383838") or "8838383838"
-    bank_acc_name = getattr(config, "BANK_BIDV_ACCOUNT_NAME", "NGUYEN VAN A") or "NGUYEN VAN A"
+    bank_stk = getattr(config, "BANK_ACCOUNT_NUMBER", "8880117869") or "8880117869"
+    bank_acc_name = getattr(config, "BANK_ACCOUNT_NAME", "") or "NGUYEN XUAN TRUONG"
+    bank_code = (getattr(config, "BANK_CODE", "BIDV") or "BIDV").upper()
 
-    memo_code = f"NAP {user.id}" if user else "NAP <MA_ID_CUA_BAN>"
-    vietqr_url = f"https://img.vietqr.io/image/bidv-{bank_stk}-compact2.png?amount=0&addInfo={quote(memo_code)}&accountName={quote(bank_acc_name)}"
+    user_tg_id = user.telegram_id if user and user.telegram_id else (user.id if user else "<ID_CUA_BAN>")
+    memo_code = f"NAP {user_tg_id}"
 
     user_alert_html = ""
     if not user:
         user_alert_html = """
-        <div class="alert alert-warning border-0 shadow-sm d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4" role="alert">
-            <div class="d-flex align-items-center gap-2">
-                <i class="fa-solid fa-triangle-exclamation fs-4 text-warning"></i>
+        <div class="alert alert-warning border-0 shadow-sm d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4 p-4 rounded-4" role="alert">
+            <div class="d-flex align-items-center gap-3">
+                <i class="fa-solid fa-triangle-exclamation fs-2 text-warning"></i>
                 <div>
-                    <strong>Bạn chưa đăng nhập!</strong>
-                    <div class="small">Vui lòng đăng nhập hoặc đăng ký tài khoản để hệ thống cấp mã nạp cá nhân (NAP &lt;ID&gt;), giúp tiền được tự động cộng vào ví của bạn sau 1 giây.</div>
+                    <h5 class="fw-bold mb-1">Bạn chưa đăng nhập!</h5>
+                    <div class="small text-muted">Vui lòng đăng nhập hoặc đăng ký tài khoản để hệ thống cấp mã nạp cá nhân (NAP &lt;ID&gt;), giúp tiền được tự động cộng vào ví của bạn sau 1 giây.</div>
                 </div>
             </div>
             <div class="d-flex gap-2">
-                <a href="/login?next=/recharge" class="btn btn-outline-dark btn-sm fw-bold">Đăng nhập</a>
-                <a href="/register?next=/recharge" class="btn btn-purple btn-sm fw-bold">Đăng ký mới</a>
+                <a href="/login?next=/recharge" class="btn btn-outline-dark fw-bold px-3 py-2">
+                    <i class="fa-solid fa-right-to-bracket me-1"></i> Đăng nhập
+                </a>
+                <a href="/register?next=/recharge" class="btn btn-warning text-dark fw-bold px-4 py-2 shadow-sm">
+                    <i class="fa-solid fa-user-plus me-1"></i> ✨ Đăng ký mới (Miễn phí)
+                </a>
             </div>
         </div>
         """
@@ -1391,14 +1429,14 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
                     <div class="avatar-circle fs-4" style="width: 48px; height: 48px;"><i class="fa-solid fa-wallet"></i></div>
                     <div>
                         <div class="small text-muted">Tài khoản: <strong class="text-dark">{html.escape(user.web_username or user.telegram_username or str(user.id))}</strong> (ID: <span class="badge bg-purple text-white">#{user.id}</span>)</div>
-                        <div class="fs-5 fw-bold text-success">Số dư: {balance_vnd_str} <span class="text-muted fs-6">()</span></div>
+                        <div class="fs-5 fw-bold text-success">Số dư khả dụng: {balance_vnd_str} <span class="text-muted fs-6">({balance:.2f}$)</span></div>
                     </div>
                 </div>
                 <div class="bg-white p-2 px-3 rounded-3 shadow-sm border text-end">
                     <div class="small text-muted">Cú pháp nạp tiền cá nhân của bạn:</div>
                     <div class="d-flex align-items-center gap-2 mt-1">
                         <code class="fs-5 fw-bold text-danger user-select-all" id="myMemoText">{memo_code}</code>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText('{memo_code}'); Swal.fire({{icon:'success', title:'Đã sao chép cú pháp!', timer:1200, showConfirmButton:false}});" title="Sao chép cú pháp">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="copyText('{memo_code}', 'cú pháp nạp');" title="Sao chép cú pháp">
                             <i class="fa-regular fa-copy"></i>
                         </button>
                     </div>
@@ -1412,7 +1450,7 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
         <div class="mb-4">
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-1">
-                    <li class="breadcrumb-item"><a href="/" class="text-purple text-decoration-none">Trang ch?</a></li>
+                    <li class="breadcrumb-item"><a href="/" class="text-purple text-decoration-none">Trang chủ</a></li>
                     <li class="breadcrumb-item active" aria-current="page">Nạp tiền tài khoản</li>
                 </ol>
             </nav>
@@ -1447,67 +1485,126 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
                 <div class="row g-4">
                     <div class="col-lg-7">
                         <div class="card border-0 shadow-sm rounded-4 h-100 p-4">
-                            <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-3">
-                                <div>
-                                    <h5 class="fw-bold mb-0 text-purple"><i class="fa-solid fa-bolt text-warning me-2"></i> Nạp qua Binance Pay</h5>
-                                    <small class="text-muted">Chuyển nội bộ Binance - Miễn phí 100% phí giao dịch</small>
+                            <!-- SECTION 1A: CHỌN SỐ TIỀN & TẠO HOÁ ĐƠN -->
+                            <div id="binanceFormSection">
+                                <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-3">
+                                    <div>
+                                        <h5 class="fw-bold mb-0 text-purple"><i class="fa-solid fa-bolt text-warning me-2"></i> Nạp qua Binance Pay (0% Phí)</h5>
+                                        <small class="text-muted">Chuyển nội bộ Binance - Miễn phí 100% - Tự động cộng số dư</small>
+                                    </div>
+                                    <span class="badge bg-success-subtle text-success border border-success fw-bold px-3 py-2 rounded-pill">
+                                        <i class="fa-solid fa-circle-check me-1"></i> Tự động 1 giây
+                                    </span>
                                 </div>
-                                <span class="badge bg-success-subtle text-success border border-success fw-bold px-3 py-2 rounded-pill">
-                                    <i class="fa-solid fa-circle-check me-1"></i> Nhận ngay 1 giây
-                                </span>
+
+                                <div class="mb-3">
+                                    <label class="form-label text-muted small fw-bold">CHỌN NHANH SỐ TIỀN NẠP (USDT):</label>
+                                    <div class="d-flex gap-2 flex-wrap mb-3">
+                                        <button type="button" class="btn btn-outline-purple btn-sm fw-bold px-3" onclick="setBinanceAmount(5)">$5</button>
+                                        <button type="button" class="btn btn-outline-purple btn-sm fw-bold px-3" onclick="setBinanceAmount(10)">$10</button>
+                                        <button type="button" class="btn btn-outline-purple btn-sm fw-bold px-3" onclick="setBinanceAmount(20)">$20</button>
+                                        <button type="button" class="btn btn-outline-purple btn-sm fw-bold px-3" onclick="setBinanceAmount(50)">$50</button>
+                                        <button type="button" class="btn btn-outline-purple btn-sm fw-bold px-3" onclick="setBinanceAmount(100)">$100</button>
+                                        <button type="button" class="btn btn-outline-purple btn-sm fw-bold px-3" onclick="setBinanceAmount(200)">$200</button>
+                                    </div>
+                                    <label class="form-label text-muted small fw-bold">HOẶC NHẬP SỐ USDT CẦN NẠP:</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light fw-bold text-purple">$</span>
+                                        <input type="number" step="0.1" min="1.0" class="form-control form-control-lg fw-bold text-purple" id="binanceAmountInput" value="5" oninput="calcBinanceVnd()">
+                                        <span class="input-group-text bg-light fw-bold">USDT</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center mt-2">
+                                        <span class="small text-muted">Quy đổi tương đương:</span>
+                                        <strong class="text-success" id="binanceVndEstimate">≈ {(5 * rate):,} đ</strong>
+                                    </div>
+                                </div>
+
+                                <div class="bg-light p-3 rounded-3 border mb-4">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="small fw-bold text-muted">Tỷ giá nạp Binance:</span>
+                                        <span class="fw-bold text-success fs-6">1 USDT = {rate:,} VNĐ</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="small fw-bold text-muted">Hạn mức tối thiểu:</span>
+                                        <span class="fw-bold text-dark">1.0 USDT</span>
+                                    </div>
+                                </div>
+
+                                <button type="button" class="btn btn-warning w-100 py-3 fw-bold text-dark shadow-sm d-flex align-items-center justify-content-center gap-2 fs-6" id="createBinanceBtn" onclick="createBinanceInvoice()">
+                                    <i class="fa-solid fa-bolt me-1"></i> Tạo mã thanh toán Binance Pay
+                                </button>
                             </div>
 
-                            <div class="mb-4">
-                                <label class="form-label text-muted small fw-bold">BINANCE UID NHẬN TIỀN:</label>
-                                <div class="input-group">
-                                    <span class="input-group-text bg-light border-end-0 fw-bold"><i class="fa-solid fa-id-badge text-purple me-1"></i> UID</span>
-                                    <input type="text" class="form-control fw-bold fs-5 bg-white border-start-0 text-purple" id="binanceUidInput" value="{binance_uid}" readonly>
-                                    <button class="btn btn-purple px-4" type="button" onclick="navigator.clipboard.writeText('{binance_uid}'); Swal.fire({{icon:'success', title:'?? copy Binance UID!', timer:1200, showConfirmButton:false}});">
-                                        <i class="fa-regular fa-copy me-1"></i> Copy UID
+                            <!-- SECTION 1B: HIỂN THỊ HOÁ ĐƠN THANH TOÁN (ẨN BAN ĐẦU) -->
+                            <div id="binanceInvoiceSection" class="d-none">
+                                <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+                                    <h5 class="fw-bold mb-0 text-purple"><i class="fa-solid fa-file-invoice-dollar me-2"></i> Hoá đơn nạp Binance Pay</h5>
+                                    <span class="badge bg-warning-subtle text-dark border border-warning fw-bold px-3 py-2 rounded-pill">
+                                        <span class="spinner-grow spinner-grow-sm text-warning me-1"></span> Đang chờ nhận tiền...
+                                    </span>
+                                </div>
+
+                                <div class="text-center my-3">
+                                    <div class="p-3 bg-white rounded-3 shadow-sm border d-inline-block">
+                                        <img id="invBinanceQrImg" src="" alt="Binance Pay QR" class="img-fluid rounded" style="width: 230px; height: 230px;">
+                                    </div>
+                                    <div class="small text-muted mt-2">Quét mã bằng App Binance để thanh toán chính xác 100%</div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label text-muted small fw-bold">BINANCE PAY ID (UID):</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control fw-bold bg-white text-purple" id="invBinancePayId" readonly>
+                                        <button class="btn btn-purple" type="button" onclick="copyText(document.getElementById('invBinancePayId').innerText, 'Pay ID')">
+                                            <i class="fa-regular fa-copy"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label text-muted small fw-bold">SỐ TIỀN CẦN CHUYỂN CHÍNH XÁC (USDT):</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control fw-bold fs-5 bg-white text-danger" id="invBinanceAmount" readonly>
+                                        <button class="btn btn-outline-danger" type="button" onclick="copyText(document.getElementById('invBinanceAmount').innerText.replace(' USDT',''), 'Số tiền USDT')">
+                                            <i class="fa-regular fa-copy"></i>
+                                        </button>
+                                    </div>
+                                    <div class="small text-muted mt-1">Quy đổi tương đương: <strong class="text-success" id="invBinanceVnd"></strong></div>
+                                </div>
+
+                                <div class="mb-4">
+                                    <label class="form-label text-muted small fw-bold">NỘI DUNG GHI CHÚ (MEMO / NOTE):</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control fw-bold bg-white text-primary" id="invBinanceMemo" readonly>
+                                        <button class="btn btn-outline-primary" type="button" onclick="copyText(document.getElementById('invBinanceMemo').innerText, 'Memo')">
+                                            <i class="fa-regular fa-copy"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="alert alert-warning border-0 small mb-4">
+                                    <i class="fa-solid fa-triangle-exclamation me-1"></i> <strong>Lưu ý:</strong> Vui lòng chuyển <strong>ĐÚNG CHÍNH XÁC</strong> số USDT kèm số đuôi lẻ để hệ thống tự động nhận diện và cộng tiền trong 1-5 giây. Số lẻ này không phải là phí, bạn nhận đủ 100% vào tài khoản!
+                                </div>
+
+                                <div class="d-grid gap-2">
+                                    <button type="button" class="btn btn-success fw-bold py-3 shadow-sm" id="manualCheckBinanceBtn" onclick="checkInvoiceStatus('binance', activeOrderId, true)">
+                                        <i class="fa-solid fa-rotate me-1"></i> Tôi đã chuyển tiền (Kiểm tra ngay)
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="cancelInvoice('binance', activeOrderId)">
+                                        <i class="fa-solid fa-xmark me-1"></i> Huỷ hoá đơn (Chọn lại số tiền)
                                     </button>
                                 </div>
-                            </div>
-
-                            <div class="mb-4">
-                                <label class="form-label text-muted small fw-bold">NỘI DUNG CHUYỂN TIỀN (REMARK / NOTE):</label>
-                                <div class="input-group">
-                                    <span class="input-group-text bg-light border-end-0 fw-bold"><i class="fa-solid fa-comment-dots text-danger me-1"></i> Memo</span>
-                                    <input type="text" class="form-control fw-bold fs-5 bg-white border-start-0 text-danger" id="binanceMemoInput" value="{memo_code}" readonly>
-                                    <button class="btn btn-outline-danger px-4" type="button" onclick="navigator.clipboard.writeText('{memo_code}'); Swal.fire({{icon:'success', title:'Đã copy Cú pháp Memo!', timer:1200, showConfirmButton:false}});">
-                                        <i class="fa-regular fa-copy me-1"></i> Copy Memo
-                                    </button>
-                                </div>
-                                <div class="form-text text-danger fw-semibold mt-1">
-                                    <i class="fa-solid fa-circle-exclamation me-1"></i> <strong>Bắt buộc</strong> nhập chính xác nội dung <code>{memo_code}</code> để hệ thống tự động cộng tiền trong 1 giây!
-                                </div>
-                            </div>
-
-                            <div class="bg-light p-3 rounded-3 border mb-4">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="small fw-bold text-muted">Tỷ giá nạp Binance Pay:</span>
-                                    <span class="fw-bold text-success fs-6">1 USDT = 1.00 USD (S? d? Bot)</span>
-                                </div>
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <span class="small fw-bold text-muted">Hạn mức nạp tối thiểu:</span>
-                                    <span class="fw-bold text-dark">0.01 USDT (Không giới hạn)</span>
-                                </div>
-                            </div>
-
-                            <div class="mt-auto">
-                                <a href="https://app.binance.com" target="_blank" class="btn btn-warning w-100 py-3 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2 text-dark">
-                                    <i class="fa-solid fa-arrow-up-right-from-square"></i> Mở App Binance để nạp tiền ngay
-                                </a>
                             </div>
                         </div>
                     </div>
 
                     <div class="col-lg-5">
                         <div class="card border-0 shadow-sm rounded-4 h-100 p-4">
-                            <h6 class="fw-bold mb-3"><i class="fa-solid fa-list-ol text-purple me-2"></i> Hướng dẫn 3 bước nạp Binance Pay:</h6>
+                            <h6 class="fw-bold mb-3 text-purple"><i class="fa-solid fa-list-ol me-2"></i> Hướng dẫn 3 bước nạp Binance Pay:</h6>
                             <div class="step-item d-flex gap-3 mb-3">
                                 <div class="step-number bg-purple text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 32px; height: 32px; font-weight: bold;">1</div>
                                 <div>
-                                    <div class="fw-bold">M? App Binance</div>
+                                    <div class="fw-bold">Mở App Binance</div>
                                     <div class="small text-muted">Bấm vào biểu tượng <strong>Pay (Thanh toán)</strong> ở góc trên hoặc mục Ví Funding &gt; Pay.</div>
                                 </div>
                             </div>
@@ -1515,14 +1612,14 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
                                 <div class="step-number bg-purple text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 32px; height: 32px; font-weight: bold;">2</div>
                                 <div>
                                     <div class="fw-bold">Gửi tiền tới UID</div>
-                                    <div class="small text-muted">Chọn <strong>Gửi (Send)</strong> &gt; Chọn tab <strong>Binance ID (UID)</strong> &gt; Dán UID: <code>{binance_uid}</code>.</div>
+                                    <div class="small text-muted">Chọn <strong>Gửi (Send)</strong> &gt; Chọn tab <strong>Binance ID (UID)</strong> &gt; Dán UID: <code>{binance_uid}</code>. Hoặc quét mã QR ở trên!</div>
                                 </div>
                             </div>
                             <div class="step-item d-flex gap-3 mb-3">
                                 <div class="step-number bg-purple text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 32px; height: 32px; font-weight: bold;">3</div>
                                 <div>
                                     <div class="fw-bold">Điền số tiền &amp; Memo</div>
-                                    <div class="small text-muted">Nhập số USDT muốn nạp. Ở phần <strong>Ghi chú / Note (Memo)</strong>: nhập đúng <code>{memo_code}</code> rồi bấm Xác nhận.</div>
+                                    <div class="small text-muted">Nhập chính xác số USDT và phần <strong>Ghi chú / Note (Memo)</strong>: nhập đúng <code>{memo_code}</code> rồi bấm Xác nhận.</div>
                                 </div>
                             </div>
                             <div class="alert alert-info border-0 rounded-3 small mt-auto mb-0">
@@ -1536,83 +1633,155 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
             <!-- TAB 2: BANK BIDV VIETQR -->
             <div class="tab-pane fade {'show active' if tab == 'bank' else ''}" id="bank-pane" role="tabpanel">
                 <div class="row g-4">
-                    <div class="col-lg-6">
+                    <div class="col-lg-7">
                         <div class="card border-0 shadow-sm rounded-4 h-100 p-4">
-                            <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-3">
-                                <div>
-                                    <h5 class="fw-bold mb-0 text-primary"><i class="fa-solid fa-building-columns me-2"></i> Chuyển khoản BIDV (VietQR)</h5>
-                                    <small class="text-muted">Quét mã QR tự động điền STK &amp; Nội dung</small>
+                            <!-- SECTION 2A: CHỌN SỐ TIỀN & TẠO MÃ VIETQR -->
+                            <div id="bankFormSection">
+                                <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-3">
+                                    <div>
+                                        <h5 class="fw-bold mb-0 text-primary"><i class="fa-solid fa-building-columns me-2"></i> Chuyển khoản BIDV (VietQR)</h5>
+                                        <small class="text-muted">Quét mã QR tự động điền STK, Số tiền &amp; Nội dung</small>
+                                    </div>
+                                    <span class="badge bg-primary-subtle text-primary border border-primary fw-bold px-3 py-2 rounded-pill">
+                                        <i class="fa-solid fa-bolt me-1"></i> Tự động 10 - 30s
+                                    </span>
                                 </div>
-                                <span class="badge bg-primary-subtle text-primary border border-primary fw-bold px-3 py-2 rounded-pill">
-                                    <i class="fa-solid fa-bolt me-1"></i> Tự động 30s
-                                </span>
+
+                                <div class="mb-3">
+                                    <label class="form-label text-muted small fw-bold">CHỌN NHANH SỐ TIỀN NẠP (VNĐ):</label>
+                                    <div class="d-flex gap-2 flex-wrap mb-3">
+                                        <button type="button" class="btn btn-outline-primary btn-sm fw-bold px-3" onclick="setBankAmount(50000)">50.000 đ</button>
+                                        <button type="button" class="btn btn-outline-primary btn-sm fw-bold px-3" onclick="setBankAmount(100000)">100.000 đ</button>
+                                        <button type="button" class="btn btn-outline-primary btn-sm fw-bold px-3" onclick="setBankAmount(200000)">200.000 đ</button>
+                                        <button type="button" class="btn btn-outline-primary btn-sm fw-bold px-3" onclick="setBankAmount(500000)">500.000 đ</button>
+                                        <button type="button" class="btn btn-outline-primary btn-sm fw-bold px-3" onclick="setBankAmount(1000000)">1.000.000 đ</button>
+                                        <button type="button" class="btn btn-outline-primary btn-sm fw-bold px-3" onclick="setBankAmount(2000000)">2.000.000 đ</button>
+                                    </div>
+                                    <label class="form-label text-muted small fw-bold">HOẶC NHẬP SỐ TIỀN VNĐ:</label>
+                                    <div class="input-group">
+                                        <input type="number" step="10000" min="10000" class="form-control form-control-lg fw-bold text-primary" id="bankAmountInput" value="100000" oninput="calcBankUsd()">
+                                        <span class="input-group-text bg-light fw-bold">VNĐ</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center mt-2">
+                                        <span class="small text-muted">Quy đổi số dư tương đương:</span>
+                                        <strong class="text-success" id="bankUsdEstimate">≈ ${(100000 / bank_rate):.2f}</strong>
+                                    </div>
+                                </div>
+
+                                <div class="bg-light p-3 rounded-3 border mb-4">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="small fw-bold text-muted">Tỷ giá nạp Ngân hàng:</span>
+                                        <span class="fw-bold text-primary fs-6">1 USD = {bank_rate:,} VNĐ</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="small fw-bold text-muted">Hạn mức nạp tối thiểu:</span>
+                                        <span class="fw-bold text-dark">10,000 VNĐ (~0.4$)</span>
+                                    </div>
+                                </div>
+
+                                <button type="button" class="btn btn-primary w-100 py-3 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2 fs-6" id="createBankBtn" onclick="createBankInvoice()">
+                                    <i class="fa-solid fa-building-columns me-1"></i> Tạo mã VietQR BIDV
+                                </button>
                             </div>
 
-                            <div class="mb-3">
-                                <label class="form-label text-muted small fw-bold">NGÂN HÀNG THỤ HƯỞNG:</label>
-                                <div class="input-group">
-                                    <span class="input-group-text bg-light border-end-0 fw-bold"><i class="fa-solid fa-bank text-primary"></i></span>
-                                    <input type="text" class="form-control fw-bold bg-white border-start-0" value="BIDV - Ngân hàng TMCP Đầu tư và Phát triển VN" readonly>
+                            <!-- SECTION 2B: HIỂN THỊ MÃ VIETQR HOÁ ĐƠN (ẨN BAN ĐẦU) -->
+                            <div id="bankInvoiceSection" class="d-none">
+                                <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+                                    <h5 class="fw-bold mb-0 text-primary"><i class="fa-solid fa-qrcode me-2"></i> Hoá đơn Napas VietQR BIDV</h5>
+                                    <span class="badge bg-primary-subtle text-primary border border-primary fw-bold px-3 py-2 rounded-pill">
+                                        <span class="spinner-grow spinner-grow-sm text-primary me-1"></span> Đang chờ chuyển khoản...
+                                    </span>
                                 </div>
-                            </div>
 
-                            <div class="mb-3">
-                                <label class="form-label text-muted small fw-bold">SỐ TÀI KHOẢN (STK):</label>
-                                <div class="input-group">
-                                    <span class="input-group-text bg-light border-end-0 fw-bold"><i class="fa-solid fa-credit-card text-primary"></i></span>
-                                    <input type="text" class="form-control fw-bold fs-5 bg-white border-start-0 text-primary" value="{bank_stk}" id="bankStkInput" readonly>
-                                    <button class="btn btn-outline-primary px-3" type="button" onclick="navigator.clipboard.writeText('{bank_stk}'); Swal.fire({{icon:'success', title:'?? copy STK BIDV!', timer:1200, showConfirmButton:false}});">
-                                        <i class="fa-regular fa-copy"></i>
+                                <div class="text-center my-3">
+                                    <div class="p-3 bg-white rounded-3 shadow-sm border d-inline-block">
+                                        <img id="invBankQrImg" src="" alt="Mã VietQR nạp tiền BIDV" class="img-fluid rounded" style="width: 250px; height: 250px;">
+                                    </div>
+                                    <div class="small text-muted mt-2">Mở app Ngân hàng bất kỳ để quét mã (Tự động điền STK &amp; Số tiền)</div>
+                                </div>
+
+                                <div class="row g-2 mb-2">
+                                    <div class="col-sm-6">
+                                        <label class="form-label text-muted small fw-bold">NGÂN HÀNG:</label>
+                                        <div class="form-control fw-bold bg-white" id="invBankName">BIDV</div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <label class="form-label text-muted small fw-bold">CHỦ TÀI KHOẢN:</label>
+                                        <div class="form-control fw-bold bg-white text-uppercase" id="invBankAccName">NGUYEN XUAN TRUONG</div>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label text-muted small fw-bold">SỐ TÀI KHOẢN (STK):</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control fw-bold fs-5 bg-white text-primary" id="invBankStk" readonly>
+                                        <button class="btn btn-outline-primary" type="button" onclick="copyText(document.getElementById('invBankStk').value, 'STK BIDV')">
+                                            <i class="fa-regular fa-copy"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label text-muted small fw-bold">SỐ TIỀN CẦN CHUYỂN CHÍNH XÁC (VNĐ):</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control fw-bold fs-5 bg-white text-danger" id="invBankAmount" readonly>
+                                        <button class="btn btn-outline-danger" type="button" onclick="copyText(document.getElementById('invBankAmount').value.replace(/[^0-9]/g,''), 'Số tiền VNĐ')">
+                                            <i class="fa-regular fa-copy"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="mb-4">
+                                    <label class="form-label text-muted small fw-bold">NỘI DUNG CHUYỂN KHOẢN (BẮT BUỘC):</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control fw-bold fs-5 bg-white text-danger" id="invBankMemo" readonly>
+                                        <button class="btn btn-danger" type="button" onclick="copyText(document.getElementById('invBankMemo').value, 'Nội dung chuyển khoản')">
+                                            <i class="fa-regular fa-copy"></i>
+                                        </button>
+                                    </div>
+                                    <div class="form-text text-danger fw-semibold mt-1">
+                                        <i class="fa-solid fa-triangle-exclamation me-1"></i> Bắt buộc chuyển đúng nội dung để hệ thống nhận diện và cộng tiền tự động!
+                                    </div>
+                                </div>
+
+                                <div class="d-grid gap-2">
+                                    <button type="button" class="btn btn-success fw-bold py-3 shadow-sm" id="manualCheckBankBtn" onclick="checkInvoiceStatus('bank', activeOrderId, true)">
+                                        <i class="fa-solid fa-rotate me-1"></i> Tôi đã chuyển tiền (Kiểm tra ngay)
                                     </button>
-                                </div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label text-muted small fw-bold">CHỦ TÀI KHOẢN:</label>
-                                <div class="input-group">
-                                    <span class="input-group-text bg-light border-end-0 fw-bold"><i class="fa-solid fa-user-check text-primary"></i></span>
-                                    <input type="text" class="form-control fw-bold bg-white border-start-0" value="{bank_acc_name}" readonly>
-                                </div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label text-muted small fw-bold">NỘI DUNG CHUYỂN KHOẢN (MEMO):</label>
-                                <div class="input-group">
-                                    <span class="input-group-text bg-light border-end-0 fw-bold"><i class="fa-solid fa-comment-dots text-danger"></i></span>
-                                    <input type="text" class="form-control fw-bold fs-5 bg-white border-start-0 text-danger" value="{memo_code}" id="bankMemoInput" readonly>
-                                    <button class="btn btn-outline-danger px-3" type="button" onclick="navigator.clipboard.writeText('{memo_code}'); Swal.fire({{icon:'success', title:'Đã copy Cú pháp!', timer:1200, showConfirmButton:false}});">
-                                        <i class="fa-regular fa-copy"></i>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="cancelInvoice('bank', activeOrderId)">
+                                        <i class="fa-solid fa-xmark me-1"></i> Huỷ hoá đơn (Chọn lại số tiền)
                                     </button>
-                                </div>
-                                <div class="form-text text-danger fw-semibold mt-1">
-                                    <i class="fa-solid fa-triangle-exclamation me-1"></i> Bắt buộc chuyển đúng nội dung <code>{memo_code}</code> để hệ thống nhận diện tự động!
-                                </div>
-                            </div>
-
-                            <div class="bg-light p-3 rounded-3 border mt-auto">
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <span class="small fw-bold text-muted">Tỷ giá quy đổi:</span>
-                                    <span class="fw-bold text-primary">1 USD = {rate:,} VNĐ</span>
-                                </div>
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <span class="small fw-bold text-muted">Nạp tối thiểu:</span>
-                                    <span class="fw-bold text-dark">10,000 VNĐ (~0.4$)</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="col-lg-6">
-                        <div class="card border-0 shadow-sm rounded-4 h-100 p-4 text-center">
-                            <h6 class="fw-bold mb-2"><i class="fa-solid fa-qrcode text-primary me-2"></i> Quét mã VietQR chuyển khoản nhanh:</h6>
-                            <p class="text-muted small mb-3">Mở app Ngân hàng bất kỳ (Vietcombank, MB, Techcombank, VPBank, Momo...) quét mã để tự điền STK &amp; Nội dung:</p>
-                            <div class="d-flex justify-content-center my-auto">
-                                <div class="p-3 bg-white rounded-3 shadow-sm border d-inline-block">
-                                    <img src="{vietqr_url}" alt="Mã VietQR nạp tiền BIDV" class="img-fluid rounded" style="max-width: 280px; max-height: 280px;" onerror="this.src='https://placehold.co/280x280?text=BIDV+VietQR';">
+                    <div class="col-lg-5">
+                        <div class="card border-0 shadow-sm rounded-4 h-100 p-4">
+                            <h6 class="fw-bold mb-3 text-primary"><i class="fa-solid fa-list-ol me-2"></i> Hướng dẫn nạp tiền qua Ngân hàng:</h6>
+                            <div class="step-item d-flex gap-3 mb-3">
+                                <div class="step-number bg-primary text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 32px; height: 32px; font-weight: bold;">1</div>
+                                <div>
+                                    <div class="fw-bold">Chọn số tiền</div>
+                                    <div class="small text-muted">Chọn số tiền muốn nạp ở cột bên trái và bấm <strong>Tạo mã VietQR</strong>.</div>
                                 </div>
                             </div>
-                            <div class="alert alert-light border small mt-3 mb-0 text-muted">
-                                <i class="fa-solid fa-shield-halved text-success me-1"></i> Quét mã QR giúp tránh 100% rủi ro chuyển sai số tài khoản hoặc sai cú pháp.
+                            <div class="step-item d-flex gap-3 mb-3">
+                                <div class="step-number bg-primary text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 32px; height: 32px; font-weight: bold;">2</div>
+                                <div>
+                                    <div class="fw-bold">Quét mã VietQR</div>
+                                    <div class="small text-muted">Mở App Ngân hàng bất kỳ (VCB, MB, BIDV, Techcombank, VPBank, MoMo...) và quét mã QR. Ứng dụng sẽ tự động điền STK, Số tiền và Nội dung.</div>
+                                </div>
+                            </div>
+                            <div class="step-item d-flex gap-3 mb-3">
+                                <div class="step-number bg-primary text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 32px; height: 32px; font-weight: bold;">3</div>
+                                <div>
+                                    <div class="fw-bold">Xác nhận chuyển</div>
+                                    <div class="small text-muted">Kiểm tra thông tin và bấm Xác nhận. Hệ thống API ngân hàng sẽ tự động kiểm tra và cộng số dư ví cho bạn trong 10-30 giây!</div>
+                                </div>
+                            </div>
+                            <div class="alert alert-light border small mt-auto mb-0 text-muted">
+                                <i class="fa-solid fa-shield-halved text-success me-1"></i> Quét mã VietQR giúp tránh 100% rủi ro chuyển sai số tài khoản hoặc sai cú pháp.
                             </div>
                         </div>
                     </div>
@@ -1625,38 +1794,122 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
                     <div class="d-flex align-items-center justify-content-between mb-4 border-bottom pb-3">
                         <div>
                             <h5 class="fw-bold mb-0 text-success"><i class="fa-solid fa-coins me-2"></i> Nạp tiền Crypto On-Chain (USDT)</h5>
-                            <small class="text-muted">Hỗ trợ các mạng TRC20, BEP20 qua cổng thanh toán bảo mật</small>
+                            <small class="text-muted">Hỗ trợ các mạng TRC20, BEP20, TON, Polygon, ETH</small>
                         </div>
                         <span class="badge bg-success-subtle text-success border border-success fw-bold px-3 py-2 rounded-pill">
                             <i class="fa-solid fa-shield me-1"></i> Bảo mật On-Chain
                         </span>
                     </div>
 
-                    <div class="row g-4 align-items-center">
+                    <div class="row g-4">
                         <div class="col-lg-7">
-                            <p class="text-secondary">Bạn có thể nạp tiền trực tiếp bằng USDT thông qua ví On-chain. Đối với các đơn nạp On-chain số lượng lớn hoặc cần xác nhận ngay, vui lòng nhắn trực tiếp cho Admin qua Telegram.</p>
-                            <ul class="list-unstyled mb-4">
-                                <li class="mb-2"><i class="fa-solid fa-circle-check text-success me-2"></i> Hỗ trợ mạng: <strong>TRC20 (Tron)</strong>, <strong>BEP20 (BNB Smart Chain)</strong>.</li>
-                                <li class="mb-2"><i class="fa-solid fa-circle-check text-success me-2"></i> Tỷ giá quy đổi: <strong>1 USDT = 1.00 USD</strong> số dư tài khoản.</li>
-                                <li class="mb-2"><i class="fa-solid fa-circle-check text-success me-2"></i> Hạn mức tối thiểu: <strong>10 USDT</strong> (đối với On-chain để tránh phí mạng).</li>
-                            </ul>
-                            <div class="d-flex gap-2 flex-wrap">
-                                <a href="https://t.me/truongdvfb" target="_blank" class="btn btn-purple fw-bold px-4 py-2">
-                                    <i class="fa-brands fa-telegram me-1"></i> Chat với Admin @truongdvfb để nạp nhanh
-                                </a>
-                                <a href="/recharge?tab=binance" class="btn btn-outline-warning fw-bold px-4 py-2 text-dark">
-                                    <i class="fa-solid fa-bolt me-1"></i> Dùng Binance Pay để được 0% phí
-                                </a>
+                            <div id="cryptoFormSection">
+                                <div class="mb-3">
+                                    <label class="form-label text-muted small fw-bold">CHỌN MẠNG BLOCKCHAIN (NETWORK):</label>
+                                    <select class="form-select form-select-lg fw-bold" id="cryptoNetworkSelect">
+                                        <option value="BSC" selected>BSC - BNB Smart Chain (BEP20)</option>
+                                        <option value="TRX">TRX - Tron (TRC20)</option>
+                                        <option value="TON">TON - The Open Network</option>
+                                        <option value="ETH">ETH - Ethereum (ERC20)</option>
+                                        <option value="OPBNB">OPBNB - opBNB</option>
+                                        <option value="CELO">CELO - Celo</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label text-muted small fw-bold">CHỌN NHANH SỐ TIỀN (USDT):</label>
+                                    <div class="d-flex gap-2 flex-wrap mb-3">
+                                        <button type="button" class="btn btn-outline-success btn-sm fw-bold px-3" onclick="setCryptoAmount(10)">$10</button>
+                                        <button type="button" class="btn btn-outline-success btn-sm fw-bold px-3" onclick="setCryptoAmount(20)">$20</button>
+                                        <button type="button" class="btn btn-outline-success btn-sm fw-bold px-3" onclick="setCryptoAmount(50)">$50</button>
+                                        <button type="button" class="btn btn-outline-success btn-sm fw-bold px-3" onclick="setCryptoAmount(100)">$100</button>
+                                        <button type="button" class="btn btn-outline-success btn-sm fw-bold px-3" onclick="setCryptoAmount(200)">$200</button>
+                                    </div>
+                                    <label class="form-label text-muted small fw-bold">HOẶC NHẬP SỐ USDT:</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light fw-bold text-success">$</span>
+                                        <input type="number" step="1" min="10" class="form-control form-control-lg fw-bold text-success" id="cryptoAmountInput" value="20" oninput="calcCryptoVnd()">
+                                        <span class="input-group-text bg-light fw-bold">USDT</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center mt-2">
+                                        <span class="small text-muted">Quy đổi tương đương:</span>
+                                        <strong class="text-success" id="cryptoVndEstimate">≈ {(20 * rate):,} đ</strong>
+                                    </div>
+                                </div>
+
+                                <div class="alert alert-light border small text-muted mb-4">
+                                    <ul class="mb-0 ps-3">
+                                        <li>Tỷ giá quy đổi: <strong>1 USDT = 1.00 USD</strong> số dư tài khoản.</li>
+                                        <li>Hạn mức nạp tối thiểu On-chain: <strong>10.0 USDT</strong> để tránh nghẽn gas mạng.</li>
+                                    </ul>
+                                </div>
+
+                                <button type="button" class="btn btn-success w-100 py-3 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2 fs-6" id="createCryptoBtn" onclick="createCryptoInvoice()">
+                                    <i class="fa-solid fa-coins me-1"></i> Tạo mã nạp On-chain
+                                </button>
+                            </div>
+
+                            <div id="cryptoInvoiceSection" class="d-none">
+                                <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+                                    <h5 class="fw-bold mb-0 text-success"><i class="fa-solid fa-wallet me-2"></i> Thông tin nạp On-Chain</h5>
+                                    <span class="badge bg-success-subtle text-success border border-success fw-bold px-3 py-2 rounded-pill" id="invCryptoNetwork"></span>
+                                </div>
+
+                                <div class="text-center my-3">
+                                    <div class="p-3 bg-white rounded-3 shadow-sm border d-inline-block">
+                                        <img id="invCryptoQrImg" src="" alt="Crypto QR" class="img-fluid rounded" style="width: 220px; height: 220px;">
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label text-muted small fw-bold">ĐỊA CHỈ VÍ NHẬN USDT:</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control fw-bold font-monospace bg-white text-dark small" id="invCryptoWalletAddr" readonly>
+                                        <button class="btn btn-success" type="button" onclick="copyText(document.getElementById('invCryptoWalletAddr').value, 'Địa chỉ ví')">
+                                            <i class="fa-regular fa-copy"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label text-muted small fw-bold">SỐ TIỀN CẦN CHUYỂN CHÍNH XÁC (USDT):</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control fw-bold fs-5 bg-white text-danger" id="invCryptoAmount" readonly>
+                                        <button class="btn btn-outline-danger" type="button" onclick="copyText(document.getElementById('invCryptoAmount').value.replace(' USDT',''), 'Số tiền USDT')">
+                                            <i class="fa-regular fa-copy"></i>
+                                        </button>
+                                    </div>
+                                    <div class="small text-muted mt-1">Quy đổi tương đương: <strong class="text-success" id="invCryptoVnd"></strong></div>
+                                </div>
+
+                                <div class="alert alert-warning border-0 small mb-4">
+                                    <i class="fa-solid fa-triangle-exclamation me-1"></i> <strong>Lưu ý quan trọng:</strong> Vui lòng chuyển <strong>ĐÚNG MẠNG</strong> và gửi đúng <strong>USDT</strong>. Gửi sai mạng hoặc coin khác có thể dẫn đến mất tài sản vĩnh viễn!
+                                </div>
+
+                                <div class="d-grid gap-2">
+                                    <a href="https://t.me/truongdvfb" target="_blank" class="btn btn-purple fw-bold py-3 shadow-sm text-center">
+                                        <i class="fa-brands fa-telegram me-1"></i> Đã chuyển tiền / Nhắn Admin @truongdvfb hỗ trợ
+                                    </a>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="cancelInvoice('crypto')">
+                                        <i class="fa-solid fa-xmark me-1"></i> Đổi mạng / Chọn lại số tiền
+                                    </button>
+                                </div>
                             </div>
                         </div>
+
                         <div class="col-lg-5 text-center">
-                            <div class="p-4 bg-light rounded-4 border">
+                            <div class="p-4 bg-light rounded-4 border h-100 d-flex flex-column justify-content-center">
                                 <i class="fa-solid fa-headset fs-1 text-purple mb-3"></i>
                                 <h6 class="fw-bold mb-2">Hỗ trợ Nạp tiền 24/7</h6>
-                                <p class="text-muted small mb-3">Nếu sau 3-5 phút bạn chưa nhận được số dư hoặc có bất kỳ thắc mắc nào, liên hệ ngay:</p>
-                                <a href="https://t.me/truongdvfb" target="_blank" class="btn btn-outline-purple btn-sm fw-bold">
-                                    <i class="fa-brands fa-telegram me-1"></i> @truongdvfb (Admin Duy Trường)
-                                </a>
+                                <p class="text-muted small mb-3">Nếu bạn có thắc mắc hoặc cần nạp số lượng lớn với tỷ giá ưu đãi, liên hệ ngay với Admin:</p>
+                                <div class="d-grid gap-2">
+                                    <a href="https://t.me/truongdvfb" target="_blank" class="btn btn-outline-purple btn-sm fw-bold">
+                                        <i class="fa-brands fa-telegram me-1"></i> @truongdvfb (Admin Duy Trường)
+                                    </a>
+                                    <a href="/recharge?tab=binance" class="btn btn-outline-warning text-dark btn-sm fw-bold">
+                                        <i class="fa-solid fa-bolt me-1"></i> Dùng Binance Pay (0% phí & Tự động 1s)
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1665,15 +1918,292 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
         </div>
     </div>
     """
+
+    js_code = RECHARGE_JS_TEMPLATE.replace("__RATE__", str(rate)).replace("__BANK_RATE__", str(bank_rate))
+    full_content = content + js_code
+
     return HTMLResponse(content=render_base_layout(
         title="Nạp tiền tài khoản - Bubba Gump Clone Shop",
-        body_content=content,
+        body_content=full_content,
         active_nav="recharge",
         user=user,
         balance=balance,
         is_admin=is_admin,
         categories=categories
     ))
+
+
+@web_router.post("/api/web/recharge/create-binance")
+async def api_create_binance_invoice(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    amount_usd = float(body.get("amount_usd") or 0.0)
+    if amount_usd < 1.0:
+        return JSONResponse({"status": "error", "message": "Số tiền nạp tối thiểu là 1.0 USDT!"}, status_code=400)
+
+    async with get_db_session() as session:
+        user, balance, is_admin = await get_current_user_info(request, session)
+        if not user:
+            return JSONResponse({"status": "error", "message": "Vui lòng đăng nhập để nạp tiền!"}, status_code=401)
+
+        binance_uid = getattr(config, "BINANCE_UID", "805398854") or "805398854"
+
+        stmt_pending = select(BinancePayOrder.amount).where(BinancePayOrder.status == "PENDING")
+        existing_amounts = set(round(float(a), 4) for a in (await session.execute(stmt_pending)).scalars().all() if a)
+
+        exact_amount = None
+        for _ in range(100):
+            cand_sub = random.randint(11, 99) / 10000.0
+            cand_amt = round(amount_usd + cand_sub, 4)
+            if cand_amt not in existing_amounts:
+                exact_amount = cand_amt
+                break
+        if exact_amount is None:
+            exact_amount = round(amount_usd + random.randint(100, 999) / 10000.0, 4)
+
+        rate = get_rate()
+        vnd_amount = int(round(exact_amount * rate))
+        user_tg_id = user.telegram_id if user.telegram_id else user.id
+        memo = f"NAP {user_tg_id}"
+
+        order = BinancePayOrder(
+            user_id=user.id,
+            telegram_id=user_tg_id,
+            memo=memo,
+            amount=exact_amount,
+            status="PENDING"
+        )
+        session.add(order)
+        await session_commit(session)
+
+        qr_src = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=binance://pay?receiver={binance_uid}%26amount={exact_amount:.4f}"
+        try:
+            qr_file = DepositFlowService.generate_binance_qr(binance_uid, exact_amount)
+            if qr_file and hasattr(qr_file, "data") and qr_file.data:
+                b64 = base64.b64encode(qr_file.data).decode("ascii")
+                qr_src = f"data:image/png;base64,{b64}"
+        except Exception as e:
+            logger.debug(f"Could not generate pillow binance QR: {e}")
+
+        return JSONResponse({
+            "status": "success",
+            "order_id": order.id,
+            "exact_amount": f"{exact_amount:.4f}",
+            "binance_uid": binance_uid,
+            "memo": memo,
+            "vnd_amount": vnd_amount,
+            "qr_src": qr_src
+        })
+
+
+@web_router.post("/api/web/recharge/create-bank")
+async def api_create_bank_invoice(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    amount_vnd = int(body.get("amount_vnd") or 0)
+    if amount_vnd < 10000:
+        return JSONResponse({"status": "error", "message": "Số tiền nạp tối thiểu là 10.000 VNĐ!"}, status_code=400)
+
+    async with get_db_session() as session:
+        user, balance, is_admin = await get_current_user_info(request, session)
+        if not user:
+            return JSONResponse({"status": "error", "message": "Vui lòng đăng nhập để nạp tiền!"}, status_code=401)
+
+        bank_rate = float(getattr(config, "BANK_EXCHANGE_RATE", 26000) or 26000)
+        amount_usd = round(amount_vnd / bank_rate, 2)
+
+        account_number = getattr(config, "BANK_ACCOUNT_NUMBER", "8880117869") or "8880117869"
+        account_name = getattr(config, "BANK_ACCOUNT_NAME", "") or "NGUYEN XUAN TRUONG"
+        bank_code = (getattr(config, "BANK_CODE", "BIDV") or "BIDV").upper()
+
+        user_tg_id = user.telegram_id if user.telegram_id else user.id
+        memo = f"NAP {user_tg_id}"
+
+        order = BankDepositOrder(
+            user_id=user.id,
+            telegram_id=user_tg_id,
+            bank_code=bank_code,
+            account_number=account_number,
+            account_name=account_name,
+            amount_vnd=float(amount_vnd),
+            amount_usd=amount_usd,
+            memo=memo,
+            status="PENDING"
+        )
+        session.add(order)
+        await session_commit(session)
+
+        qr_url = f"https://img.vietqr.io/image/{bank_code}-{account_number}-compact2.png?amount={amount_vnd}&addInfo={quote(memo)}&accountName={quote(account_name)}"
+
+        return JSONResponse({
+            "status": "success",
+            "order_id": order.id,
+            "exact_vnd": amount_vnd,
+            "bank_code": bank_code,
+            "account_number": account_number,
+            "account_name": account_name,
+            "memo": memo,
+            "qr_url": qr_url
+        })
+
+@web_router.post("/api/web/recharge/create-onchain")
+async def api_create_onchain_invoice(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    network = (body.get("network") or "BSC").strip().upper()
+    amount_usd = float(body.get("amount_usd") or 0.0)
+    if amount_usd < 10.0:
+        return JSONResponse({"status": "error", "message": "Số tiền nạp tối thiểu On-chain là 10.0 USDT!"}, status_code=400)
+
+    async with get_db_session() as session:
+        user, balance, is_admin = await get_current_user_info(request, session)
+        if not user:
+            return JSONResponse({"status": "error", "message": "Vui lòng đăng nhập để nạp tiền!"}, status_code=401)
+
+        wallet_address = DepositFlowService.get_wallet_address_for_network(network)
+        random_sub = random.randint(11, 99) / 10000.0
+        exact_amount = round(amount_usd + random_sub, 4)
+
+        rate = get_rate()
+        vnd_amount = int(round(exact_amount * rate))
+
+        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={quote(wallet_address)}"
+        try:
+            qr_file = DepositFlowService.generate_clean_qr(wallet_address)
+            if qr_file and hasattr(qr_file, "data") and qr_file.data:
+                b64 = base64.b64encode(qr_file.data).decode("ascii")
+                qr_url = f"data:image/png;base64,{b64}"
+        except Exception as e:
+            logger.debug(f"Could not generate pillow clean QR: {e}")
+
+        network_names = {
+            "BSC": "BSC - BNB Smart Chain (BEP20)",
+            "OPBNB": "OPBNB - opBNB",
+            "TRX": "TRX - Tron (TRC20)",
+            "TON": "TON - The Open Network",
+            "CELO": "CELO",
+            "ETH": "ETH - Ethereum (ERC20)",
+        }
+        network_name = network_names.get(network, network)
+
+        return JSONResponse({
+            "status": "success",
+            "network": network,
+            "network_name": network_name,
+            "wallet_address": wallet_address,
+            "exact_amount": f"{exact_amount:.4f}",
+            "vnd_amount": vnd_amount,
+            "qr_url": qr_url
+        })
+
+
+@web_router.post("/api/web/recharge/cancel")
+async def api_cancel_invoice(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    order_id = body.get("order_id")
+    order_type = body.get("order_type")
+    if not order_id:
+        return JSONResponse({"status": "error", "message": "Thiếu mã đơn hàng"}, status_code=400)
+
+    async with get_db_session() as session:
+        user, balance, is_admin = await get_current_user_info(request, session)
+        if not user:
+            return JSONResponse({"status": "error", "message": "Vui lòng đăng nhập"}, status_code=401)
+
+        if order_type == "binance":
+            stmt = select(BinancePayOrder).where(BinancePayOrder.id == int(order_id), BinancePayOrder.user_id == user.id)
+            ord_obj = (await session.execute(stmt)).scalar_one_or_none()
+            if ord_obj and ord_obj.status == "PENDING":
+                ord_obj.status = "CANCELLED"
+                await session_commit(session)
+        elif order_type == "bank":
+            stmt = select(BankDepositOrder).where(BankDepositOrder.id == int(order_id), BankDepositOrder.user_id == user.id)
+            ord_obj = (await session.execute(stmt)).scalar_one_or_none()
+            if ord_obj and ord_obj.status == "PENDING":
+                ord_obj.status = "CANCELLED"
+                await session_commit(session)
+
+    return JSONResponse({"status": "success"})
+
+
+@web_router.post("/api/web/recharge/check-status")
+async def api_check_recharge_status(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    order_id = body.get("order_id")
+    order_type = body.get("order_type")
+
+    if not order_id or not order_type:
+        return JSONResponse({"status": "error", "message": "Thông tin tra cứu không hợp lệ"}, status_code=400)
+
+    async with get_db_session() as session:
+        user, balance, is_admin = await get_current_user_info(request, session)
+        if not user:
+            return JSONResponse({"status": "error", "message": "Vui lòng đăng nhập"}, status_code=401)
+
+        bot_instance = get_bot_instance()
+
+        if order_type == "binance":
+            try:
+                await BinancePayService.check_order_status(order_id=int(order_id), session=session, bot=bot_instance)
+            except Exception as e:
+                logger.debug(f"Check binance status error: {e}")
+
+            stmt = select(BinancePayOrder).where(BinancePayOrder.id == int(order_id))
+            b_order = (await session.execute(stmt)).scalar_one_or_none()
+            if b_order and b_order.status in ("COMPLETED", "PAID"):
+                stmt_u = select(User).where(User.id == user.id)
+                user_fresh = (await session.execute(stmt_u)).scalar_one_or_none()
+                new_bal = round((user_fresh.top_up_amount or 0.0) - (user_fresh.consume_records or 0.0), 2)
+                return JSONResponse({
+                    "status": "COMPLETED",
+                    "new_balance": new_bal,
+                    "new_balance_vnd": format_vnd(new_bal),
+                    "new_balance_usd": format_usd(new_bal)
+                })
+
+        elif order_type == "bank":
+            try:
+                user_tg_id = user.telegram_id if user.telegram_id else user.id
+                await BankDepositService.process_and_credit_transactions(
+                    bot=bot_instance,
+                    session=session,
+                    target_telegram_id=user_tg_id,
+                    target_order_id=int(order_id)
+                )
+            except Exception as e:
+                logger.debug(f"Check bank status error: {e}")
+
+            stmt = select(BankDepositOrder).where(BankDepositOrder.id == int(order_id))
+            bk_order = (await session.execute(stmt)).scalar_one_or_none()
+            if bk_order and bk_order.status in ("COMPLETED", "PAID"):
+                stmt_u = select(User).where(User.id == user.id)
+                user_fresh = (await session.execute(stmt_u)).scalar_one_or_none()
+                new_bal = round((user_fresh.top_up_amount or 0.0) - (user_fresh.consume_records or 0.0), 2)
+                return JSONResponse({
+                    "status": "COMPLETED",
+                    "new_balance": new_bal,
+                    "new_balance_vnd": format_vnd(new_bal),
+                    "new_balance_usd": format_usd(new_bal)
+                })
+
+    return JSONResponse({"status": "PENDING", "message": "Chưa nhận được giao dịch khớp nội dung"})
 
 
 @web_router.get("/orders", response_class=HTMLResponse)

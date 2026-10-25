@@ -19,6 +19,9 @@ class MockDbResult:
     def scalars(self):
         return self
 
+    def __iter__(self):
+        return iter(self._items)
+
     def all(self):
         return list(self._items)
 
@@ -218,3 +221,76 @@ async def test_web_order_detail_api_unauthorized(test_app):
         async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
             r = await ac.get("/api/web/order/1")
             assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_web_recharge_unauthorized_apis(test_app):
+    @asynccontextmanager
+    async def empty_db_ctx(*args, **kwargs):
+        yield SmartMockDbSession()
+
+    with patch("web_shop.get_db_session", empty_db_ctx):
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+            r1 = await ac.post("/api/web/recharge/create-binance", json={"amount_usd": 10.0})
+            assert r1.status_code == 401
+
+            r2 = await ac.post("/api/web/recharge/create-bank", json={"amount_vnd": 50000})
+            assert r2.status_code == 401
+
+            r3 = await ac.post("/api/web/recharge/create-onchain", json={"network": "BSC", "amount_usd": 20.0})
+            assert r3.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_web_recharge_authorized_flow(test_app):
+    user = SimpleNamespace(
+        id=77,
+        telegram_id=987654321,
+        telegram_username="buyer77",
+        web_username="buyer77",
+        top_up_amount=100.0,
+        consume_records=20.0,
+        is_banned=False
+    )
+    @asynccontextmanager
+    async def user_db_ctx(*args, **kwargs):
+        yield SmartMockDbSession(user=user)
+
+    with patch("web_shop.get_db_session", user_db_ctx):
+        with patch("web_shop.session_commit", AsyncMock()):
+            with patch("web_shop.get_current_user_info", AsyncMock(return_value=(user, 80.0, False))):
+                async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+                    # 1. Binance Pay Invoice
+                    r_bin = await ac.post("/api/web/recharge/create-binance", json={"amount_usd": 15.0})
+                    assert r_bin.status_code == 200
+                    d_bin = r_bin.json()
+                    assert d_bin["status"] == "success"
+                    assert "binance_uid" in d_bin
+                    assert "NAP 987654321" in d_bin["memo"]
+                    assert float(d_bin["exact_amount"]) >= 15.0
+
+                    # 2. Bank VietQR Invoice
+                    r_bank = await ac.post("/api/web/recharge/create-bank", json={"amount_vnd": 100000})
+                    assert r_bank.status_code == 200
+                    d_bank = r_bank.json()
+                    assert d_bank["status"] == "success"
+                    assert d_bank["exact_vnd"] == 100000
+                    assert "vietqr.io" in d_bank["qr_url"]
+
+                    # 3. On-chain Invoice
+                    r_onc = await ac.post("/api/web/recharge/create-onchain", json={"network": "TRX", "amount_usd": 25.0})
+                    assert r_onc.status_code == 200
+                    d_onc = r_onc.json()
+                    assert d_onc["status"] == "success"
+                    assert d_onc["network"] == "TRX"
+                    assert float(d_onc["exact_amount"]) >= 25.0
+
+                    # 4. Check status pending
+                    r_chk = await ac.post("/api/web/recharge/check-status", json={"order_id": 1, "order_type": "binance"})
+                    assert r_chk.status_code == 200
+                    assert r_chk.json()["status"] == "PENDING"
+
+                    # 5. Cancel invoice
+                    r_cnc = await ac.post("/api/web/recharge/cancel", json={"order_id": 1, "order_type": "binance"})
+                    assert r_cnc.status_code == 200
+                    assert r_cnc.json()["status"] == "success"
