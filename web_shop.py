@@ -325,15 +325,51 @@ def render_base_layout(
             padding: 8px 0;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }}
-        .top-bar a {{
+        .top-bar a:not(.dropdown-item) {{
             color: #ffffff;
             text-decoration: none;
-            opacity: 0.9;
+            opacity: 0.95;
             transition: opacity 0.2s;
         }}
-        .top-bar a:hover {{
+        .top-bar a:not(.dropdown-item):hover {{
             opacity: 1;
-            text-decoration: underline;
+            text-decoration: none;
+        }}
+        .top-bar .dropdown-menu,
+        .dropdown-menu {{
+            background-color: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 10px !important;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12) !important;
+            padding: 6px !important;
+            z-index: 1050;
+        }}
+        .top-bar .dropdown-item,
+        .dropdown-item {{
+            color: #1e293b !important;
+            text-decoration: none !important;
+            opacity: 1 !important;
+            padding: 8px 14px !important;
+            font-size: 13.5px !important;
+            font-weight: 600 !important;
+            border-radius: 6px !important;
+            transition: all 0.15s ease !important;
+            display: flex !important;
+            align-items: center !important;
+        }}
+        .top-bar .dropdown-item:hover,
+        .top-bar .dropdown-item:focus,
+        .dropdown-item:hover,
+        .dropdown-item:focus {{
+            background-color: #f3e8ff !important;
+            color: #6f42c1 !important;
+            text-decoration: none !important;
+            opacity: 1 !important;
+        }}
+        .dropdown-item.active,
+        .dropdown-item:active {{
+            background-color: #6f42c1 !important;
+            color: #ffffff !important;
         }}
         .brand-navbar {{
             background: #ffffff;
@@ -912,23 +948,55 @@ def render_base_layout(
 
                 <!-- Language switcher -->
                 <div class="dropdown">
-                    <a href="javascript:void(0)" class="dropdown-toggle text-white text-decoration-none" id="langDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                    <a href="javascript:void(0)" class="dropdown-toggle text-white text-decoration-none d-flex align-items-center gap-1" id="langDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="fa-solid fa-earth-americas me-1"></i> <span id="currentLangLabel">Tiếng Việt</span>
                     </a>
-                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 small">
-                        <li><a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0)" onclick="setLanguage('vi')"><span>🇻🇳</span> <span>Tiếng Việt</span></a></li>
-                        <li><a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0)" onclick="setLanguage('en')"><span>🇬🇧</span> <span>English</span></a></li>
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 small" id="langDropdownMenu" style="min-width: 170px;">
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center justify-content-between py-2 px-3" href="javascript:void(0)" onclick="setLanguage('vi')">
+                                <span class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-danger text-white rounded-pill px-2 py-0 fw-bold" style="font-size: 10px; line-height: 16px;">VN</span>
+                                    <span>Tiếng Việt</span>
+                                </span>
+                                <i class="fa-solid fa-check text-purple ms-2 check-lang check-vi d-none"></i>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center justify-content-between py-2 px-3" href="javascript:void(0)" onclick="setLanguage('en')">
+                                <span class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-primary text-white rounded-pill px-2 py-0 fw-bold" style="font-size: 10px; line-height: 16px;">EN</span>
+                                    <span>English</span>
+                                </span>
+                                <i class="fa-solid fa-check text-purple ms-2 check-lang check-en d-none"></i>
+                            </a>
+                        </li>
                     </ul>
                 </div>
 
                 <!-- Currency switcher -->
                 <div class="dropdown">
-                    <a href="javascript:void(0)" class="dropdown-toggle text-white text-decoration-none" id="currencyToggleBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                    <a href="javascript:void(0)" class="dropdown-toggle text-white text-decoration-none d-flex align-items-center gap-1" id="currencyToggleBtn" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="fa-solid fa-money-bill-transfer me-1"></i> <span id="currentCurrencyLabel">VND (1$ = {rate:,}đ)</span>
                     </a>
-                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 small">
-                        <li><a class="dropdown-item" href="javascript:void(0)" onclick="setCurrency('VND')">🇻🇳 VNĐ (Việt Nam Đồng)</a></li>
-                        <li><a class="dropdown-item" href="javascript:void(0)" onclick="setCurrency('USDT')">💵 USDT (Đô la Mỹ)</a></li>
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 small" id="currencyDropdownMenu" style="min-width: 200px;">
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center justify-content-between py-2 px-3" href="javascript:void(0)" onclick="setCurrency('VND')">
+                                <span class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-success text-white rounded-pill px-2 py-0 fw-bold" style="font-size: 10px; line-height: 16px;">₫</span>
+                                    <span>VNĐ (Việt Nam)</span>
+                                </span>
+                                <i class="fa-solid fa-check text-purple ms-2 check-curr check-vnd d-none"></i>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center justify-content-between py-2 px-3" href="javascript:void(0)" onclick="setCurrency('USDT')">
+                                <span class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-warning text-dark rounded-pill px-2 py-0 fw-bold" style="font-size: 10px; line-height: 16px;">$</span>
+                                    <span>USDT (Đô la Mỹ)</span>
+                                </span>
+                                <i class="fa-solid fa-check text-purple ms-2 check-curr check-usdt d-none"></i>
+                            </a>
+                        </li>
                     </ul>
                 </div>
 
@@ -1228,6 +1296,10 @@ recharge_main_title: '<i class="fa-solid fa-wallet text-purple me-2"></i> Automa
             if (langLabel) {{
                 langLabel.innerText = (lang === 'en') ? 'English' : 'Tiếng Việt';
             }}
+            document.querySelectorAll('.check-lang').forEach(function(el) {{ el.classList.add('d-none'); }});
+            var checkEl = document.querySelector('.check-' + lang);
+            if (checkEl) checkEl.classList.remove('d-none');
+
             var currentTheme = document.documentElement.getAttribute('data-bs-theme') || 'light';
             updateThemeUI(currentTheme);
         }}
@@ -1279,6 +1351,9 @@ recharge_main_title: '<i class="fa-solid fa-wallet text-purple me-2"></i> Automa
                     el.innerText = usd;
                 }}
             }});
+            document.querySelectorAll('.check-curr').forEach(function(el) {{ el.classList.add('d-none'); }});
+            var checkCurr = document.querySelector('.check-' + (currentCurrency === 'VND' ? 'vnd' : 'usdt'));
+            if (checkCurr) checkCurr.classList.remove('d-none');
         }}
 
         // Live product search filter & initialization
