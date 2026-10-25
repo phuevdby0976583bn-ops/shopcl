@@ -156,7 +156,7 @@ async def instant_buy_confirmation(**kwargs):
     callback_data: AllCategoriesCallback = kwargs.get('callback_data')
     session: AsyncSession = kwargs.get('session')
     language: Language = kwargs.get('language')
-    user = await UserRepository.get_by_tgid(callback.from_user.id, session)
+    user = await UserRepository.get_by_tgid(callback.from_user.id, session, for_update=True)
     msg, kb_builder = await SubcategoryService.get_instant_buy_confirmation(callback_data, user, session, language)
     await _send_or_edit_text(callback, msg, kb_builder.as_markup())
 
@@ -474,6 +474,8 @@ async def execute_instant_buy(**kwargs):
                 f'📄 <i>Toàn bộ <b>{len(purchased_items)} tài khoản</b> đã được lưu trong file .txt đính kèm bên dưới để bạn tải về nhập trực tiếp vào tool (FPlus, MaxCare...).</i>\n\n'
                 f'🛡️ <b>Bảo hành:</b> 24h lỗi 1 đổi 1. Điều khoản & Miễn trừ: /policy. Hỗ trợ Admin: @truongdvfb'
             )
+            if len(doc_caption) > 1000:
+                doc_caption = doc_caption[:990] + '...'
             try:
                 await callback.message.delete()
             except Exception:

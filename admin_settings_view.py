@@ -100,9 +100,18 @@ async def render_unified_settings_page(request: Request, default_active_tab: str
 
         min_deposit_usdt = float(cur_settings.get("MIN_DEPOSIT_USDT") or getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0)
         try:
-            min_deposit_vnd = min_deposit_usdt * float(bank_rate)
+            bank_rate_val = float(bank_rate)
         except Exception:
-            min_deposit_vnd = min_deposit_usdt * 26000.0
+            bank_rate_val = 26000.0
+
+        min_deposit_vnd_setting = cur_settings.get("MIN_DEPOSIT_VND") or getattr(config, "MIN_DEPOSIT_VND", None)
+        if min_deposit_vnd_setting is not None:
+            try:
+                min_deposit_vnd = float(min_deposit_vnd_setting)
+            except Exception:
+                min_deposit_vnd = min_deposit_usdt * bank_rate_val
+        else:
+            min_deposit_vnd = min_deposit_usdt * bank_rate_val
 
         from enums.language import Language
         from services.deposit_bonus import DepositBonusService
@@ -595,20 +604,36 @@ async def render_unified_settings_page(request: Request, default_active_tab: str
                                         <div class="col-sm-6">
                                             <label class="form-label fw-bold small text-muted">5. Tỷ Giá Quy Đổi (VNĐ / 1$):</label>
                                             <div class="input-group">
-                                                <input type="number" class="form-control font-monospace fw-bold text-success" id="bank_exchange_rate" value="{bank_rate}" step="100" min="1000">
+                                                <input type="number" class="form-control font-monospace fw-bold text-success" id="bank_exchange_rate" value="{bank_rate}" step="100" min="1000" oninput="syncMinDepositInputs(document.getElementById('bank_min_deposit').value)">
                                                 <span class="input-group-text small">đ / 1$</span>
                                             </div>
                                         </div>
                                     </div>
 
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold small text-muted">6. Hạn Mức Nạp Tối Thiểu (USD / VNĐ):</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text"><i class="fa-solid fa-coins text-info"></i></span>
-                                            <input type="number" class="form-control font-monospace fw-bold text-dark" id="bank_min_deposit" value="{min_deposit_usdt:g}" step="0.1" min="0.01" placeholder="VD: 1.0" oninput="syncMinDepositInputs(this.value)">
-                                            <span class="input-group-text bg-light">USDT (~<span id="bank_min_vnd_preview">{min_deposit_vnd:,.0f}</span> đ)</span>
+                                    <div class="mb-3 p-3 bg-light rounded border">
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-bold text-success mb-1">
+                                                    <i class="fa-solid fa-money-bill-wave me-1"></i> 6. Hạn Mức Nạp Tối Thiểu (VNĐ):
+                                                </label>
+                                                <div class="input-group">
+                                                    <input type="number" class="form-control font-monospace fw-bold text-success border-success" id="bank_min_deposit_vnd" value="{min_deposit_vnd:.0f}" step="1000" min="1000" placeholder="VD: 20000" oninput="onMinVndChange(this.value)">
+                                                    <span class="input-group-text fw-bold bg-success text-white">VNĐ</span>
+                                                </div>
+                                                <div class="form-text small">Khách nạp qua BIDV / VietQR tối thiểu số tiền VNĐ này (VD: 10000, 20000, 50000 đ).</div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-bold text-primary mb-1">
+                                                    <i class="fa-solid fa-coins me-1"></i> Quy Đổi Ra USDT ($):
+                                                </label>
+                                                <div class="input-group">
+                                                    <input type="number" class="form-control font-monospace fw-bold text-primary border-primary" id="bank_min_deposit" value="{min_deposit_usdt:g}" step="0.01" min="0.01" placeholder="VD: 1.0" oninput="onMinUsdtChange(this.value)">
+                                                    <span class="input-group-text fw-bold bg-primary text-white">USDT / $</span>
+                                                </div>
+                                                <div class="form-text small">Tự động quy đổi theo tỷ giá (<span id="bank_min_vnd_preview">{min_deposit_vnd:,.0f}</span> đ).</div>
+                                            </div>
                                         </div>
-                                        <div class="form-text small">Khách chuyển khoản ngân hàng tối thiểu bằng số tiền USD này quy đổi ra VNĐ theo tỷ giá.</div>
+                                    </div>
                                     </div>
 
                                     <div class="form-check form-switch mb-3 p-2 bg-light rounded border border-info">
@@ -622,7 +647,7 @@ async def render_unified_settings_page(request: Request, default_active_tab: str
                                     <div id="bankSaveResult" class="mb-3" style="display:none;"></div>
 
                                     <div class="pt-2 border-top d-flex gap-2">
-                                        <button type="submit" class="btn btn-info text-white fw-bold px-4">
+                                        <button type="button" class="btn btn-info text-white fw-bold px-4" onclick="saveBankSettings()">
                                             <i class="fa-solid fa-floppy-disk me-1"></i> Lưu Cấu Hình Ngân Hàng
                                         </button>
                                         <button type="button" class="btn btn-outline-info fw-bold" onclick="checkBankTransactionsNow()">
@@ -1393,17 +1418,49 @@ async def render_unified_settings_page(request: Request, default_active_tab: str
             }}
         }}
 
-function saveBankSettings() {{
-            const minEl = document.getElementById('bank_min_deposit');
-            const minVal = minEl ? (parseFloat(minEl.value) || 1.0) : 1.0;
+function onMinVndChange(val) {{
+            const vnd = parseFloat(val) || 0;
+            const rateEl = document.getElementById('bank_exchange_rate');
+            const rate = rateEl ? (parseFloat(rateEl.value) || 26000) : 26000;
+            const usdt = rate > 0 ? (vnd / rate).toFixed(2) : '1.0';
+            const el1 = document.getElementById('binance_min_deposit');
+            const el2 = document.getElementById('krypto_min_deposit');
+            const el3 = document.getElementById('bank_min_deposit');
+            const vndEl = document.getElementById('bank_min_vnd_preview');
+            if (el3) el3.value = usdt;
+            if (el1) el1.value = usdt;
+            if (el2) el2.value = usdt;
+            if (vndEl) vndEl.innerText = Math.round(vnd).toLocaleString();
+        }}
+
+        function onMinUsdtChange(val) {{
+            syncMinDepositInputs(val);
+        }}
+
+        function saveBankSettings() {{
+            const minUsdtEl = document.getElementById('bank_min_deposit');
+            const minVndEl = document.getElementById('bank_min_deposit_vnd');
+            const rateEl = document.getElementById('bank_exchange_rate');
+            const rateVal = rateEl ? (parseFloat(rateEl.value) || 26000) : 26000;
+
+            let minVndVal = minVndEl ? (parseFloat(minVndEl.value) || 0) : 0;
+            let minUsdtVal = minUsdtEl ? (parseFloat(minUsdtEl.value) || 0) : 0;
+
+            if (minVndVal <= 0 && minUsdtVal > 0) {{
+                minVndVal = Math.round(minUsdtVal * rateVal);
+            }} else if (minUsdtVal <= 0 && minVndVal > 0) {{
+                minUsdtVal = parseFloat((minVndVal / rateVal).toFixed(2));
+            }}
+
             const payload = {{
                 'BANK_BIDV_TOKEN': document.getElementById('bank_token').value.trim(),
                 'BANK_ACCOUNT_NUMBER': document.getElementById('bank_account_number').value.trim(),
                 'BANK_ACCOUNT_NAME': document.getElementById('bank_account_name').value.trim(),
                 'BANK_CODE': document.getElementById('bank_code').value.trim(),
-                'BANK_EXCHANGE_RATE': parseFloat(document.getElementById('bank_exchange_rate').value) || 26000,
+                'BANK_EXCHANGE_RATE': rateVal,
                 'BANK_AUTO_CHECK': document.getElementById('bank_auto_check').checked,
-                'MIN_DEPOSIT_USDT': minVal
+                'MIN_DEPOSIT_USDT': minUsdtVal,
+                'MIN_DEPOSIT_VND': minVndVal
             }};
             saveSettingsPayload(payload, 'bankSaveResult');
         }}
@@ -1452,15 +1509,19 @@ function saveBankSettings() {{
             const el1 = document.getElementById('binance_min_deposit');
             const el2 = document.getElementById('krypto_min_deposit');
             const el3 = document.getElementById('bank_min_deposit');
+            const elVnd = document.getElementById('bank_min_deposit_vnd');
             if (el1 && el1.value !== val) el1.value = val;
             if (el2 && el2.value !== val) el2.value = val;
             if (el3 && el3.value !== val) el3.value = val;
             const rateEl = document.getElementById('bank_exchange_rate');
             const vndEl = document.getElementById('bank_min_vnd_preview');
-            if (rateEl && vndEl) {{
-                const rate = parseFloat(rateEl.value) || 26000;
-                const num = parseFloat(val) || 1;
+            const rate = rateEl ? (parseFloat(rateEl.value) || 26000) : 26000;
+            const num = parseFloat(val) || 1;
+            if (vndEl) {{
                 vndEl.innerText = Math.round(num * rate).toLocaleString();
+            }}
+            if (elVnd && elVnd.value !== Math.round(num * rate).toString()) {{
+                elVnd.value = Math.round(num * rate);
             }}
         }}
 
@@ -1591,15 +1652,15 @@ function saveBankSettings() {{
         function insertClause(type) {{
             let snippet = '';
             if (type === 'fb') {{
-                snippet = '\n• <b>Tài khoản Facebook:</b> 1 đổi 1 trong 24h nếu sai pass, sai 2FA, die trước khi mua (Auto-check live UID). Từ chối nếu đã login thành công, IP bẩn hoặc vi phạm ToS Meta.\n';
+                snippet = '\\n• <b>Tài khoản Facebook:</b> 1 đổi 1 trong 24h nếu sai pass, sai 2FA, die trước khi mua (Auto-check live UID). Từ chối nếu đã login thành công, IP bẩn hoặc vi phạm ToS Meta.\\n';
             }} else if (type === 'ai') {{
-                snippet = '\n• <b>Tài khoản AI (ChatGPT/Claude/Midjourney):</b> Bảo hành tụt gói Pro trong suốt thời hạn cam kết. Không bảo hành nếu share account công khai hoặc vi phạm ToS OpenAI.\n';
+                snippet = '\\n• <b>Tài khoản AI (ChatGPT/Claude/Midjourney):</b> Bảo hành tụt gói Pro trong suốt thời hạn cam kết. Không bảo hành nếu share account công khai hoặc vi phạm ToS OpenAI.\\n';
             }} else if (type === 'capcut') {{
-                snippet = '\n• <b>Tài khoản CapCut Pro:</b> Bảo hành đúng thời hạn gói đã mua (1 đổi 1 nếu văng Pro). Từ chối nếu đăng nhập quá 2 thiết bị.\n';
+                snippet = '\\n• <b>Tài khoản CapCut Pro:</b> Bảo hành đúng thời hạn gói đã mua (1 đổi 1 nếu văng Pro). Từ chối nếu đăng nhập quá 2 thiết bị.\\n';
             }} else if (type === 'vpn') {{
-                snippet = '\n• <b>Tài khoản VPN:</b> Bảo hành kết nối và bản quyền suốt gói. Từ chối nếu dùng VPN để hack, DDoS, tấn công mạng.\n';
+                snippet = '\\n• <b>Tài khoản VPN:</b> Bảo hành kết nối và bản quyền suốt gói. Từ chối nếu dùng VPN để hack, DDoS, tấn công mạng.\\n';
             }} else if (type === 'disclaimer') {{
-                snippet = '\n⚖️ <b>TUYÊN BỐ MIỄN TRỪ TRÁCH NHIỆM:</b> Bên mua chịu 100% trách nhiệm trước pháp luật Việt Nam (Luật An ninh mạng & NĐ 15/2020/NĐ-CP). Shop là đơn vị trung gian kỹ thuật và hoàn toàn miễn trừ mọi trách nhiệm liên đới.\n';
+                snippet = '\\n⚖️ <b>TUYÊN BỐ MIỄN TRỪ TRÁCH NHIỆM:</b> Bên mua chịu 100% trách nhiệm trước pháp luật Việt Nam (Luật An ninh mạng & NĐ 15/2020/NĐ-CP). Shop là đơn vị trung gian kỹ thuật và hoàn toàn miễn trừ mọi trách nhiệm liên đới.\\n';
             }}
             const curPos = policyTextarea.selectionStart || 0;
             const text = policyTextarea.value;
@@ -1693,7 +1754,7 @@ function saveBankSettings() {{
                 '3. Nhắn tin Admin Telegram: <b>' + adm + '</b> (Xử lý trong 15 - 30 phút).',
                 '━━━━━━━━━━━━━━━━━━━━━━━━━',
                 '<i>⚠️ Mua hàng đồng nghĩa với việc bạn đồng ý với toàn bộ điều khoản trên.</i>'
-            ].join('\n');
+            ].join('\\n');
 
             const assembledSummary = [
                 '🛡️ <b>CHÍNH SÁCH BẢO HÀNH & MIỄN TRỪ TRÁCH NHIỆM</b>',
@@ -1706,7 +1767,7 @@ function saveBankSettings() {{
                 '',
                 '👤 <b>Admin hỗ trợ:</b> ' + adm + ' (Kèm mã Order ID)',
                 '📜 Gõ /policy để đọc toàn văn chính sách.'
-            ].join('\n');
+            ].join('\\n');
 
             policyTextarea.value = assembledFull;
             summaryTextarea.value = assembledSummary;

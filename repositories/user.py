@@ -14,14 +14,16 @@ class UserRepository:
     INT32_MIN = -2_147_483_648
 
     @staticmethod
-    async def get_by_tgid(telegram_id: int, session: AsyncSession | Session) -> UserDTO | None:
+    async def get_by_tgid(telegram_id: int, session: AsyncSession | Session, for_update: bool = False) -> UserDTO | None:
         stmt = select(User).where(User.telegram_id == telegram_id)
+        if for_update:
+            stmt = stmt.with_for_update()
         user = await session_execute(stmt, session)
-        user = user.scalar()
+        user = user.scalar() if user is not None else None
         if user is not None:
             return UserDTO.model_validate(user, from_attributes=True)
         else:
-            return user
+            return None
 
     @staticmethod
     async def update(user_dto: UserDTO, session: Session | AsyncSession) -> None:

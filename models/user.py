@@ -16,7 +16,9 @@ class User(Base):
 
     id = Column(Integer, primary_key=True)
     telegram_username = Column(String, unique=True, index=True)
-    telegram_id = Column(BigInteger, nullable=False, unique=True, index=True)
+    telegram_id = Column(BigInteger, nullable=True, unique=True, index=True)
+    web_username = Column(String, unique=True, index=True, nullable=True)
+    password_hash = Column(String, nullable=True)
     top_up_amount = Column(Float, default=0.0)
     consume_records = Column(Float, default=0.0)
     registered_at = Column(DateTime(timezone=True), default=func.now())
@@ -74,6 +76,8 @@ class UserDTO(BaseModel):
     id: int | None = None
     telegram_username: str | None = None
     telegram_id: int | None = None
+    web_username: str | None = None
+    password_hash: str | None = None
     top_up_amount: float | None = None
     consume_records: float | None = None
     registered_at: datetime | None = None
@@ -111,6 +115,7 @@ class UserAdmin(ModelView, model=User):
         "id": "ID",
         "telegram_username": "Username Telegram",
         "telegram_id": "Telegram ID",
+        "web_username": "T?i kho?n Web",
         "top_up_amount": "Tổng nạp ($)",
         "consume_records": "Đã tiêu ($)",
         "registered_at": "Ngày đăng ký",
@@ -120,7 +125,7 @@ class UserAdmin(ModelView, model=User):
         "referral_code": "Mã GT",
         "referred_at": "Ngày được mời"
     }
-    column_exclude_list = [User.buys,
+    column_exclude_list = [User.password_hash, User.buys,
                            User.deposits,
                            User.earned_referral_bonuses,
                            User.received_referral_bonuses,
@@ -167,9 +172,10 @@ class UserAdmin(ModelView, model=User):
                 await session.execute(delete(Buy).where(Buy.id.in_(b_ids)))
             await session.execute(delete(User).where(User.id == u_id))
             await session.commit()
-    column_searchable_list = [User.telegram_username]
+    column_searchable_list = [User.telegram_username, User.web_username]
     column_sortable_list = [User.id,
                             User.telegram_username,
+                            User.web_username,
                             User.telegram_id,
                             User.top_up_amount,
                             User.consume_records,

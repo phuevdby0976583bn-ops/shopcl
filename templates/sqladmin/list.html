@@ -315,5 +315,88 @@
   {% endwith %}
   {% endif %}
   {% endfor %}
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      // 1. Bulletproof Actions dropdown button toggle for all tabs
+      var actionsBtn = document.getElementById("dropdownMenuButton");
+      if (actionsBtn) {
+        actionsBtn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var menu = this.nextElementSibling;
+          if (menu && menu.classList.contains("dropdown-menu")) {
+            menu.classList.toggle("show");
+          }
+        });
+      }
+
+      // Close dropdown when clicking outside
+      document.addEventListener("click", function (e) {
+        if (!e.target.closest(".dropdown")) {
+          document.querySelectorAll(".dropdown-menu.show").forEach(function (m) {
+            m.classList.remove("show");
+          });
+        }
+      });
+
+      // 2. Validate selected items on bulk delete
+      var delBtn = document.getElementById("action-delete");
+      if (delBtn) {
+        delBtn.addEventListener("click", function (e) {
+          var checkedBoxes = document.querySelectorAll(".select-box:checked");
+          if (checkedBoxes.length === 0) {
+            e.preventDefault();
+            e.stopPropagation();
+            alert("⚠️ Vui lòng tích chọn ít nhất một mục trong danh sách để thực hiện xoá!");
+            return false;
+          }
+          var pks = [];
+          checkedBoxes.forEach(function (cb) {
+            var hiddenInput = cb.parentElement ? cb.parentElement.querySelector("input[type='hidden']") : null;
+            if (hiddenInput && hiddenInput.value) {
+              pks.push(hiddenInput.value);
+            } else if (cb.value) {
+              pks.push(cb.value);
+            }
+          });
+
+          var rawUrl = this.getAttribute("data-url") || "";
+          var baseUrl = rawUrl.split("?")[0];
+          var newUrl = baseUrl + "?pks=" + pks.join(",");
+          this.setAttribute("data-url", newUrl);
+          this.setAttribute("data-pk", pks.join(","));
+
+          var modalBtn = document.getElementById("modal-delete-button");
+          if (modalBtn) {
+            modalBtn.setAttribute("data-url", newUrl);
+          }
+        });
+      }
+
+      // 3. Fix confirmation modal YES button for custom actions
+      document.querySelectorAll("[id^='action-custom-modal-']").forEach(function (modalBtn) {
+        modalBtn.addEventListener("click", function (e) {
+          e.preventDefault();
+          var checkedBoxes = document.querySelectorAll(".select-box:checked");
+          var pks = [];
+          checkedBoxes.forEach(function (cb) {
+            var hiddenInput = cb.parentElement ? cb.parentElement.querySelector("input[type='hidden']") : null;
+            if (hiddenInput && hiddenInput.value) {
+              pks.push(hiddenInput.value);
+            } else if (cb.value) {
+              pks.push(cb.value);
+            }
+          });
+          var baseUrl = this.getAttribute("data-url") || "";
+          if (pks.length > 0) {
+            window.location.href = baseUrl + (baseUrl.indexOf("?") !== -1 ? "&" : "?") + "pks=" + pks.join(",");
+          } else {
+            window.location.href = baseUrl;
+          }
+        });
+      });
+    });
+  </script>
 </div>
 {% endblock %}

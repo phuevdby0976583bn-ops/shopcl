@@ -19,6 +19,8 @@ class Cryptocurrency(str, Enum):
     USDC_ERC20 = "USDC_ERC20"
     USDT_BEP20 = "USDT_BEP20"
     USDC_BEP20 = "USDC_BEP20"
+    USDT_BSC = "USDT_BEP20"
+    USDC_BSC = "USDC_BEP20"
 
     def get_decimals(self):
         match self:

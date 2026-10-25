@@ -638,13 +638,11 @@ app.include_router(api_router)
 
 async def webhook(request: Request):
 
-    secret_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-
-    if config.WEBHOOK_SECRET_TOKEN and secret_token:
-
-        if secret_token != config.WEBHOOK_SECRET_TOKEN:
-
-            logging.warning(f"Webhook secret token mismatch: {secret_token} != {config.WEBHOOK_SECRET_TOKEN}")
+    if config.WEBHOOK_SECRET_TOKEN:
+        secret_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+        if not secret_token or secret_token != config.WEBHOOK_SECRET_TOKEN:
+            logging.warning("Unauthorized webhook request: missing or invalid secret token")
+            return JSONResponse(status_code=403, content={"status": "error", "message": "Forbidden: invalid secret token"})
 
 
 

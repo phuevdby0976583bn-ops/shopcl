@@ -41,6 +41,7 @@ class _MockScalarResult:
 async def test_create_binance_invoice_text_table():
     mock_user = SimpleNamespace(id=1, telegram_id=999888, username="test_user")
     session = AsyncMock()
+    session.add = MagicMock()
 
     # Call 1: user lookup -> returns mock_user
     # Call 2: pending amounts lookup -> returns []
@@ -89,6 +90,7 @@ async def test_binance_auto_credit_by_exact_amount():
     )
 
     session = AsyncMock()
+    session.add = MagicMock()
     # Call 1: select pending orders -> [pending_order]
     # Call 2: select check tx_id -> None
     # Call 3: select user -> mock_user

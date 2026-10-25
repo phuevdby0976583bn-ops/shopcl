@@ -13,7 +13,10 @@ class AdminAuth(AuthenticationBackend):
         username = form.get("username")
         password = form.get("password")
 
-        if username == "admin" and verify_password(password, SQLADMIN_HASHED_PASSWORD):
+        if not username or not password:
+            return False
+
+        if username == "admin" and verify_password(str(password), SQLADMIN_HASHED_PASSWORD):
             token = create_access_token(
                 {
                     "sub": UserRole.ADMIN.name,

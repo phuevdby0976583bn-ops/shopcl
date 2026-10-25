@@ -464,8 +464,12 @@ async def prompt_bank_amount(callback: CallbackQuery, state: FSMContext, languag
         pass
     await state.set_state(UserStates.bank_deposit_amount)
     rate = float(getattr(config, "BANK_EXCHANGE_RATE", 26000) or 26000)
+    min_vnd = float(getattr(config, "MIN_DEPOSIT_VND", 0) or 0)
     min_usdt = float(getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0)
-    min_vnd = min_usdt * rate
+    if min_vnd <= 0:
+        min_vnd = min_usdt * rate
+    elif min_usdt <= 0 and rate > 0:
+        min_usdt = round(min_vnd / rate, 2)
     stk = getattr(config, "BANK_ACCOUNT_NUMBER", "8880117869")
     bonus_text = DepositBonusService.get_bonus_display_text(language)
     if language == Language.VI:
@@ -479,7 +483,7 @@ async def prompt_bank_amount(callback: CallbackQuery, state: FSMContext, languag
             f"👉 <b>Vui lòng nhập số tiền bạn muốn nạp:</b>\n"
             f"• Nhập theo USD (ví dụ: <code>{min_usdt:g}</code>, <code>2</code>, <code>5</code>, <code>10</code>$)\n"
             f"• Hoặc nhập theo VNĐ (ví dụ: <code>{min_vnd:,.0f}</code>, <code>50000</code>, <code>100k</code>)\n"
-            f"<i>(Hạn mức tối thiểu: <b>{min_usdt:g}$ (~{min_vnd:,.0f}đ)</b>)</i>"
+            f"<i>(Hạn mức tối thiểu: <b>{min_vnd:,.0f}đ (~{min_usdt:g}$)</b>)</i>"
         )
         if bonus_text:
             msg += f"\n\n{bonus_text}"
@@ -525,12 +529,22 @@ async def receive_bank_amount(message: Message, state: FSMContext, session: Asyn
         return
 
     rate = float(getattr(config, "BANK_EXCHANGE_RATE", 26000) or 26000)
+    min_vnd = float(getattr(config, "MIN_DEPOSIT_VND", 0) or 0)
+    min_usdt = float(getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0)
+    if min_vnd <= 0:
+        min_vnd = min_usdt * rate
+    elif min_usdt <= 0 and rate > 0:
+        min_usdt = round(min_vnd / rate, 2)
+
     cleaned = raw_text.lower().replace("$", "").replace("vnd", "").replace("vnđ", "").replace("đ", "").replace(",", "").replace(".", "").strip()
 
+    is_vnd_input = False
+    val_vnd = 0.0
     if cleaned.endswith("k"):
         try:
             val_vnd = float(cleaned[:-1]) * 1000
             amount_usd = round(val_vnd / rate, 2)
+            is_vnd_input = True
         except ValueError:
             msg_val = "⚠️ Vui lòng nhập số tiền hợp lệ:" if language == Language.VI else "⚠️ Please enter a valid number:"
             await message.answer(msg_val)
@@ -540,18 +554,24 @@ async def receive_bank_amount(message: Message, state: FSMContext, session: Asyn
         try:
             val = float(raw_num)
             if val >= 1000:
+                val_vnd = val
                 amount_usd = round(val / rate, 2)
+                is_vnd_input = True
             else:
                 amount_usd = round(val, 2)
+                val_vnd = amount_usd * rate
         except ValueError:
             msg_val = "⚠️ Vui lòng nhập số tiền hợp lệ (ví dụ: <code>2</code> hoặc <code>50000</code>):" if language == Language.VI else "⚠️ Please enter a valid amount (e.g., <code>2</code> or <code>50000</code>):"
             await message.answer(msg_val, parse_mode="HTML")
             return
 
-    min_usdt = float(getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0)
-    min_vnd = min_usdt * rate
+    if is_vnd_input and min_vnd > 0 and val_vnd < min_vnd:
+        msg_min = f"⚠️ Số tiền nạp tối thiểu là {min_vnd:,.0f} đ (~{min_usdt:g}$). Vui lòng nhập lại:" if language == Language.VI else f"⚠️ Minimum deposit is {min_vnd:,.0f} VND (~${min_usdt:g}). Please try again:"
+        await message.answer(msg_min)
+        return
+
     if amount_usd < min_usdt:
-        msg_min = f"⚠️ Số tiền nạp tối thiểu là {min_usdt:g}$ (~{min_vnd:,.0f} đ). Vui lòng nhập lại:" if language == Language.VI else f"⚠️ Minimum deposit is ${min_usdt:g} (~{min_vnd:,.0f} VND). Please try again:"
+        msg_min = f"⚠️ Số tiền nạp tối thiểu là {min_vnd:,.0f} đ (~{min_usdt:g}$). Vui lòng nhập lại:" if language == Language.VI else f"⚠️ Minimum deposit is {min_vnd:,.0f} VND (~${min_usdt:g}). Please try again:"
         await message.answer(msg_min)
         return
 

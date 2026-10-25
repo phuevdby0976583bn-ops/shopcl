@@ -29,6 +29,8 @@ async def fetch_crypto_event(payment_dto: ProcessingPaymentDTO, request: Request
         async with get_db_session() as session:
             user = await PaymentRepository.get_user_by_payment_id(payment_dto.id, session)
             table_payment_dto = await PaymentRepository.get_by_processing_payment_id(payment_dto.id, session)
+            if not user or not table_payment_dto:
+                return "Payment or user not found"
             if payment_dto.isPaid is True and table_payment_dto.is_paid is False:
                 table_payment_dto.is_paid = True
                 await PaymentRepository.update(table_payment_dto, session)

@@ -77,8 +77,19 @@ class AntiDDoSMiddleware(BaseHTTPMiddleware):
 
         # 5. Kiem tra kich thuoc Payload (chong tran RAM)
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > self.max_body_size:
-            return JSONResponse(status_code=413, content={"detail": "Payload qua lon! Toi da 15MB."})
+        if content_length:
+            try:
+                cl_int = int(content_length)
+                if cl_int > self.max_body_size:
+                    return JSONResponse(status_code=413, content={"detail": "Payload qua lon! Toi da 15MB."})
+            except (ValueError, TypeError):
+                return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header"})
+
+        # Don dep RAM dinh ky cho _ip_requests tranh memory leak
+        if len(_ip_requests) > 2000:
+            stale_ips = [ip for ip, hist in _ip_requests.items() if not hist or now - hist[-1] > 60]
+            for ip in stale_ips:
+                _ip_requests.pop(ip, None)
 
         # 6. Rate Limiting cho luu luong cong cong ben ngoai (300 req/phut)
         requests_history = _ip_requests.get(client_ip, [])
