@@ -185,7 +185,7 @@ def render_base_layout(
         if is_admin:
             admin_button_html = """
             <a href="/admin" class="btn btn-warning btn-sm fw-bold text-dark me-2 shadow-sm pulse-admin-btn" title="Chuyển sang trang Quản trị Admin Panel">
-                <i class="fa-solid fa-gauge-high me-1"></i> Chuyển sang Admin Panel
+                <i class="fa-solid fa-gauge-high me-1"></i> <span data-i18n="btn_admin_panel">Trang Quản trị Admin</span>
             </a>
             """
         user_nav_html = f"""
@@ -195,19 +195,19 @@ def render_base_layout(
                 <button class="btn btn-purple dropdown-toggle fw-bold d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                     <span class="avatar-circle"><i class="fa-solid fa-user"></i></span>
                     <span class="user-display-name">{html.escape(display_name)}</span>
-                    <span class="badge bg-light text-purple fw-bold ms-1 balance-badge" data-vnd="{balance_vnd}" data-usd="{balance_usd}">{balance_vnd}</span>
+                    <span class="badge balance-badge fw-bold ms-1" data-vnd="{balance_vnd}" data-usd="{balance_usd}">{balance_vnd}</span>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end shadow border-0 mt-2">
                     <li class="px-3 py-2 border-bottom">
-                        <div class="small text-muted">Số dư khả dụng:</div>
+                        <div class="small text-muted" data-i18n="available_balance">Số dư khả dụng:</div>
                         <div class="fw-bold text-success fs-5">{balance_vnd} <small class="text-muted">({balance_usd})</small></div>
                     </li>
-                    <li><a class="dropdown-item py-2" href="/recharge"><i class="fa-solid fa-wallet text-purple me-2"></i> Nạp tiền số dư</a></li>
-                    <li><a class="dropdown-item py-2" href="/orders"><i class="fa-solid fa-box text-primary me-2"></i> Lịch sử đơn hàng</a></li>
-                    <li><a class="dropdown-item py-2" href="/balance-history"><i class="fa-solid fa-clock-rotate-left text-info me-2"></i> Biến động số dư</a></li>
-                    {f'<li><a class="dropdown-item py-2 text-warning fw-bold" href="/admin"><i class="fa-solid fa-sliders me-2"></i> Quản trị Website (/admin)</a></li>' if is_admin else ''}
+                    <li><a class="dropdown-item py-2" href="/recharge" data-i18n="menu_recharge"><i class="fa-solid fa-wallet text-purple me-2"></i> Nạp tiền số dư</a></li>
+                    <li><a class="dropdown-item py-2" href="/orders" data-i18n="menu_orders"><i class="fa-solid fa-box text-primary me-2"></i> Lịch sử đơn hàng</a></li>
+                    <li><a class="dropdown-item py-2" href="/balance-history" data-i18n="menu_balance_history"><i class="fa-solid fa-clock-rotate-left text-info me-2"></i> Biến động số dư</a></li>
+                    {f'<li><a class="dropdown-item py-2 text-warning fw-bold" href="/admin" data-i18n="menu_admin_portal"><i class="fa-solid fa-sliders me-2"></i> Quản trị Website (/admin)</a></li>' if is_admin else ''}
                     <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item py-2 text-danger" href="/logout"><i class="fa-solid fa-right-from-bracket me-2"></i> Đăng xuất</a></li>
+                    <li><a class="dropdown-item py-2 text-danger" href="/logout" data-i18n="menu_logout"><i class="fa-solid fa-right-from-bracket me-2"></i> Đăng xuất</a></li>
                 </ul>
             </div>
         </div>
@@ -215,10 +215,10 @@ def render_base_layout(
     else:
         user_nav_html = """
         <div class="d-flex align-items-center gap-2">
-            <a href="/login" class="btn btn-outline-purple btn-sm fw-bold px-3">
+            <a href="/login" class="btn btn-outline-purple btn-sm fw-bold px-3" data-i18n="btn_login">
                 <i class="fa-solid fa-right-to-bracket me-1"></i> Đăng nhập
             </a>
-            <a href="/register" class="btn btn-warning text-dark btn-sm fw-bold px-3 shadow-sm">
+            <a href="/register" class="btn btn-warning text-dark btn-sm fw-bold px-3 shadow-sm" data-i18n="btn_register_now">
                 <i class="fa-solid fa-user-plus me-1"></i> ✨ Đăng ký ngay
             </a>
         </div>
@@ -229,20 +229,33 @@ def render_base_layout(
         cat_dropdown_html += f'<li><a class="dropdown-item" href="/#cat-{cat.id}"><i class="fa-solid fa-folder me-2 text-purple"></i> {html.escape(cat.name)}</a></li>'
 
     return f"""<!DOCTYPE html>
-<html lang="vi">
+<html lang="vi" data-bs-theme="light">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{title} - Bubba Gump FB Clone Shop</title>
+    <!-- Instant theme initialization to eliminate flash of light theme -->
+    <script>
+        (function() {{
+            try {{
+                var savedTheme = localStorage.getItem('shop_theme') || 'light';
+                document.documentElement.setAttribute('data-bs-theme', savedTheme);
+                var savedLang = localStorage.getItem('shop_lang') || 'vi';
+                document.documentElement.setAttribute('lang', savedLang);
+            }} catch(e) {{}}
+        }})();
+    </script>
     <!-- Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- FontAwesome 6.5 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        :root {{
+﻿        :root {{
             --primary-purple: #6f42c1;
             --primary-purple-dark: #59359a;
             --primary-purple-light: #f3e8ff;
@@ -258,7 +271,53 @@ def render_base_layout(
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            transition: background-color 0.2s ease, color 0.2s ease;
         }}
+        /* Color utility classes - guarantees solid contrast & prevents white-on-white text */
+        .text-purple {{
+            color: #6f42c1 !important;
+        }}
+        .bg-purple {{
+            background: linear-gradient(135deg, #6f42c1 0%, #59359a 100%) !important;
+            background-color: #6f42c1 !important;
+            color: #ffffff !important;
+        }}
+        .bg-purple-subtle {{
+            background-color: #f3e8ff !important;
+            color: #3b0764 !important;
+        }}
+        .bg-blue {{
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+            background-color: #0284c7 !important;
+            color: #ffffff !important;
+        }}
+        .balance-badge, .btn-purple .balance-badge {{
+            background-color: #ffffff !important;
+            color: #4a154b !important;
+            font-weight: 800 !important;
+            font-size: 13px !important;
+            padding: 4px 10px !important;
+            border-radius: 12px !important;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18) !important;
+            display: inline-block !important;
+            text-shadow: none !important;
+            border: 1px solid rgba(255, 255, 255, 0.6) !important;
+        }}
+        .theme-toggle-btn {{
+            color: #ffffff !important;
+            background: rgba(255, 255, 255, 0.16);
+            border-radius: 20px;
+            padding: 3px 10px !important;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+        }}
+        .theme-toggle-btn:hover {{
+            background: rgba(255, 255, 255, 0.28);
+            color: #ffffff !important;
+            transform: scale(1.03);
+        }}
+
         .top-bar {{
             background: linear-gradient(90deg, #673ab7 0%, #5e35b1 50%, #512da8 100%);
             color: #ffffff;
@@ -281,6 +340,7 @@ def render_base_layout(
             border-bottom: 1px solid #e9ecef;
             padding: 12px 0;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+            transition: background-color 0.2s ease, border-color 0.2s ease;
         }}
         .brand-logo {{
             font-weight: 800;
@@ -356,6 +416,7 @@ def render_base_layout(
             padding: 8px 0;
             font-size: 14px;
             font-weight: 600;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
         }}
         .second-navbar .nav-link {{
             color: #4a5568;
@@ -375,6 +436,7 @@ def render_base_layout(
             padding: 16px 20px;
             margin-bottom: 24px;
             box-shadow: 0 2px 6px rgba(255, 152, 0, 0.08);
+            transition: background-color 0.2s ease;
         }}
         .notice-card h5 {{
             color: #e65100;
@@ -482,6 +544,7 @@ def render_base_layout(
             padding: 20px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
             margin-bottom: 20px;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
         }}
         .balance-title {{
             font-size: 13px;
@@ -548,46 +611,336 @@ def render_base_layout(
             padding: 24px 0;
             font-size: 13px;
             color: #64748b;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
         }}
+﻿        /* ================= DARK MODE STYLING ================= */
+        [data-bs-theme="dark"] {{
+            --bg-light: #0b0f19;
+            --text-dark: #f1f5f9;
+        }}
+        [data-bs-theme="dark"] body {{
+            background-color: #0b0f19 !important;
+            color: #e2e8f0 !important;
+        }}
+        [data-bs-theme="dark"] .text-purple {{
+            color: #c084fc !important;
+        }}
+        [data-bs-theme="dark"] .bg-purple {{
+            background: linear-gradient(135deg, #7e22ce 0%, #581c87 100%) !important;
+            background-color: #7e22ce !important;
+            color: #ffffff !important;
+        }}
+        [data-bs-theme="dark"] .bg-purple-subtle {{
+            background-color: #2e1065 !important;
+            color: #f3e8ff !important;
+            border: 1px solid #581c87 !important;
+        }}
+        [data-bs-theme="dark"] .bg-blue {{
+            background: linear-gradient(135deg, #0369a1 0%, #075985 100%) !important;
+            background-color: #0369a1 !important;
+            color: #ffffff !important;
+        }}
+        [data-bs-theme="dark"] .balance-badge,
+        [data-bs-theme="dark"] .btn-purple .balance-badge {{
+            background-color: #1e1035 !important;
+            color: #e9d5ff !important;
+            border: 1px solid #9333ea !important;
+            box-shadow: 0 1px 6px rgba(147, 51, 234, 0.3) !important;
+        }}
+        [data-bs-theme="dark"] .brand-navbar {{
+            background-color: #111827 !important;
+            border-bottom-color: #1f2937 !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+        }}
+        [data-bs-theme="dark"] .brand-logo {{
+            color: #c084fc !important;
+        }}
+        [data-bs-theme="dark"] .brand-logo span[style*="#64748b"] {{
+            color: #94a3b8 !important;
+        }}
+        [data-bs-theme="dark"] .search-input {{
+            background-color: #1f2937 !important;
+            border-color: #374151 !important;
+            color: #f1f5f9 !important;
+        }}
+        [data-bs-theme="dark"] .search-input:focus {{
+            background-color: #111827 !important;
+            border-color: #a855f7 !important;
+            box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.25) !important;
+        }}
+        [data-bs-theme="dark"] .search-icon {{
+            color: #94a3b8 !important;
+        }}
+        [data-bs-theme="dark"] .second-navbar {{
+            background-color: #111827 !important;
+            border-bottom-color: #1f2937 !important;
+        }}
+        [data-bs-theme="dark"] .second-navbar .nav-link {{
+            color: #cbd5e1 !important;
+        }}
+        [data-bs-theme="dark"] .second-navbar .nav-link:hover,
+        [data-bs-theme="dark"] .second-navbar .nav-link.active {{
+            color: #c084fc !important;
+            background-color: rgba(168, 85, 247, 0.15) !important;
+        }}
+        [data-bs-theme="dark"] .product-card {{
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+        }}
+        [data-bs-theme="dark"] .product-card:hover {{
+            border-color: #64748b !important;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5) !important;
+        }}
+        [data-bs-theme="dark"] .product-title {{
+            color: #f8fafc !important;
+        }}
+        [data-bs-theme="dark"] .product-desc {{
+            color: #94a3b8 !important;
+        }}
+        [data-bs-theme="dark"] .cat-pill-btn {{
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+            color: #cbd5e1 !important;
+        }}
+        [data-bs-theme="dark"] .cat-pill-btn:hover,
+        [data-bs-theme="dark"] .cat-pill-btn.active {{
+            background: linear-gradient(135deg, #7e22ce 0%, #6b21a8 100%) !important;
+            color: #ffffff !important;
+            border-color: #7e22ce !important;
+        }}
+        [data-bs-theme="dark"] .balance-widget-card {{
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+        }}
+        [data-bs-theme="dark"] .balance-title {{
+            color: #94a3b8 !important;
+        }}
+        [data-bs-theme="dark"] .balance-amount {{
+            color: #c084fc !important;
+        }}
+        [data-bs-theme="dark"] .card {{
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+            color: #e2e8f0 !important;
+        }}
+        [data-bs-theme="dark"] .bg-white {{
+            background-color: #1e293b !important;
+        }}
+        [data-bs-theme="dark"] .bg-light {{
+            background-color: #0f172a !important;
+        }}
+        [data-bs-theme="dark"] .text-dark {{
+            color: #f1f5f9 !important;
+        }}
+        [data-bs-theme="dark"] .text-muted {{
+            color: #94a3b8 !important;
+        }}
+        [data-bs-theme="dark"] .border,
+        [data-bs-theme="dark"] .border-top,
+        [data-bs-theme="dark"] .border-bottom,
+        [data-bs-theme="dark"] .border-start,
+        [data-bs-theme="dark"] .border-end {{
+            border-color: #334155 !important;
+        }}
+        [data-bs-theme="dark"] .modal-content {{
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+            color: #e2e8f0 !important;
+        }}
+        [data-bs-theme="dark"] .modal-header,
+        [data-bs-theme="dark"] .modal-footer {{
+            border-color: #334155 !important;
+        }}
+        [data-bs-theme="dark"] .modal-header.bg-light,
+        [data-bs-theme="dark"] .modal-footer.bg-light {{
+            background-color: #111827 !important;
+        }}
+        [data-bs-theme="dark"] .form-control,
+        [data-bs-theme="dark"] .form-select {{
+            background-color: #0f172a !important;
+            border-color: #334155 !important;
+            color: #f1f5f9 !important;
+        }}
+        [data-bs-theme="dark"] .form-control:focus,
+        [data-bs-theme="dark"] .form-select:focus {{
+            background-color: #0b0f19 !important;
+            border-color: #a855f7 !important;
+            color: #ffffff !important;
+        }}
+        [data-bs-theme="dark"] .form-control.bg-white,
+        [data-bs-theme="dark"] input.bg-white,
+        [data-bs-theme="dark"] div.form-control.bg-white,
+        [data-bs-theme="dark"] textarea.bg-light {{
+            background-color: #0f172a !important;
+            border-color: #334155 !important;
+            color: #f1f5f9 !important;
+        }}
+        [data-bs-theme="dark"] .input-group-text {{
+            background-color: #1f2937 !important;
+            border-color: #334155 !important;
+            color: #cbd5e1 !important;
+        }}
+        [data-bs-theme="dark"] .dropdown-menu {{
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+        }}
+        [data-bs-theme="dark"] .dropdown-item {{
+            color: #cbd5e1 !important;
+        }}
+        [data-bs-theme="dark"] .dropdown-item:hover,
+        [data-bs-theme="dark"] .dropdown-item:focus {{
+            background-color: #334155 !important;
+            color: #ffffff !important;
+        }}
+        [data-bs-theme="dark"] .table {{
+            --bs-table-bg: transparent;
+            --bs-table-color: #e2e8f0;
+            --bs-table-border-color: #334155;
+            color: #e2e8f0 !important;
+        }}
+        [data-bs-theme="dark"] .table th {{
+            background-color: #1e293b !important;
+            color: #f8fafc !important;
+            border-color: #334155 !important;
+        }}
+        [data-bs-theme="dark"] .table td {{
+            border-color: #334155 !important;
+            color: #e2e8f0 !important;
+        }}
+        [data-bs-theme="dark"] .accordion-item {{
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+        }}
+        [data-bs-theme="dark"] .accordion-button {{
+            background-color: #1e293b !important;
+            color: #f1f5f9 !important;
+        }}
+        [data-bs-theme="dark"] .accordion-button:not(.collapsed) {{
+            background-color: #273549 !important;
+            color: #c084fc !important;
+        }}
+        [data-bs-theme="dark"] .accordion-body {{
+            background-color: #1e293b !important;
+            color: #cbd5e1 !important;
+        }}
+        [data-bs-theme="dark"] .nav-tabs .nav-link {{
+            color: #94a3b8 !important;
+        }}
+        [data-bs-theme="dark"] .nav-tabs .nav-link.active {{
+            background-color: #1e293b !important;
+            color: #c084fc !important;
+            border-color: #334155 #334155 #1e293b !important;
+        }}
+        [data-bs-theme="dark"] .notice-card {{
+            background-color: #1c1917 !important;
+            border-color: #854d0e !important;
+            border-left-color: #f59e0b !important;
+        }}
+        [data-bs-theme="dark"] .notice-card h5 {{
+            color: #fcd34d !important;
+        }}
+        [data-bs-theme="dark"] .notice-card li {{
+            color: #fde68a !important;
+        }}
+        [data-bs-theme="dark"] footer {{
+            background-color: #0b0f19 !important;
+            border-top-color: #1e293b !important;
+            color: #94a3b8 !important;
+        }}
+        [data-bs-theme="dark"] footer a {{
+            color: #cbd5e1 !important;
+        }}
+        [data-bs-theme="dark"] .stock-badge {{
+            background-color: #334155 !important;
+            color: #cbd5e1 !important;
+        }}
+        [data-bs-theme="dark"] .stock-badge.has-stock {{
+            background-color: #064e3b !important;
+            color: #6ee7b7 !important;
+        }}
+        [data-bs-theme="dark"] .stock-badge.empty {{
+            background-color: #7f1d1d !important;
+            color: #fca5a5 !important;
+        }}
+        [data-bs-theme="dark"] .badge.bg-light.text-dark {{
+            background-color: #334155 !important;
+            color: #f8fafc !important;
+            border-color: #475569 !important;
+        }}
+        [data-bs-theme="dark"] .badge.bg-light.text-success {{
+            background-color: #064e3b !important;
+            color: #6ee7b7 !important;
+            border-color: #047857 !important;
+        }}
+        [data-bs-theme="dark"] .breadcrumb-item a {{
+            color: #c084fc !important;
+        }}
+        [data-bs-theme="dark"] .breadcrumb-item.active {{
+            color: #94a3b8 !important;
+        }}
+        [data-bs-theme="dark"] .swal2-popup {{
+            background: #1e293b !important;
+            color: #f1f5f9 !important;
+            border: 1px solid #334155 !important;
+        }}
+        [data-bs-theme="dark"] .swal2-title {{
+            color: #f8fafc !important;
+        }}
+        [data-bs-theme="dark"] .swal2-html-container {{
+            color: #cbd5e1 !important;
+        }}
+
     </style>
 </head>
 <body>
 
-    <!-- 1. Top Announcement Bar -->
+﻿    <!-- 1. Top Announcement Bar -->
     <div class="top-bar">
         <div class="container d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div class="d-flex align-items-center gap-2">
                 <i class="fa-solid fa-bullhorn text-warning"></i>
-                <span>Chào mừng bạn đến với <strong>Bubba Gump FB Clone Shop</strong> - Hệ thống bán clone Facebook tự động 24/7!</span>
-                {"" if user else '<a href="/register" class="badge bg-warning text-dark text-decoration-none fw-bold ms-2 px-2 py-1"><i class="fa-solid fa-user-plus me-1"></i> Đăng ký miễn phí</a>'}
+                <span data-i18n="top_welcome">Chào mừng bạn đến với <strong>Bubba Gump FB Clone Shop</strong> - Hệ thống bán clone Facebook tự động 24/7!</span>
+                {"" if user else '<a href="/register" class="badge bg-warning text-dark text-decoration-none fw-bold ms-2 px-2 py-1" data-i18n="register_free"><i class="fa-solid fa-user-plus me-1"></i> Đăng ký miễn phí</a>'}
             </div>
-            <div class="d-flex align-items-center gap-3">
+            <div class="d-flex align-items-center gap-2">
+                <!-- Theme toggle button -->
+                <button type="button" class="btn btn-sm theme-toggle-btn d-flex align-items-center gap-1 border-0" id="themeToggleBtn" onclick="toggleTheme()" title="Chuyển chế độ Sáng / Tối">
+                    <i class="fa-solid fa-moon" id="themeToggleIcon"></i>
+                    <span id="themeToggleLabel" class="small fw-semibold">Tối</span>
+                </button>
+
+                <!-- Language switcher -->
                 <div class="dropdown">
-                    <a href="javascript:void(0)" class="dropdown-toggle" data-bs-toggle="dropdown">
-                        <i class="fa-solid fa-earth-americas me-1"></i> Vietnamese
+                    <a href="javascript:void(0)" class="dropdown-toggle text-white text-decoration-none" id="langDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fa-solid fa-earth-americas me-1"></i> <span id="currentLangLabel">Tiếng Việt</span>
                     </a>
-                    <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 small">
-                        <li><a class="dropdown-item active" href="javascript:void(0)">🇻🇳 Tiếng Việt</a></li>
-                        <li><a class="dropdown-item" href="javascript:void(0)">🇬🇧 English</a></li>
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 small">
+                        <li><a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0)" onclick="setLanguage('vi')"><span>🇻🇳</span> <span>Tiếng Việt</span></a></li>
+                        <li><a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0)" onclick="setLanguage('en')"><span>🇬🇧</span> <span>English</span></a></li>
                     </ul>
                 </div>
+
+                <!-- Currency switcher -->
                 <div class="dropdown">
-                    <a href="javascript:void(0)" class="dropdown-toggle" id="currencyToggleBtn" data-bs-toggle="dropdown">
+                    <a href="javascript:void(0)" class="dropdown-toggle text-white text-decoration-none" id="currencyToggleBtn" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="fa-solid fa-money-bill-transfer me-1"></i> <span id="currentCurrencyLabel">VND (1$ = {rate:,}đ)</span>
                     </a>
-                    <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 small">
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 small">
                         <li><a class="dropdown-item" href="javascript:void(0)" onclick="setCurrency('VND')">🇻🇳 VNĐ (Việt Nam Đồng)</a></li>
                         <li><a class="dropdown-item" href="javascript:void(0)" onclick="setCurrency('USDT')">💵 USDT (Đô la Mỹ)</a></li>
                     </ul>
                 </div>
-                <a href="/policy"><i class="fa-solid fa-shield-halved me-1"></i> Chính sách</a>
-                <a href="/faq"><i class="fa-solid fa-circle-question me-1"></i> FAQ</a>
-                <a href="https://t.me/truongdvfb" target="_blank"><i class="fa-brands fa-telegram me-1"></i> Liên hệ Admin</a>
+
+                <a href="/policy" data-i18n="policy_nav"><i class="fa-solid fa-shield-halved me-1"></i> Chính sách</a>
+                <a href="/faq" data-i18n="faq_nav"><i class="fa-solid fa-circle-question me-1"></i> FAQ</a>
+                <a href="https://t.me/truongdvfb" target="_blank" data-i18n="contact_admin"><i class="fa-brands fa-telegram me-1"></i> Liên hệ Admin</a>
             </div>
         </div>
     </div>
 
-    <!-- 2. Main Brand Navbar -->
+
+﻿    <!-- 2. Main Brand Navbar -->
     <header class="brand-navbar">
         <div class="container d-flex justify-content-between align-items-center flex-wrap gap-3">
             <a href="/" class="brand-logo">
@@ -598,7 +951,7 @@ def render_base_layout(
             <!-- Search box -->
             <div class="search-container position-relative">
                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                <input type="text" id="globalSearchInput" class="form-control search-input" placeholder="Tìm kiếm sản phẩm (clone, via, hotmail, no2fa...)...">
+                <input type="text" id="globalSearchInput" class="form-control search-input" placeholder="Tìm kiếm sản phẩm (clone, via, hotmail, no2fa...)..." data-i18n-placeholder="search_placeholder">
             </div>
 
             <!-- User Auth or Profile -->
@@ -611,38 +964,38 @@ def render_base_layout(
         <div class="container d-flex justify-content-between align-items-center flex-wrap gap-2">
             <ul class="nav">
                 <li class="nav-item">
-                    <a class="nav-link {'active' if active_nav == 'home' else ''}" href="/"><i class="fa-solid fa-house me-1"></i> Trang chủ</a>
+                    <a class="nav-link {'active' if active_nav == 'home' else ''}" href="/" data-i18n="nav_home"><i class="fa-solid fa-house me-1"></i> Trang chủ</a>
                 </li>
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown"><i class="fa-solid fa-layer-group me-1"></i> Sản phẩm</a>
-                    <ul class="dropdown-menu shadow-sm border-0">
-                        {cat_dropdown_html if cat_dropdown_html else '<li><a class="dropdown-item" href="/">Tất cả sản phẩm</a></li>'}
+                    <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown" data-i18n="nav_products"><i class="fa-solid fa-layer-group me-1"></i> Sản phẩm</a>
+                    <ul class="dropdown-menu shadow border-0">
+                        {cat_dropdown_html if cat_dropdown_html else '<li><a class="dropdown-item" href="/" data-i18n="nav_all_products">Tất cả sản phẩm</a></li>'}
                     </ul>
                 </li>
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle {'active' if active_nav == 'recharge' else ''}" href="/recharge" data-bs-toggle="dropdown">
+                    <a class="nav-link dropdown-toggle {'active' if active_nav == 'recharge' else ''}" href="/recharge" data-bs-toggle="dropdown" data-i18n="nav_recharge">
                         <i class="fa-solid fa-wallet me-1"></i> Nạp tiền
                     </a>
-                    <ul class="dropdown-menu shadow-sm border-0">
-                        <li><a class="dropdown-item" href="/recharge?tab=binance"><i class="fa-solid fa-bolt text-warning me-2"></i> Binance Pay (0% phí - Nhận 1s)</a></li>
-                        <li><a class="dropdown-item" href="/recharge?tab=bank"><i class="fa-solid fa-building-columns text-primary me-2"></i> Ngân hàng BIDV (VietQR 24/7)</a></li>
-                        <li><a class="dropdown-item" href="/recharge?tab=onchain"><i class="fa-solid fa-coins text-success me-2"></i> Crypto On-chain (USDT)</a></li>
+                    <ul class="dropdown-menu shadow border-0">
+                        <li><a class="dropdown-item" href="/recharge?tab=binance" data-i18n="nav_recharge_binance"><i class="fa-solid fa-bolt text-warning me-2"></i> Binance Pay (0% phí - Nhận 1s)</a></li>
+                        <li><a class="dropdown-item" href="/recharge?tab=bank" data-i18n="nav_recharge_bank"><i class="fa-solid fa-building-columns text-primary me-2"></i> Ngân hàng BIDV (VietQR 24/7)</a></li>
+                        <li><a class="dropdown-item" href="/recharge?tab=onchain" data-i18n="nav_recharge_onchain"><i class="fa-solid fa-coins text-success me-2"></i> Crypto On-chain (USDT)</a></li>
                     </ul>
                 </li>
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle {'active' if active_nav in ['orders', 'balance_history'] else ''}" href="#" data-bs-toggle="dropdown">
+                    <a class="nav-link dropdown-toggle {'active' if active_nav in ['orders', 'balance_history'] else ''}" href="#" data-bs-toggle="dropdown" data-i18n="nav_history">
                         <i class="fa-solid fa-clock-rotate-left me-1"></i> Lịch sử
                     </a>
-                    <ul class="dropdown-menu shadow-sm border-0">
-                        <li><a class="dropdown-item" href="/orders"><i class="fa-solid fa-box text-primary me-2"></i> Lịch sử đơn hàng đã mua</a></li>
-                        <li><a class="dropdown-item" href="/balance-history"><i class="fa-solid fa-list-check text-info me-2"></i> Biến động số dư tài khoản</a></li>
+                    <ul class="dropdown-menu shadow border-0">
+                        <li><a class="dropdown-item" href="/orders" data-i18n="nav_history_orders"><i class="fa-solid fa-box text-primary me-2"></i> Lịch sử đơn hàng đã mua</a></li>
+                        <li><a class="dropdown-item" href="/balance-history" data-i18n="nav_history_balance"><i class="fa-solid fa-list-check text-info me-2"></i> Biến động số dư tài khoản</a></li>
                     </ul>
                 </li>
             </ul>
 
             <div class="d-flex align-items-center gap-3 text-muted small">
-                <span><i class="fa-solid fa-headset text-purple me-1"></i> Hỗ trợ: <strong class="text-dark">@truongdvfb</strong></span>
-                <span><i class="fa-brands fa-telegram text-primary me-1"></i> Kênh: <a href="https://t.me/truongdvfb" target="_blank" class="text-decoration-none fw-bold">Telegram</a></span>
+                <span><span data-i18n="support_label"><i class="fa-solid fa-headset text-purple me-1"></i> Hỗ trợ:</span> <strong class="text-dark">@truongdvfb</strong></span>
+                <span><span data-i18n="channel_label"><i class="fa-brands fa-telegram text-primary me-1"></i> Kênh:</span> <a href="https://t.me/truongdvfb" target="_blank" class="text-decoration-none fw-bold">Telegram</a></span>
             </div>
         </div>
     </nav>
@@ -662,80 +1015,311 @@ def render_base_layout(
     <footer>
         <div class="container text-center">
             <div class="mb-2">
-                <a href="/" class="text-decoration-none fw-bold text-dark me-3">Trang chủ</a>
-                <a href="/policy" class="text-decoration-none text-muted me-3">Chính sách bảo hành & Miễn trừ trách nhiệm</a>
-                <a href="/faq" class="text-decoration-none text-muted me-3">Câu hỏi thường gặp</a>
-                <a href="https://t.me/truongdvfb" target="_blank" class="text-decoration-none text-muted">Liên hệ Admin</a>
+                <a href="/" class="text-decoration-none fw-bold me-3" data-i18n="footer_home">Trang chủ</a>
+                <a href="/policy" class="text-decoration-none me-3" data-i18n="footer_policy">Chính sách bảo hành & Miễn trừ trách nhiệm</a>
+                <a href="/faq" class="text-decoration-none me-3" data-i18n="footer_faq">Câu hỏi thường gặp</a>
+                <a href="https://t.me/truongdvfb" target="_blank" class="text-decoration-none" data-i18n="footer_contact">Liên hệ Admin</a>
             </div>
-            <p class="mb-1 text-muted small">
+            <p class="mb-1 text-muted small" data-i18n="footer_copyright">
                 © 2026 <strong>Bubba Gump FB Clone Shop</strong>. Tự động kiểm tra LIVE UID Facebook qua Graph API ngay khi bàn giao.
             </p>
-            <p class="mb-0 text-muted" style="font-size: 11.5px;">
+            <p class="mb-0 text-muted" style="font-size: 11.5px;" data-i18n="footer_legal">
                 Căn cứ Luật An ninh mạng số 24/2018/QH14 & Nghị định 15/2020/NĐ-CP: Mọi tài khoản chỉ phục vụ nghiên cứu & marketing hợp pháp. Nghiêm cấm mọi hành vi vi phạm pháp luật.
             </p>
         </div>
     </footer>
 
-    <!-- Bootstrap 5.3 JS -->
+
+﻿    <!-- Bootstrap 5.3 JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         var currentCurrency = localStorage.getItem('shop_currency') || 'VND';
         var usdRate = {rate};
 
-        function setCurrency(curr) {{{{
+        var I18N = {{
+            vi: {{
+                top_welcome: 'Chào mừng bạn đến với <strong>Bubba Gump FB Clone Shop</strong> - Hệ thống bán clone Facebook tự động 24/7!',
+                register_free: '<i class="fa-solid fa-user-plus me-1"></i> Đăng ký miễn phí',
+                policy_nav: '<i class="fa-solid fa-shield-halved me-1"></i> Chính sách',
+                faq_nav: '<i class="fa-solid fa-circle-question me-1"></i> FAQ',
+                contact_admin: '<i class="fa-brands fa-telegram me-1"></i> Liên hệ Admin',
+                search_placeholder: 'Tìm kiếm sản phẩm (clone, via, hotmail, no2fa...)...',
+                btn_admin_panel: '<i class="fa-solid fa-gauge-high me-1"></i> Trang Quản trị Admin',
+                btn_login: '<i class="fa-solid fa-right-to-bracket me-1"></i> Đăng nhập',
+                btn_register_now: '<i class="fa-solid fa-user-plus me-1"></i> ✨ Đăng ký ngay',
+                available_balance: 'Số dư khả dụng:',
+                menu_recharge: '<i class="fa-solid fa-wallet text-purple me-2"></i> Nạp tiền số dư',
+                menu_orders: '<i class="fa-solid fa-box text-primary me-2"></i> Lịch sử đơn hàng',
+                menu_balance_history: '<i class="fa-solid fa-clock-rotate-left text-info me-2"></i> Biến động số dư',
+                menu_admin_portal: '<i class="fa-solid fa-sliders me-2"></i> Quản trị Website (/admin)',
+                menu_logout: '<i class="fa-solid fa-right-from-bracket me-2"></i> Đăng xuất',
+                nav_home: '<i class="fa-solid fa-house me-1"></i> Trang chủ',
+                nav_products: '<i class="fa-solid fa-layer-group me-1"></i> Sản phẩm',
+                nav_all_products: 'Tất cả sản phẩm',
+                nav_recharge: '<i class="fa-solid fa-wallet me-1"></i> Nạp tiền',
+                nav_recharge_binance: '<i class="fa-solid fa-bolt text-warning me-2"></i> Binance Pay (0% phí - Nhận 1s)',
+                nav_recharge_bank: '<i class="fa-solid fa-building-columns text-primary me-2"></i> Ngân hàng BIDV (VietQR 24/7)',
+                nav_recharge_onchain: '<i class="fa-solid fa-coins text-success me-2"></i> Crypto On-chain (USDT)',
+                nav_history: '<i class="fa-solid fa-clock-rotate-left me-1"></i> Lịch sử',
+                nav_history_orders: '<i class="fa-solid fa-box text-primary me-2"></i> Lịch sử đơn hàng đã mua',
+                nav_history_balance: '<i class="fa-solid fa-list-check text-info me-2"></i> Biến động số dư tài khoản',
+                support_label: '<i class="fa-solid fa-headset text-purple me-1"></i> Hỗ trợ:',
+                channel_label: '<i class="fa-brands fa-telegram text-primary me-1"></i> Kênh:',
+                footer_home: 'Trang chủ',
+                footer_policy: 'Chính sách bảo hành & Miễn trừ trách nhiệm',
+                footer_faq: 'Câu hỏi thường gặp',
+                footer_contact: 'Liên hệ Admin',
+                footer_copyright: '© 2026 <strong>Bubba Gump FB Clone Shop</strong>. Tự động kiểm tra LIVE UID Facebook qua Graph API ngay khi bàn giao.',
+                footer_legal: 'Căn cứ Luật An ninh mạng số 24/2018/QH14 & Nghị định 15/2020/NĐ-CP: Mọi tài khoản chỉ phục vụ nghiên cứu & marketing hợp pháp. Nghiêm cấm mọi hành vi vi phạm pháp luật.',
+                notice_title: '<i class="fa-solid fa-triangle-exclamation me-2"></i>Lưu ý & Tuyên bố miễn trừ trách nhiệm:',
+                all_cats_label: '<i class="fa-solid fa-list me-1"></i> Tất cả danh mục',
+                btn_buy_now: '<i class="fa-solid fa-cart-shopping me-1"></i> <span data-i18n="btn_buy_now">MUA NGAY</span>',
+                btn_sold_out: '<i class="fa-solid fa-ban me-1"></i> <span data-i18n="btn_sold_out">TẠM HẾT</span>',
+                unit_price_label: 'Đơn giá:',
+                side_bal_title: '<i class="fa-solid fa-wallet text-purple me-1"></i> Số dư khả dụng',
+                side_btn_recharge: '<span data-i18n="side_btn_recharge"><i class="fa-solid fa-bolt me-1"></i> NẠP TIỀN TỰ ĐỘNG (1s)</span>',
+                side_stats_title: '<i class="fa-solid fa-chart-pie text-primary me-1"></i> Thống kê tài khoản',
+                side_stat_deposit: 'Tổng tiền đã nạp:',
+                side_stat_spent: 'Tổng tiền đã mua:',
+                side_stat_status: 'Trạng thái:',
+                side_stat_active: '<i class="fa-solid fa-circle-check me-1"></i>Hoạt động 24/7',
+                side_quality_title: '<i class="fa-solid fa-shield-halved text-purple me-1"></i> Cam kết chất lượng',
+                orders_title: '<i class="fa-solid fa-box text-purple me-2"></i> Lịch sử đơn hàng đã mua',
+                th_order_code: 'Mã đơn',
+                th_order_date: 'Thời gian mua',
+                th_order_product: 'Sản phẩm',
+                th_order_qty: 'Số lượng',
+                th_order_total: 'Tổng thanh toán',
+                th_order_action: 'Thao tác',
+                btn_view_details: '<span data-i18n="btn_view_details"><i class="fa-solid fa-eye me-1"></i> Xem chi tiết</span>',
+                modal_order_title: '<i class="fa-solid fa-box text-purple me-2"></i> Chi tiết đơn hàng',
+                btn_copy_all_acc: '<span data-i18n="btn_copy_all_acc"><i class="fa-regular fa-copy me-1"></i> Sao chép tất cả</span>',
+                btn_download_acc: '<span data-i18n="btn_download_acc"><i class="fa-solid fa-download me-1"></i> Tải file .txt</span>',
+                modal_close: 'Đóng',
+                bal_hist_title: '<i class="fa-solid fa-list-check text-purple me-2"></i> Lịch sử biến động số dư',
+                th_bh_time: 'Thời gian',
+                th_bh_tx: 'Mã GD',
+                th_bh_type: 'Loại giao dịch',
+                th_bh_amount: 'Số tiền',
+                th_bh_before: 'Số dư trước',
+                th_bh_after: 'Số dư sau',
+                th_bh_desc: 'Nội dung chi tiết',
+                policy_page_title: '<i class="fa-solid fa-shield-halved text-purple me-2"></i> Chính sách bảo hành & Điều khoản sử dụng',
+                faq_page_title: '<i class="fa-solid fa-circle-question text-purple me-2"></i> Câu hỏi thường gặp (FAQ)',
+                                modal_buy_title: '<i class="fa-solid fa-cart-arrow-down me-2"></i> Mua tài khoản trực tiếp',
+                modal_selected_product: 'SẢN PHẨM ĐÃ CHỌN:',
+                modal_qty_label: 'Số lượng cần mua:',
+                modal_btn_all: 'Mua tất cả',
+                modal_total_payment: 'Tổng tiền thanh toán:',
+                modal_current_wallet: 'Số dư ví hiện tại:',
+                btn_confirm_buy: '<i class="fa-solid fa-check me-1"></i> XÁC NHẬN MUA',
+                btn_recharge_now: '<i class="fa-solid fa-wallet me-1"></i> NẠP TIỀN NGAY',
+                th_order_status: 'Trạng thái',
+                th_bh_status: 'Trạng thái',
+recharge_main_title: '<i class="fa-solid fa-wallet text-purple me-2"></i> Cổng nạp tiền tự động 24/7'
+            }},
+            en: {{
+                top_welcome: 'Welcome to <strong>Bubba Gump FB Clone Shop</strong> - 24/7 Automated Facebook Clone System!',
+                register_free: '<i class="fa-solid fa-user-plus me-1"></i> Free Register',
+                policy_nav: '<i class="fa-solid fa-shield-halved me-1"></i> Policy',
+                faq_nav: '<i class="fa-solid fa-circle-question me-1"></i> FAQ',
+                contact_admin: '<i class="fa-brands fa-telegram me-1"></i> Contact Admin',
+                search_placeholder: 'Search products (clone, via, hotmail, no2fa...)...',
+                btn_admin_panel: '<i class="fa-solid fa-gauge-high me-1"></i> Switch to Admin Panel',
+                btn_login: '<i class="fa-solid fa-right-to-bracket me-1"></i> Login',
+                btn_register_now: '<i class="fa-solid fa-user-plus me-1"></i> ✨ Register Now',
+                available_balance: 'Available Balance:',
+                menu_recharge: '<i class="fa-solid fa-wallet text-purple me-2"></i> Top Up Balance',
+                menu_orders: '<i class="fa-solid fa-box text-primary me-2"></i> Order History',
+                menu_balance_history: '<i class="fa-solid fa-clock-rotate-left text-info me-2"></i> Balance Changes',
+                menu_admin_portal: '<i class="fa-solid fa-sliders me-2"></i> Admin Panel (/admin)',
+                menu_logout: '<i class="fa-solid fa-right-from-bracket me-2"></i> Logout',
+                nav_home: '<i class="fa-solid fa-house me-1"></i> Home',
+                nav_products: '<i class="fa-solid fa-layer-group me-1"></i> Products',
+                nav_all_products: 'All Products',
+                nav_recharge: '<i class="fa-solid fa-wallet me-1"></i> Deposit',
+                nav_recharge_binance: '<i class="fa-solid fa-bolt text-warning me-2"></i> Binance Pay (0% Fee - 1s Instant)',
+                nav_recharge_bank: '<i class="fa-solid fa-building-columns text-primary me-2"></i> VietQR BIDV Bank (24/7 Auto)',
+                nav_recharge_onchain: '<i class="fa-solid fa-coins text-success me-2"></i> Crypto On-chain (USDT)',
+                nav_history: '<i class="fa-solid fa-clock-rotate-left me-1"></i> History',
+                nav_history_orders: '<i class="fa-solid fa-box text-primary me-2"></i> Purchased Orders History',
+                nav_history_balance: '<i class="fa-solid fa-list-check text-info me-2"></i> Account Balance Changes',
+                support_label: '<i class="fa-solid fa-headset text-purple me-1"></i> Support:',
+                channel_label: '<i class="fa-brands fa-telegram text-primary me-1"></i> Channel:',
+                footer_home: 'Home',
+                footer_policy: 'Warranty Policy & Terms',
+                footer_faq: 'FAQ',
+                footer_contact: 'Contact Admin',
+                footer_copyright: '© 2026 <strong>Bubba Gump FB Clone Shop</strong>. Automatically verify Facebook UID LIVE via Graph API upon delivery.',
+                footer_legal: 'Cybersecurity Notice: All accounts are strictly for legal research & marketing. Any illegal activities are strictly prohibited.',
+                notice_title: '<i class="fa-solid fa-triangle-exclamation me-2"></i>Important Purchase Rules & Disclaimer:',
+                all_cats_label: '<i class="fa-solid fa-list me-1"></i> All Categories',
+                btn_buy_now: '<i class="fa-solid fa-cart-shopping me-1"></i> BUY NOW',
+                btn_sold_out: '<i class="fa-solid fa-ban me-1"></i> SOLD OUT',
+                unit_price_label: 'Unit Price:',
+                side_bal_title: '<i class="fa-solid fa-wallet text-purple me-1"></i> Available Balance',
+                side_btn_recharge: '<i class="fa-solid fa-bolt me-1"></i> AUTO DEPOSIT (1s)',
+                side_stats_title: '<i class="fa-solid fa-chart-pie text-primary me-1"></i> Account Statistics',
+                side_stat_deposit: 'Total Deposited:',
+                side_stat_spent: 'Total Purchased:',
+                side_stat_status: 'Status:',
+                side_stat_active: '<i class="fa-solid fa-circle-check me-1"></i>Active 24/7',
+                side_quality_title: '<i class="fa-solid fa-shield-halved text-purple me-1"></i> Quality Guarantee',
+                orders_title: '<i class="fa-solid fa-box text-purple me-2"></i> Purchased Orders History',
+                th_order_code: 'Order ID',
+                th_order_date: 'Purchase Date',
+                th_order_product: 'Product',
+                th_order_qty: 'Quantity',
+                th_order_total: 'Total Paid',
+                th_order_action: 'Action',
+                btn_view_details: '<i class="fa-solid fa-eye me-1"></i> View Details',
+                modal_order_title: '<i class="fa-solid fa-box text-purple me-2"></i> Order Details',
+                btn_copy_all_acc: '<i class="fa-regular fa-copy me-1"></i> Copy All',
+                btn_download_acc: '<i class="fa-solid fa-download me-1"></i> Download .txt',
+                modal_close: 'Close',
+                bal_hist_title: '<i class="fa-solid fa-list-check text-purple me-2"></i> Account Balance History',
+                th_bh_time: 'Time',
+                th_bh_tx: 'Tx ID',
+                th_bh_type: 'Transaction Type',
+                th_bh_amount: 'Amount',
+                th_bh_before: 'Before',
+                th_bh_after: 'After',
+                th_bh_desc: 'Details',
+                policy_page_title: '<i class="fa-solid fa-shield-halved text-purple me-2"></i> Warranty Policy & Terms of Service',
+                faq_page_title: '<i class="fa-solid fa-circle-question text-purple me-2"></i> Frequently Asked Questions (FAQ)',
+                                modal_buy_title: '<i class="fa-solid fa-cart-arrow-down me-2"></i> Direct Account Purchase',
+                modal_selected_product: 'SELECTED PRODUCT:',
+                modal_qty_label: 'Quantity to buy:',
+                modal_btn_all: 'Buy all',
+                modal_total_payment: 'Total payment:',
+                modal_current_wallet: 'Current wallet balance:',
+                btn_confirm_buy: '<i class="fa-solid fa-check me-1"></i> CONFIRM PURCHASE',
+                btn_recharge_now: '<i class="fa-solid fa-wallet me-1"></i> TOP UP NOW',
+                th_order_status: 'Status',
+                th_bh_status: 'Status',
+recharge_main_title: '<i class="fa-solid fa-wallet text-purple me-2"></i> Automated 24/7 Deposit Portal'
+            }}
+        }};
+
+        function setLanguage(lang) {{
+            if (lang !== 'vi' && lang !== 'en') lang = 'vi';
+            localStorage.setItem('shop_lang', lang);
+            document.cookie = 'shop_lang=' + lang + '; path=/; max-age=31536000';
+            document.documentElement.setAttribute('lang', lang);
+            applyTranslations(lang);
+        }}
+
+        function applyTranslations(lang) {{
+            if (!I18N[lang]) lang = 'vi';
+            var dict = I18N[lang];
+            document.querySelectorAll('[data-i18n]').forEach(function(el) {{
+                var key = el.getAttribute('data-i18n');
+                if (dict[key] !== undefined) {{
+                    el.innerHTML = dict[key];
+                }}
+            }});
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el) {{
+                var key = el.getAttribute('data-i18n-placeholder');
+                if (dict[key] !== undefined) {{
+                    el.setAttribute('placeholder', dict[key]);
+                }}
+            }});
+            var langLabel = document.getElementById('currentLangLabel');
+            if (langLabel) {{
+                langLabel.innerText = (lang === 'en') ? 'English' : 'Tiếng Việt';
+            }}
+            var currentTheme = document.documentElement.getAttribute('data-bs-theme') || 'light';
+            updateThemeUI(currentTheme);
+        }}
+
+        function toggleTheme() {{
+            var current = document.documentElement.getAttribute('data-bs-theme') || 'light';
+            var next = (current === 'dark') ? 'light' : 'dark';
+            setTheme(next);
+        }}
+
+        function setTheme(theme) {{
+            document.documentElement.setAttribute('data-bs-theme', theme);
+            localStorage.setItem('shop_theme', theme);
+            document.cookie = 'shop_theme=' + theme + '; path=/; max-age=31536000';
+            updateThemeUI(theme);
+        }}
+
+        function updateThemeUI(theme) {{
+            var icon = document.getElementById('themeToggleIcon');
+            var label = document.getElementById('themeToggleLabel');
+            var currentLang = localStorage.getItem('shop_lang') || 'vi';
+            if (!icon || !label) return;
+            if (theme === 'dark') {{
+                icon.className = 'fa-solid fa-sun text-warning';
+                label.innerText = (currentLang === 'en') ? 'Light' : 'Sáng';
+            }} else {{
+                icon.className = 'fa-solid fa-moon';
+                label.innerText = (currentLang === 'en') ? 'Dark' : 'Tối';
+            }}
+        }}
+
+        function setCurrency(curr) {{
             currentCurrency = curr;
             localStorage.setItem('shop_currency', curr);
             updateCurrencyUI();
-        }}}}
+        }}
 
-        function updateCurrencyUI() {{{{
+        function updateCurrencyUI() {{
             var label = document.getElementById('currentCurrencyLabel');
-            if (label) {{{{
+            if (label) {{
                 label.innerText = currentCurrency === 'VND' ? 'VND (1$ = ' + usdRate.toLocaleString('vi-VN') + 'đ)' : 'USDT ($)';
-            }}}}
-            document.querySelectorAll('.currency-toggle-val').forEach(function(el) {{{{
+            }}
+            document.querySelectorAll('.currency-toggle-val').forEach(function(el) {{
                 var vnd = el.getAttribute('data-vnd');
                 var usd = el.getAttribute('data-usd');
-                if (currentCurrency === 'VND' && vnd) {{{{
+                if (currentCurrency === 'VND' && vnd) {{
                     el.innerText = vnd;
-                }}}} else if (usd) {{{{
+                }} else if (usd) {{
                     el.innerText = usd;
-                }}}}
-            }}}});
-        }}}}
+                }}
+            }});
+        }}
 
-        // Live product search filter
-        document.addEventListener('DOMContentLoaded', function() {{{{
+        // Live product search filter & initialization
+        document.addEventListener('DOMContentLoaded', function() {{
+            var savedTheme = localStorage.getItem('shop_theme') || 'light';
+            setTheme(savedTheme);
+
+            var savedLang = localStorage.getItem('shop_lang') || 'vi';
+            setLanguage(savedLang);
+
             updateCurrencyUI();
+
             var searchInput = document.getElementById('globalSearchInput');
-            if (searchInput) {{{{
-                searchInput.addEventListener('input', function() {{{{
+            if (searchInput) {{
+                searchInput.addEventListener('input', function() {{
                     var q = this.value.toLowerCase().trim();
-                    document.querySelectorAll('.product-card-item').forEach(function(card) {{{{
+                    document.querySelectorAll('.product-card-item').forEach(function(card) {{
                         var text = card.innerText.toLowerCase();
                         card.style.display = text.includes(q) ? '' : 'none';
-                    }}}});
-                }}}});
-            }}}}
-        }}}});
+                    }});
+                }});
+            }}
+        }});
 
-        function showWebToast(message, isSuccess = true) {{{{
+        function showWebToast(message, isSuccess = true) {{
             var toast = document.createElement('div');
             toast.className = 'custom-toast alert ' + (isSuccess ? 'alert-success' : 'alert-danger') + ' shadow-lg border-0 d-flex align-items-center justify-content-between p-3';
             toast.innerHTML = '<span>' + message + '</span><button type="button" class="btn-close ms-3" onclick="this.parentElement.remove()"></button>';
             document.body.appendChild(toast);
-            setTimeout(function() {{{{
+            setTimeout(function() {{
                 toast.style.transition = 'opacity 0.4s';
                 toast.style.opacity = '0';
-                setTimeout(function() {{{{ toast.remove(); }}}}, 400);
-            }}}}, 3500);
-        }}}}
+                setTimeout(function() {{ toast.remove(); }}, 400);
+            }}, 3500);
+        }}
 
-        function copyToClipboard(text, successMsg = 'Đã sao chép vào bộ nhớ tạm!') {{{{
+        function copyToClipboard(text, successMsg = 'Đã sao chép vào bộ nhớ tạm!') {{
             if (!text) return;
-            navigator.clipboard.writeText(text).then(function() {{{{
+            navigator.clipboard.writeText(text).then(function() {{
                 showWebToast('✅ ' + successMsg, true);
-            }}}}).catch(function() {{{{
+            }}).catch(function() {{
                 var ta = document.createElement('textarea');
                 ta.value = text;
                 document.body.appendChild(ta);
@@ -743,19 +1327,20 @@ def render_base_layout(
                 document.execCommand('copy');
                 document.body.removeChild(ta);
                 showWebToast('✅ ' + successMsg, true);
-            }}}});
-        }}}}
+            }});
+        }}
 
-        function downloadTextFile(filename, content) {{{{
-            var blob = new Blob([content], {{{{ type: 'text/plain;charset=utf-8' }}}});
+        function downloadTextFile(filename, content) {{
+            var blob = new Blob([content], {{ type: 'text/plain;charset=utf-8' }});
             var a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
             a.download = filename;
             a.click();
-        }}}}
+        }}
     </script>
 </body>
-</html>"""
+</html>
+"""
 
 # ==========================================
 # 1. TRANG CHỦ WEB SHOP (STOREFRONT)
@@ -808,7 +1393,7 @@ async def web_home(request: Request):
     # Render category filter pills
     pills_html = """
     <a href="javascript:void(0)" class="cat-pill-btn active" onclick="filterCategory('all', this)">
-        <i class="fa-solid fa-boxes-stacked"></i> Tất cả sản phẩm
+        <i class="fa-solid fa-boxes-stacked"></i> <span data-i18n="all_cats_label">Tất cả sản phẩm</span>
     </a>
     """
     for cat in categories:
@@ -843,11 +1428,11 @@ async def web_home(request: Request):
 
             buy_btn_html = f"""
             <button class="btn btn-buy" onclick="openBuyModal({sub.id}, '{html.escape(sub.name)}', {unit_price}, {stock_qty})">
-                <i class="fa-solid fa-cart-shopping me-1"></i> MUA NGAY
+                <i class="fa-solid fa-cart-shopping me-1"></i> <span data-i18n="btn_buy_now">MUA NGAY</span>
             </button>
             """ if has_stock else """
             <button class="btn btn-secondary disabled" style="border-radius: 8px; font-size: 13.5px;" disabled>
-                <i class="fa-solid fa-ban me-1"></i> TẠM HẾT
+                <i class="fa-solid fa-ban me-1"></i> <span data-i18n="btn_sold_out">TẠM HẾT</span>
             </button>
             """
 
@@ -864,7 +1449,7 @@ async def web_home(request: Request):
                     </div>
                     <div class="d-flex align-items-center gap-4 flex-wrap">
                         <div class="text-end">
-                            <div class="small text-muted">Đơn giá:</div>
+                            <div class="small text-muted" data-i18n="unit_price_label">Đơn giá:</div>
                             <div class="price-badge currency-toggle-val" data-vnd="{price_vnd}" data-usd="{price_usd}">{price_vnd}</div>
                         </div>
                         {buy_btn_html}
@@ -908,18 +1493,18 @@ async def web_home(request: Request):
     right_widget_html = f"""
     {register_card_html}
     <div class="balance-widget-card">
-        <div class="balance-title"><i class="fa-solid fa-wallet text-purple me-1"></i> Số dư khả dụng</div>
+        <div class="balance-title" data-i18n="side_bal_title"><i class="fa-solid fa-wallet text-purple me-1"></i> Số dư khả dụng</div>
         <div class="balance-amount currency-toggle-val" data-vnd="{balance_vnd_str}" data-usd="{balance_usd_str}">{balance_vnd_str}</div>
         <div class="small text-muted mb-3">Tỷ giá hiện tại: <strong>1 USDT = {rate:,} đ</strong></div>
         <div class="d-grid gap-2">
             <a href="/recharge" class="btn btn-purple fw-bold py-2 shadow-sm">
-                <i class="fa-solid fa-bolt me-1"></i> NẠP TIỀN TỰ ĐỘNG (1s)
+                <span data-i18n="side_btn_recharge"><i class="fa-solid fa-bolt me-1"></i> NẠP TIỀN TỰ ĐỘNG (1s)</span>
             </a>
         </div>
     </div>
 
     <div class="balance-widget-card">
-        <div class="balance-title mb-3"><i class="fa-solid fa-chart-pie text-primary me-1"></i> Thống kê tài khoản</div>
+        <div class="balance-title mb-3" data-i18n="side_stats_title"><i class="fa-solid fa-chart-pie text-primary me-1"></i> Thống kê tài khoản</div>
         <div class="d-flex justify-content-between py-2 border-bottom small">
             <span class="text-muted">Tổng tiền đã nạp:</span>
             <strong class="text-success">{top_up_str}</strong>
@@ -935,7 +1520,7 @@ async def web_home(request: Request):
     </div>
 
     <div class="balance-widget-card bg-light border-0">
-        <h6 class="fw-bold mb-2 text-dark"><i class="fa-solid fa-shield-halved text-purple me-1"></i> Cam kết chất lượng</h6>
+        <h6 class="fw-bold mb-2 text-dark" data-i18n="side_quality_title"><i class="fa-solid fa-shield-halved text-purple me-1"></i> Cam kết chất lượng</h6>
         <ul class="small text-muted ps-3 mb-0" style="line-height: 1.6;">
             <li>100% clone LIVE khi nhận (Auto Graph API check).</li>
             <li>Bảo hành 1 đổi 1 trong 24 giờ cho tài khoản lỗi ban đầu.</li>
@@ -949,7 +1534,7 @@ async def web_home(request: Request):
     <div class="container">
         <!-- Hộp Lưu ý & Cảnh báo pháp lý (Khớp giao diện khuongfb.com) -->
         <div class="notice-card">
-            <h5><i class="fa-solid fa-triangle-exclamation me-2"></i>Lưu ý & Tuyên bố miễn trừ trách nhiệm:</h5>
+            <h5 data-i18n="notice_title"><i class="fa-solid fa-triangle-exclamation me-2"></i>Lưu ý & Tuyên bố miễn trừ trách nhiệm:</h5>
             <ul>
                 <li><strong>Bảo quản tài sản:</strong> Đơn hàng sẽ được lưu trữ an toàn trong mục <em>Lịch sử đơn hàng</em>, quý khách vui lòng chủ động lưu lại tài khoản sau khi nhận!</li>
                 <li><strong>Tuân thủ pháp luật Việt Nam:</strong> Cấm sử dụng tài khoản với mục đích vi phạm pháp luật (lừa đảo chiếm đoạt tài sản, chống phá Đảng và Nhà Nước CHXHCN Việt Nam). Khi cơ quan chức năng yêu cầu, chúng tôi sẽ hợp tác cung cấp thông tin và tuyên bố <strong>miễn trừ mọi trách nhiệm</strong> đối với các hành vi vi phạm. <a href="/policy" class="fw-bold text-decoration-underline text-danger">Xem chi tiết chính sách pháp lý & bảo hành tại đây!</a></li>
@@ -986,7 +1571,7 @@ async def web_home(request: Request):
             <div class="modal-content border-0 shadow-lg">
                 <div class="modal-header bg-purple text-white">
                     <h5 class="modal-title fw-bold" id="buyModalLabel">
-                        <i class="fa-solid fa-cart-arrow-down me-2"></i> Mua tài khoản trực tiếp
+                        <span data-i18n="modal_buy_title"><i class="fa-solid fa-cart-arrow-down me-2"></i> Mua tài khoản trực tiếp</span>
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -994,7 +1579,7 @@ async def web_home(request: Request):
                     <!-- Form Step -->
                     <div id="buyModalFormStep">
                         <div class="mb-3">
-                            <label class="form-label text-muted small fw-bold">SẢN PHẨM ĐÃ CHỌN:</label>
+                            <label class="form-label text-muted small fw-bold" data-i18n="modal_selected_product">SẢN PHẨM ĐÃ CHỌN:</label>
                             <h6 id="modalSubName" class="fw-bold text-dark fs-5">Tên sản phẩm</h6>
                             <div class="d-flex gap-3 small text-muted">
                                 <span>Đơn giá: <strong id="modalUnitPrice" class="text-danger font-monospace">0 đ</strong></span>
@@ -1003,7 +1588,7 @@ async def web_home(request: Request):
                         </div>
 
                         <div class="mb-3">
-                            <label for="buyQtyInput" class="form-label fw-bold">Số lượng cần mua:</label>
+                            <label for="buyQtyInput" class="form-label fw-bold" data-i18n="modal_qty_label">Số lượng cần mua:</label>
                             <div class="input-group mb-2">
                                 <button class="btn btn-outline-secondary" type="button" onclick="adjustQty(-1)"><i class="fa-solid fa-minus"></i></button>
                                 <input type="number" id="buyQtyInput" class="form-control text-center fw-bold fs-5 font-monospace" value="1" min="1" max="1000">
@@ -1015,17 +1600,17 @@ async def web_home(request: Request):
                                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setQty(5)">5</button>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setQty(10)">10</button>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setQty(50)">50</button>
-                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="setQtyMax()">Mua tất cả</button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="setQtyMax()" data-i18n="modal_btn_all">Mua tất cả</button>
                             </div>
                         </div>
 
                         <div class="card bg-light border-0 p-3 mb-3">
                             <div class="d-flex justify-content-between align-items-center mb-1">
-                                <span class="text-muted">Tổng tiền thanh toán:</span>
+                                <span class="text-muted" data-i18n="modal_total_payment">Tổng tiền thanh toán:</span>
                                 <span id="modalTotalPrice" class="fs-4 fw-bold text-danger font-monospace">0 đ</span>
                             </div>
                             <div class="d-flex justify-content-between align-items-center small">
-                                <span class="text-muted">Số dư ví hiện tại:</span>
+                                <span class="text-muted" data-i18n="modal_current_wallet">Số dư ví hiện tại:</span>
                                 <span id="modalUserBalance" class="fw-bold text-success font-monospace" data-val="{balance}">{balance_vnd_str} (${balance:.2f})</span>
                             </div>
                         </div>
@@ -1062,18 +1647,18 @@ async def web_home(request: Request):
                                 <i class="fa-solid fa-copy me-1"></i> Sao chép tất cả
                             </button>
                             <button type="button" class="btn btn-success fw-bold flex-grow-1" onclick="downloadDeliveredAccounts()">
-                                <i class="fa-solid fa-download me-1"></i> Tải file .txt
+                                <span data-i18n="btn_download_acc"><i class="fa-solid fa-download me-1"></i> Tải file .txt</span>
                             </button>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer bg-light" id="buyModalFooter">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="modal_close">Đóng</button>
                     <button type="button" id="confirmBuyBtn" class="btn btn-purple fw-bold px-4" onclick="executeBuyOrder()">
-                        <i class="fa-solid fa-check me-1"></i> XÁC NHẬN MUA
+                        <span data-i18n="btn_confirm_buy"><i class="fa-solid fa-check me-1"></i> XÁC NHẬN MUA</span>
                     </button>
                     <a href="/recharge" id="rechargeLinkBtn" class="btn btn-success fw-bold d-none">
-                        <i class="fa-solid fa-wallet me-1"></i> NẠP TIỀN NGAY
+                        <span data-i18n="btn_recharge_now"><i class="fa-solid fa-wallet me-1"></i> NẠP TIỀN NGAY</span>
                     </a>
                 </div>
             </div>
@@ -2275,7 +2860,7 @@ async def web_orders(request: Request):
                         <li class="breadcrumb-item active" aria-current="page">Lịch sử đơn hàng</li>
                     </ol>
                 </nav>
-                <h2 class="fw-bold mb-0"><i class="fa-solid fa-box text-purple me-2"></i> Lịch sử đơn hàng đã mua</h2>
+                <h2 class="fw-bold mb-0" data-i18n="orders_title"><i class="fa-solid fa-box text-purple me-2"></i> Lịch sử đơn hàng đã mua</h2>
             </div>
             <a href="/" class="btn btn-purple btn-sm fw-bold px-3">
                 <i class="fa-solid fa-cart-shopping me-1"></i> Mua thêm tài khoản
@@ -2287,12 +2872,12 @@ async def web_orders(request: Request):
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light text-muted small">
                         <tr>
-                            <th scope="col" style="min-width: 110px;">Mã đơn</th>
-                            <th scope="col" style="min-width: 140px;">Thời gian mua</th>
-                            <th scope="col" style="min-width: 110px;">Số lượng</th>
-                            <th scope="col" style="min-width: 160px;">Tổng tiền</th>
-                            <th scope="col" style="min-width: 120px;">Trạng thái</th>
-                            <th scope="col" class="text-end" style="min-width: 220px;">Hành động</th>
+                            <th scope="col" style="min-width: 110px;" data-i18n="th_order_code">Mã đơn</th>
+                            <th scope="col" style="min-width: 140px;" data-i18n="th_order_date">Thời gian mua</th>
+                            <th scope="col" style="min-width: 110px;" data-i18n="th_order_qty">Số lượng</th>
+                            <th scope="col" style="min-width: 160px;" data-i18n="th_order_total">Tổng tiền</th>
+                            <th scope="col" style="min-width: 120px;" data-i18n="th_order_status">Trạng thái</th>
+                            <th scope="col" class="text-end" style="min-width: 220px;" data-i18n="th_order_action">Hành động</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2316,10 +2901,10 @@ async def web_orders(request: Request):
                         <div class="small text-muted">Tổng cộng: <strong id="modalOrderCount" class="text-dark">0</strong> tài khoản | Định dạng: <code>UID|Pass|2FA|Cookie|Mail</code></div>
                         <div class="d-flex gap-2">
                             <button class="btn btn-sm btn-purple fw-bold" onclick="copyAllModalAccounts()">
-                                <i class="fa-regular fa-copy me-1"></i> Sao chép tất cả
+                                <span data-i18n="btn_copy_all_acc"><i class="fa-regular fa-copy me-1"></i> Sao chép tất cả</span>
                             </button>
                             <button class="btn btn-sm btn-outline-success fw-bold" onclick="downloadModalAccounts()">
-                                <i class="fa-solid fa-download me-1"></i> Tải file .txt
+                                <span data-i18n="btn_download_acc"><i class="fa-solid fa-download me-1"></i> Tải file .txt</span>
                             </button>
                         </div>
                     </div>
@@ -2571,7 +3156,7 @@ async def web_balance_history(request: Request):
                         <li class="breadcrumb-item active" aria-current="page">Biến động số dư</li>
                     </ol>
                 </nav>
-                <h2 class="fw-bold mb-0"><i class="fa-solid fa-list-check text-purple me-2"></i> Lịch sử biến động số dư</h2>
+                <h2 class="fw-bold mb-0" data-i18n="bal_hist_title"><i class="fa-solid fa-list-check text-purple me-2"></i> Lịch sử biến động số dư</h2>
             </div>
             <a href="/recharge" class="btn btn-purple btn-sm fw-bold px-3">
                 <i class="fa-solid fa-plus me-1"></i> Nạp tiền ngay
@@ -2583,11 +3168,11 @@ async def web_balance_history(request: Request):
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light text-muted small">
                         <tr>
-                            <th scope="col" style="min-width: 150px;">Thời gian</th>
-                            <th scope="col" style="min-width: 130px;">Loại giao dịch</th>
-                            <th scope="col" style="min-width: 160px;">Biến động</th>
-                            <th scope="col" style="min-width: 220px;">Nội dung chi tiết</th>
-                            <th scope="col" style="min-width: 110px;">Trạng thái</th>
+                            <th scope="col" style="min-width: 150px;" data-i18n="th_bh_time">Thời gian</th>
+                            <th scope="col" style="min-width: 130px;" data-i18n="th_bh_type">Loại giao dịch</th>
+                            <th scope="col" style="min-width: 160px;" data-i18n="th_bh_amount">Biến động</th>
+                            <th scope="col" style="min-width: 220px;" data-i18n="th_bh_desc">Nội dung chi tiết</th>
+                            <th scope="col" style="min-width: 110px;" data-i18n="th_bh_status">Trạng thái</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2626,7 +3211,7 @@ async def web_policy(request: Request):
                     <li class="breadcrumb-item active" aria-current="page">Điều khoản &amp; Chính sách bảo hành</li>
                 </ol>
             </nav>
-            <h2 class="fw-bold mb-1"><i class="fa-solid fa-shield-halved text-purple me-2"></i> Chính sách bảo hành &amp; Điều khoản sử dụng</h2>
+            <h2 class="fw-bold mb-1" data-i18n="policy_page_title"><i class="fa-solid fa-shield-halved text-purple me-2"></i> Chính sách bảo hành &amp; Điều khoản sử dụng</h2>
             <p class="text-muted">Tuân thủ nghiêm ngặt Luật An ninh mạng Việt Nam 2018 (Luật số 24/2018/QH14) và các quy định thương mại điện tử.</p>
         </div>
 
@@ -2738,7 +3323,7 @@ async def web_faq(request: Request):
                     <li class="breadcrumb-item active" aria-current="page">Câu hỏi thường gặp (FAQ)</li>
                 </ol>
             </nav>
-            <h2 class="fw-bold mb-1"><i class="fa-solid fa-circle-question text-purple me-2"></i> Câu hỏi thường gặp (FAQ)</h2>
+            <h2 class="fw-bold mb-1" data-i18n="faq_page_title"><i class="fa-solid fa-circle-question text-purple me-2"></i> Câu hỏi thường gặp (FAQ)</h2>
             <p class="text-muted">Tổng hợp các thắc mắc phổ biến về mua hàng, nạp tiền, bảo hành và kỹ thuật nuôi tài khoản.</p>
         </div>
 

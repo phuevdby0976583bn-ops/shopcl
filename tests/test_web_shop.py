@@ -348,3 +348,35 @@ async def test_web_login_page_no_admin_notice(test_app):
             # Must NOT contain the admin notice alert box
             assert "Dành cho Admin" not in r.text
             assert "Chuyển sang Admin Panel" not in r.text
+
+
+@pytest.mark.asyncio
+async def test_web_light_dark_mode_and_language_switcher(test_app):
+    @asynccontextmanager
+    async def home_db_ctx(*args, **kwargs):
+        yield SmartMockDbSession()
+
+    with patch("web_shop.get_db_session", home_db_ctx):
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+            r = await ac.get("/")
+            assert r.status_code == 200
+
+            # 1. Dark mode elements & styles
+            assert 'data-bs-theme="light"' in r.text
+            assert 'id="themeToggleBtn"' in r.text
+            assert 'toggleTheme()' in r.text
+            assert '[data-bs-theme="dark"]' in r.text
+
+            # 2. White-on-white text elimination & custom styling
+            assert '.balance-badge' in r.text
+            assert '.text-purple' in r.text
+            assert '.bg-purple' in r.text
+            assert '.bg-blue' in r.text
+            assert 'color: #4a154b !important;' in r.text
+
+            # 3. Bilingual language switcher (English / Vietnamese)
+            assert 'id="langDropdownBtn"' in r.text
+            assert "setLanguage('vi')" in r.text
+            assert "setLanguage('en')" in r.text
+            assert 'data-i18n="top_welcome"' in r.text
+            assert 'var I18N = {' in r.text
