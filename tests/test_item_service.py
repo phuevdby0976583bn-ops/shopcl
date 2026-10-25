@@ -150,3 +150,14 @@ def test_item_admin_column_formatters():
     fmt_new2 = admin_view.column_formatters[Item.is_new](item_unsold, "is_new")
     assert "bg-success" in str(fmt_unsold)
     assert "bg-primary" in str(fmt_new2)
+
+    # Test Price Formatter: Khi subcategory co gia $0.04 ma item.price luu 0.02, item chua ban phai hien thi theo $0.04
+    subcat_4c = SimpleNamespace(id=10, name="Aged FB Clones", price=0.04)
+    item_desynced = SimpleNamespace(id=13, private_data="999999", price=0.02, subcategory=subcat_4c, is_sold=False, is_new=True, description="Test")
+    fmt_price = admin_view.column_formatters[Item.price](item_desynced, "price")
+    assert "$0.04" in str(fmt_price)
+
+    # khi item da ban (is_sold=True), hien thi dung gia luc ban (item.price = 0.02)
+    item_sold_price = SimpleNamespace(id=7, private_data="999999", price=0.02, subcategory=subcat_4c, is_sold=True, is_new=False, description="Test")
+    fmt_sold_price = admin_view.column_formatters[Item.price](item_sold_price, "price")
+    assert "$0.02" in str(fmt_sold_price)

@@ -258,6 +258,24 @@ async def _startup() -> None:
                     GROUP BY subcategory_id
                 ) sub
                 WHERE s.id = sub.subcategory_id AND (s.description IS NULL OR s.description = '')
+                """,
+                """
+                UPDATE items i
+                SET price = s.price
+                FROM subcategories s
+                WHERE i.subcategory_id = s.id 
+                  AND s.price IS NOT NULL 
+                  AND s.price > 0 
+                  AND (i.is_sold = FALSE OR i.price IS NULL OR i.price = 0 OR i.price != s.price)
+                """,
+                """
+                UPDATE items i
+                SET description = s.description
+                FROM subcategories s
+                WHERE i.subcategory_id = s.id 
+                  AND s.description IS NOT NULL
+                  AND s.description != ''
+                  AND (i.description IS NULL OR i.description = '')
                 """
             ]
             for cmd in schema_cmds:
@@ -317,6 +335,23 @@ async def _startup() -> None:
                 logging.info(f"Cleaned and merged {len(dup_names)} duplicate subcategories successfully")
         except Exception as e:
             logging.warning(f"Note on duplicate subcategory cleanup: {e}")
+
+        try:
+            from models.subcategory import Subcategory
+            from models.item import Item
+            from sqlalchemy import update, select
+            subcat_records = (await db_sess.execute(select(Subcategory).where(Subcategory.price > 0))).scalars().all()
+            for sc in subcat_records:
+                if sc.price and float(sc.price) > 0:
+                    await db_sess.execute(
+                        update(Item)
+                        .where(Item.subcategory_id == sc.id, Item.is_sold == False)
+                        .values(price=float(sc.price))
+                    )
+            await db_sess.commit()
+            logging.info("Synced items prices from subcategories successfully")
+        except Exception as e:
+            logging.warning(f"Note on syncing items prices: {e}")
 
         try:
             from services.facebook import clean_duplicate_inventory_uids

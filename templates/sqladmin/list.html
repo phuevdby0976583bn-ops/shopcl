@@ -54,9 +54,21 @@
                   {% if model_view.can_delete or model_view._custom_actions_in_list %}
                   <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
                     {% if model_view.can_delete %}
-                    <a class="dropdown-item" id="action-delete" href="#" data-name="{{ model_view.name }}"
+                    <a class="dropdown-item text-danger" id="action-delete" href="#" data-name="{{ model_view.name }}"
                       data-url="{{ url_for('admin:delete', identity=model_view.identity) }}" data-bs-toggle="modal"
-                      data-bs-target="#modal-delete">Delete selected items</a>
+                      data-bs-target="#modal-delete">
+                      <i class="fa-solid fa-trash-can text-danger me-1"></i> Xoá các mục đã chọn
+                    </a>
+                    {% endif %}
+                    {% if model_view.identity == 'item' %}
+                    <li><hr class="dropdown-divider my-1"></li>
+                    <a class="dropdown-item text-primary" href="javascript:void(0)" id="action-copy-selected-uids">
+                      <i class="fa-solid fa-copy me-1"></i> Sao chép UID các mục đã chọn
+                    </a>
+                    <a class="dropdown-item text-secondary" href="javascript:void(0)" id="action-copy-selected-full">
+                      <i class="fa-solid fa-file-lines me-1"></i> Sao chép Đầy đủ (UID|Pass...) đã chọn
+                    </a>
+                    <li><hr class="dropdown-divider my-1"></li>
                     {% endif %}
                     {% for custom_action, label in model_view._custom_actions_in_list.items() %}
                     {% if custom_action in model_view._custom_actions_confirmation %}
@@ -74,6 +86,50 @@
                   </div>
                   {% endif %}
                 </div>
+                {% if model_view.identity == 'item' %}
+                <div class="dropdown">
+                  <button class="btn btn-warning dropdown-toggle text-dark fw-bold" type="button" id="bulkActionsBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fa-solid fa-bolt me-1"></i> Quản lý toàn kho (Hàng loạt)
+                  </button>
+                  <ul class="dropdown-menu shadow" aria-labelledby="bulkActionsBtn" style="min-width: 330px;">
+                    <li><h6 class="dropdown-header text-uppercase fw-bold text-muted"><i class="fa-solid fa-arrows-rotate me-1"></i> Đặt lại trạng thái toàn kho</h6></li>
+                    <li>
+                      <a class="dropdown-item py-2" href="#" data-bs-toggle="modal" data-bs-target="#modal-confirmation-reset_all_unsold">
+                        <i class="fa-solid fa-rotate-left text-success me-2"></i> <strong>Đặt lại TẤT CẢ</strong> thành Hàng mới (Chưa bán)
+                      </a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item py-2" href="#" data-bs-toggle="modal" data-bs-target="#modal-confirmation-mark_all_sold">
+                        <i class="fa-solid fa-tag text-secondary me-2"></i> <strong>Đặt lại TẤT CẢ</strong> thành Đã bán
+                      </a>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><h6 class="dropdown-header text-uppercase fw-bold text-muted"><i class="fa-solid fa-copy me-1"></i> Sao chép & Dọn dẹp kho</h6></li>
+                    <li>
+                      <a class="dropdown-item py-2 text-primary" href="{{ model_view._url_for_action(request, 'view_all_uids') }}">
+                        <i class="fa-solid fa-file-export text-primary me-2"></i> <strong>Xem & Copy TOÀN BỘ UID</strong> trong kho
+                      </a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item py-2 text-danger" href="#" data-bs-toggle="modal" data-bs-target="#modal-confirmation-delete_all_sold">
+                        <i class="fa-solid fa-trash-arrow-up text-danger me-2"></i> <strong>Xoá TẤT CẢ nick ĐÃ BÁN</strong> (giữ nick chưa bán)
+                      </a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item py-2 text-info" href="#" data-bs-toggle="modal" data-bs-target="#modal-confirmation-scan_and_delete_die">
+                        <i class="fa-solid fa-shield-virus text-info me-2"></i> <strong>Quét & Xoá tất cả nick DIE</strong>
+                      </a>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                      <a class="dropdown-item py-2 text-danger fw-bold" href="#" data-bs-toggle="modal" data-bs-target="#modal-confirmation-delete_all_inventory">
+                        <i class="fa-solid fa-triangle-exclamation text-danger me-2"></i> <strong>Xoá TOÀN BỘ kho hàng</strong> (Xoá trắng)
+                      </a>
+                    </li>
+                  </ul>
+                </div>
+                {% endif %}
+
                 <!-- Bộ lọc nhanh trạng thái Kho hàng -->
                 {% if model_view.identity == 'item' %}
                 {% set cur_status = request.query_params.get('status', 'all') %}
@@ -107,6 +163,33 @@
                 {% endif %}
               </div>
             </div>
+                        <!-- Thanh thông báo trạng thái chọn hàng loạt & Copy UID -->
+            <div id="selection-summary-bar" class="alert alert-info py-2 px-3 mb-0 d-none align-items-center justify-content-between flex-wrap gap-2" style="background-color: #e8f4fd; border-left: 4px solid #0054a6; border-radius: 0;">
+              <div class="d-flex align-items-center flex-wrap gap-2">
+                <i class="fa-solid fa-check-circle text-primary me-1"></i>
+                <span id="selection-count-text">Đã chọn <strong>0</strong> tài khoản trên trang này.</span>
+                {% if model_view.identity == 'item' and pagination.count > pagination.page_size %}
+                <span class="ms-1">
+                  <a href="javascript:void(0)" id="btn-show-all-items" class="fw-bold text-decoration-underline text-primary">
+                    👉 Bấm để xem 500 hoặc toàn bộ {{ pagination.count }} nick trên 1 trang (để chọn tất cả 1 lần)
+                  </a>
+                </span>
+                {% endif %}
+              </div>
+              <div class="d-flex align-items-center flex-wrap gap-2">
+                {% if model_view.identity == 'item' %}
+                <button type="button" class="btn btn-sm btn-primary fw-bold" id="btn-copy-selected-uids">
+                  <i class="fa-solid fa-copy me-1"></i> Copy UID đã chọn
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary fw-bold" id="btn-copy-selected-full">
+                  <i class="fa-solid fa-file-lines me-1"></i> Copy Đầy đủ (UID|Pass...)
+                </button>
+                {% endif %}
+                <button type="button" class="btn btn-sm btn-outline-danger" id="btn-uncheck-all">
+                  <i class="fa-solid fa-xmark me-1"></i> Bỏ chọn
+                </button>
+              </div>
+            </div>
             <div class="table-responsive">
               <table class="table card-table table-vcenter text-nowrap">
                 <thead>
@@ -136,10 +219,13 @@
                 </thead>
                 <tbody>
                   {% for row in pagination.rows %}
-                  <tr>
+                  {% set row_uid = (row.private_data.split('|')[0].strip() if (row.private_data and '|' in row.private_data) else (row.private_data.strip() if row.private_data else '')) if model_view.identity == 'item' else '' %}
+                  {% set row_raw = (row.private_data.strip() if row.private_data else '') if model_view.identity == 'item' else '' %}
+                  <tr {% if model_view.identity == 'item' %}data-uid="{{ row_uid }}" data-raw="{{ row_raw }}"{% endif %}>
                     <td>
                       <input type="hidden" value="{{ get_object_identifier(row) }}">
-                      <input class="form-check-input m-0 align-middle select-box" type="checkbox" aria-label="Select item">
+                      <input class="form-check-input m-0 align-middle select-box" type="checkbox" aria-label="Select item"
+                        {% if model_view.identity == 'item' %}data-uid="{{ row_uid }}" data-raw="{{ row_raw }}"{% endif %}>
                     </td>
                     <td class="text-end">
                       {% if model_view.can_view_details %}
@@ -316,4 +402,131 @@
   {% endif %}
   {% endfor %}
 </div>
+{% endblock %}
+
+{% block tail %}
+<script>
+$(document).ready(function() {
+  function showToast(msg) {
+    $('.custom-copy-toast').remove();
+    var toast = $('<div class="custom-copy-toast position-fixed bottom-0 end-0 p-3" style="z-index: 999999;">' +
+      '<div class="toast show align-items-center text-white bg-success border-0 shadow-lg px-2 py-1" role="alert">' +
+      '<div class="d-flex"><div class="toast-body fs-5 fw-bold">' + msg + '</div>' +
+      '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>' +
+      '</div></div></div>');
+    $('body').append(toast);
+    setTimeout(function() {
+      toast.fadeOut(400, function() { $(this).remove(); });
+    }, 3500);
+  }
+
+  window.copySingleUid = function(uid) {
+    if (!uid) return;
+    navigator.clipboard.writeText(uid).then(function() {
+      showToast('✅ Đã sao chép UID: ' + uid);
+    }).catch(function() {
+      var ta = document.createElement('textarea');
+      ta.value = uid;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('✅ Đã sao chép UID: ' + uid);
+    });
+  };
+
+  function updateSelectionCount() {
+    var checkedCount = $('input.select-box:checkbox:checked').length;
+    if (checkedCount > 0) {
+      $('#selection-summary-bar').removeClass('d-none').addClass('d-flex');
+      $('#selection-count-text').html('Đã chọn <strong>' + checkedCount + '</strong> tài khoản trên trang này.');
+    } else {
+      $('#selection-summary-bar').addClass('d-none').removeClass('d-flex');
+    }
+  }
+
+  $(document).on('change', 'input.select-box:checkbox', function() {
+    updateSelectionCount();
+  });
+
+  $('#select-all').on('click', function() {
+    setTimeout(updateSelectionCount, 60);
+  });
+
+  $('#btn-uncheck-all').on('click', function() {
+    $('#select-all').prop('checked', false);
+    $('input.select-box:checkbox').prop('checked', false);
+    updateSelectionCount();
+  });
+
+  $('#btn-show-all-items').on('click', function() {
+    var url = new URL(window.location.href);
+    url.searchParams.set('pageSize', '2500');
+    url.searchParams.set('page', '1');
+    window.location.href = url.toString();
+  });
+
+  function copySelectedUids() {
+    var uids = [];
+    $('input.select-box:checkbox:checked').each(function() {
+      var uid = $(this).attr('data-uid');
+      if (uid && uid.trim().length > 0) {
+        uids.push(uid.trim());
+      }
+    });
+    if (uids.length === 0) {
+      alert('Vui lòng tích chọn ít nhất 1 tài khoản để sao chép UID!');
+      return;
+    }
+    var textToCopy = uids.join('\n');
+    navigator.clipboard.writeText(textToCopy).then(function() {
+      showToast('✅ Đã sao chép ' + uids.length + ' UID vào bộ nhớ tạm (Clipboard)!');
+    }).catch(function() {
+      var ta = document.createElement('textarea');
+      ta.value = textToCopy;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('✅ Đã sao chép ' + uids.length + ' UID vào bộ nhớ tạm (Clipboard)!');
+    });
+  }
+
+  function copySelectedFull() {
+    var lines = [];
+    $('input.select-box:checkbox:checked').each(function() {
+      var raw = $(this).attr('data-raw');
+      if (raw && raw.trim().length > 0) {
+        lines.push(raw.trim());
+      }
+    });
+    if (lines.length === 0) {
+      alert('Vui lòng tích chọn ít nhất 1 tài khoản để sao chép!');
+      return;
+    }
+    var textToCopy = lines.join('\n');
+    navigator.clipboard.writeText(textToCopy).then(function() {
+      showToast('✅ Đã sao chép ' + lines.length + ' tài khoản (UID|Pass...) vào bộ nhớ tạm!');
+    }).catch(function() {
+      var ta = document.createElement('textarea');
+      ta.value = textToCopy;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('✅ Đã sao chép ' + lines.length + ' tài khoản (UID|Pass...) vào bộ nhớ tạm!');
+    });
+  }
+
+  $('#btn-copy-selected-uids, #action-copy-selected-uids').on('click', function(e) {
+    e.preventDefault();
+    copySelectedUids();
+  });
+
+  $('#btn-copy-selected-full, #action-copy-selected-full').on('click', function(e) {
+    e.preventDefault();
+    copySelectedFull();
+  });
+});
+</script>
 {% endblock %}

@@ -144,8 +144,16 @@ async def bulk_upload_items(payload: BulkUploadRequest, request: Request, x_api_
         else:
             if payload.price and float(payload.price) > 0:
                 subcategory.price = float(payload.price)
+                from sqlalchemy import update
+                await session.execute(
+                    update(Item)
+                    .where(Item.subcategory_id == subcategory.id, Item.is_sold == False)
+                    .values(price=float(payload.price))
+                )
             if payload.description:
                 subcategory.description = payload.description
+
+        effective_price = float(subcategory.price) if (subcategory and subcategory.price and float(subcategory.price) > 0) else float(payload.price or 0.02)
 
         # 3. Tạo danh sách Items nạp vào kho
         items_to_add = []
@@ -155,10 +163,10 @@ async def bulk_upload_items(payload: BulkUploadRequest, request: Request, x_api_
                 category_id=category.id,
                 subcategory_id=subcategory.id,
                 private_data=line,
-                price=float(payload.price),
+                price=effective_price,
                 is_sold=False,
                 is_new=True,
-                description=payload.description
+                description=payload.description or subcategory.description
             )
             items_to_add.append(item)
 

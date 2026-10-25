@@ -92,6 +92,9 @@ class ItemAdmin(ModelView, model=Item):
             '<span class="badge bg-secondary text-white"><i class="fa-solid fa-minus me-1"></i> Đã xuất kho</span>'
             if m.is_sold
             else '<span class="badge bg-primary text-white"><i class="fa-solid fa-sparkles me-1"></i> Hàng mới</span>'
+        ),
+        Item.price: lambda m, a: Markup(
+            f'<span class="fw-bold text-success font-monospace">${float((m.subcategory.price if (not m.is_sold and m.subcategory and m.subcategory.price and float(m.subcategory.price) > 0) else m.price) or 0.02):g}</span>'
         )
     }
     column_searchable_list = [Item.private_data]
@@ -108,6 +111,8 @@ class ItemAdmin(ModelView, model=Item):
     can_create = True
     can_edit = True
     can_export = True
+    page_size = 50
+    page_size_options = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000]
 
     form_overrides = {
         "private_data": TextAreaField,
@@ -163,11 +168,91 @@ class ItemAdmin(ModelView, model=Item):
             data["is_new"] = False
         elif data.get("is_new") is True and data.get("is_sold") is not True:
             data["is_sold"] = False
+
+        user_price = data.get("price")
+        subcat_obj = data.get("subcategory")
+        subcat_id = getattr(subcat_obj, "id", None) or (int(subcat_obj) if str(subcat_obj).isdigit() else None)
+        if (user_price is None or str(user_price).strip() == "" or float(user_price or 0) <= 0) and subcat_id:
+            from models.subcategory import Subcategory
+            from sqlalchemy import select
+            async with self.session_maker() as session:
+                subcat_db = (await session.execute(select(Subcategory).where(Subcategory.id == subcat_id))).scalar_one_or_none()
+                if subcat_db and subcat_db.price and float(subcat_db.price) > 0:
+                    data["price"] = float(subcat_db.price)
+
         return await super().update_model(request, pk, data)
 
     @action(
+        name="delete_selected",
+        label="🗑️ Xoá các nick ĐÃ CHỌN (Nhanh)",
+        confirmation_message="Bạn có chắc chắn muốn xoá vĩnh viễn các tài khoản đã chọn khỏi kho hàng?",
+        add_in_detail=True,
+        add_in_list=True,
+    )
+    async def delete_selected(self, request):
+        from starlette.responses import RedirectResponse
+        from sqlalchemy import delete
+        pks = request.query_params.get("pks", "").split(",")
+        valid_ids = [int(pk) for pk in pks if pk.strip().isdigit()]
+        if valid_ids:
+            async with self.session_maker() as session:
+                await session.execute(
+                    delete(Item).where(Item.id.in_(valid_ids))
+                )
+                await session.commit()
+        referer = request.headers.get("Referer") or "/admin/item/list"
+        return RedirectResponse(referer, status_code=302)
+
+    @action(
+        name="mark_new",
+        label="✨ Đặt lại: HÀNG MỚI (Chưa bán) (Các nick đã chọn)",
+        confirmation_message="Bạn có chắc muốn chuyển các nick đã chọn thành HÀNG MỚI (Chưa bán)?",
+        add_in_detail=True,
+        add_in_list=True,
+    )
+    async def mark_as_new(self, request):
+        from starlette.responses import RedirectResponse
+        from sqlalchemy import update
+        pks = request.query_params.get("pks", "").split(",")
+        valid_ids = [int(pk) for pk in pks if pk.strip().isdigit()]
+        if valid_ids:
+            async with self.session_maker() as session:
+                await session.execute(
+                    update(Item).where(Item.id.in_(valid_ids)).values(is_sold=False, is_new=True)
+                )
+                await session.commit()
+        referer = request.headers.get("Referer") or "/admin/item/list"
+        return RedirectResponse(referer, status_code=302)
+
+    @action(
+        name="sync_subcat_price",
+        label="💵 Đồng bộ giá theo Danh mục con",
+        confirmation_message="Bạn có chắc muốn cập nhật lại giá của các nick đã chọn theo đúng giá của Danh mục con?",
+        add_in_detail=True,
+        add_in_list=True,
+    )
+    async def sync_subcat_price(self, request):
+        from starlette.responses import RedirectResponse
+        from sqlalchemy import select
+        from models.subcategory import Subcategory
+        pks = request.query_params.get("pks", "").split(",")
+        valid_ids = [int(pk) for pk in pks if pk.strip().isdigit()]
+        if valid_ids:
+            async with self.session_maker() as session:
+                items_stmt = select(Item).where(Item.id.in_(valid_ids))
+                items = (await session.execute(items_stmt)).scalars().all()
+                for it in items:
+                    if it.subcategory_id:
+                        sub = (await session.execute(select(Subcategory).where(Subcategory.id == it.subcategory_id))).scalar_one_or_none()
+                        if sub and sub.price and float(sub.price) > 0:
+                            it.price = float(sub.price)
+                await session.commit()
+        referer = request.headers.get("Referer") or "/admin/item/list"
+        return RedirectResponse(referer, status_code=302)
+
+    @action(
         name="mark_sold",
-        label="🏷️ Đánh dấu ĐÃ BÁN",
+        label="🏷️ Đặt lại: ĐÃ BÁN (Các nick đã chọn)",
         confirmation_message="Bạn có chắc muốn chuyển các nick đã chọn thành trạng thái ĐÃ BÁN?",
         add_in_detail=True,
         add_in_list=True,
@@ -187,25 +272,165 @@ class ItemAdmin(ModelView, model=Item):
         return RedirectResponse(referer, status_code=302)
 
     @action(
-        name="mark_new",
-        label="✨ Đánh dấu HÀNG MỚI (Chưa bán)",
-        confirmation_message="Bạn có chắc muốn chuyển các nick đã chọn thành HÀNG MỚI (Chưa bán)?",
-        add_in_detail=True,
+        name="reset_all_unsold",
+        label="🔄 Đặt lại TOÀN BỘ kho thành HÀNG MỚI (Chưa bán)",
+        confirmation_message="Bạn có chắc chắn muốn đặt lại TẤT CẢ tài khoản trong kho thành Chưa bán (Hàng mới)?",
+        add_in_detail=False,
         add_in_list=True,
     )
-    async def mark_as_new(self, request):
+    async def reset_all_unsold(self, request):
         from starlette.responses import RedirectResponse
         from sqlalchemy import update
-        pks = request.query_params.get("pks", "").split(",")
-        valid_ids = [int(pk) for pk in pks if pk.strip().isdigit()]
-        if valid_ids:
-            async with self.session_maker() as session:
-                await session.execute(
-                    update(Item).where(Item.id.in_(valid_ids)).values(is_sold=False, is_new=True)
-                )
-                await session.commit()
+        async with self.session_maker() as session:
+            await session.execute(
+                update(Item).values(is_sold=False, is_new=True)
+            )
+            await session.commit()
         referer = request.headers.get("Referer") or "/admin/item/list"
         return RedirectResponse(referer, status_code=302)
+
+    @action(
+        name="mark_all_sold",
+        label="🏷️ Đặt lại TOÀN BỘ kho thành ĐÃ BÁN",
+        confirmation_message="Bạn có chắc chắn muốn chuyển TẤT CẢ tài khoản trong kho thành ĐÃ BÁN?",
+        add_in_detail=False,
+        add_in_list=True,
+    )
+    async def mark_all_sold(self, request):
+        from starlette.responses import RedirectResponse
+        from sqlalchemy import update
+        async with self.session_maker() as session:
+            await session.execute(
+                update(Item).values(is_sold=True, is_new=False)
+            )
+            await session.commit()
+        referer = request.headers.get("Referer") or "/admin/item/list"
+        return RedirectResponse(referer, status_code=302)
+
+    @action(
+        name="delete_all_sold",
+        label="🧹 Xoá TẤT CẢ tài khoản ĐÃ BÁN trong kho",
+        confirmation_message="CẢNH BÁO: Thao tác này sẽ xoá vĩnh viễn tất cả nick ĐÃ BÁN trong kho (giữ lại nick chưa bán)?",
+        add_in_detail=False,
+        add_in_list=True,
+    )
+    async def delete_all_sold(self, request):
+        from starlette.responses import RedirectResponse
+        from sqlalchemy import delete
+        async with self.session_maker() as session:
+            await session.execute(
+                delete(Item).where(Item.is_sold == True)
+            )
+            await session.commit()
+        referer = request.headers.get("Referer") or "/admin/item/list"
+        return RedirectResponse(referer, status_code=302)
+
+    @action(
+        name="scan_and_delete_die",
+        label="⚡ Quét & Xoá tất cả nick Facebook DIE trong kho",
+        confirmation_message="Hệ thống sẽ chạy kiểm tra toàn bộ nick Facebook chưa bán và xoá nick DIE khỏi kho. Tiếp tục?",
+        add_in_detail=False,
+        add_in_list=True,
+    )
+    async def scan_and_delete_die(self, request):
+        from starlette.responses import RedirectResponse
+        from services.facebook import scan_facebook_inventory
+        async with self.session_maker() as session:
+            await scan_facebook_inventory(session, auto_delete_die=True)
+        referer = request.headers.get("Referer") or "/admin/item/list"
+        return RedirectResponse(referer, status_code=302)
+
+    @action(
+        name="delete_all_inventory",
+        label="⚠️ Xoá TOÀN BỘ kho hàng (Xoá trắng)",
+        confirmation_message="CẢNH BÁO NGUY HIỂM: Thao tác này sẽ XOÁ TOÀN BỘ TẤT CẢ TÀI KHOẢN TRONG KHO HÀNG! Bạn có chắc chắn 100% muốn xoá sạch không?",
+        add_in_detail=False,
+        add_in_list=True,
+    )
+    async def delete_all_inventory(self, request):
+        from starlette.responses import RedirectResponse
+        from sqlalchemy import delete
+        async with self.session_maker() as session:
+            await session.execute(delete(Item))
+            await session.commit()
+        referer = request.headers.get("Referer") or "/admin/item/list"
+        return RedirectResponse(referer, status_code=302)
+
+
+    @action(
+        name="view_all_uids",
+        label="📋 Xem & Copy TOÀN BỘ UID trong kho",
+        confirmation_message=None,
+        add_in_detail=False,
+        add_in_list=True,
+    )
+    async def view_all_uids(self, request):
+        from starlette.responses import HTMLResponse
+        from sqlalchemy import select
+        async with self.session_maker() as session:
+            stmt = select(Item.private_data).order_by(Item.id.asc())
+            rows = (await session.execute(stmt)).scalars().all()
+            uids = []
+            for r in rows:
+                if r:
+                    uid = r.split("|")[0].strip()
+                    if uid:
+                        uids.append(uid)
+            uids_text = "\n".join(uids)
+
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Toàn bộ UID trong kho ({len(uids)} nick)</title>
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/css/tabler.min.css">
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+        </head>
+        <body class="p-4 bg-light">
+            <div class="card shadow" style="max-width: 800px; margin: 30px auto;">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="card-title mb-0">📋 Toàn bộ UID Facebook trong kho ({len(uids)} tài khoản)</h3>
+                    <a href="/admin/item/list" class="btn btn-sm btn-outline-secondary">⬅️ Quay lại Kho hàng</a>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex gap-2 mb-3">
+                        <button class="btn btn-primary fw-bold" onclick="copyUids()">
+                            <i class="fa-solid fa-copy me-1"></i> Sao chép tất cả ({len(uids)} UID)
+                        </button>
+                        <button class="btn btn-success fw-bold" onclick="downloadTxt()">
+                            <i class="fa-solid fa-download me-1"></i> Tải file .txt
+                        </button>
+                        <span id="copied-msg" class="badge bg-success align-self-center py-2 px-3 fs-6 d-none">
+                            ✅ Đã sao chép {len(uids)} UID vào Clipboard!
+                        </span>
+                    </div>
+                    <textarea id="uid-area" class="form-control font-monospace" rows="22" readonly>{uids_text}</textarea>
+                </div>
+            </div>
+            <script>
+            function copyUids() {{
+                const ta = document.getElementById('uid-area');
+                ta.select();
+                navigator.clipboard.writeText(ta.value).then(() => {{
+                    const msg = document.getElementById('copied-msg');
+                    msg.classList.remove('d-none');
+                    setTimeout(() => msg.classList.add('d-none'), 3000);
+                }});
+            }}
+            function downloadTxt() {{
+                const text = document.getElementById('uid-area').value;
+                const blob = new Blob([text], {{ type: 'text/plain;charset=utf-8' }});
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'danh_sach_uid_{len(uids)}_clone.txt';
+                a.click();
+            }}
+            </script>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=html)
 
     async def insert_model(self, request, data: dict):
         if not data.get("item_type"):
@@ -229,29 +454,64 @@ class ItemAdmin(ModelView, model=Item):
 
         cat_obj = data.get("category")
         subcat_obj = data.get("subcategory")
+
+        # Giai quyet ID hoac Object cho category va subcategory tu WTForms (QuerySelectField truyen PK)
+        subcat_id = None
+        if hasattr(subcat_obj, "id"):
+            subcat_id = subcat_obj.id
+        elif isinstance(subcat_obj, (int, str)) and str(subcat_obj).isdigit():
+            subcat_id = int(subcat_obj)
+        elif isinstance(subcat_obj, (tuple, list)) and subcat_obj and str(subcat_obj[0]).isdigit():
+            subcat_id = int(subcat_obj[0])
+
+        cat_id = None
+        if hasattr(cat_obj, "id"):
+            cat_id = cat_obj.id
+        elif isinstance(cat_obj, (int, str)) and str(cat_obj).isdigit():
+            cat_id = int(cat_obj)
+        elif isinstance(cat_obj, (tuple, list)) and cat_obj and str(cat_obj[0]).isdigit():
+            cat_id = int(cat_obj[0])
+
+        from models.category import Category
+        from models.subcategory import Subcategory
+        from sqlalchemy import select
+
+        async with self.session_maker() as session:
+            if subcat_id and not hasattr(subcat_obj, "price"):
+                subcat_db = (await session.execute(select(Subcategory).where(Subcategory.id == subcat_id))).scalar_one_or_none()
+                if subcat_db:
+                    subcat_obj = subcat_db
+            if cat_id and not hasattr(cat_obj, "name"):
+                cat_db = (await session.execute(select(Category).where(Category.id == cat_id))).scalar_one_or_none()
+                if cat_db:
+                    cat_obj = cat_db
+
         cat_name = getattr(cat_obj, "name", "")
         subcat_name = getattr(subcat_obj, "name", "")
 
-        # TỰ ĐỘNG LẤY GIÁ BÁN & MÔ TẢ TỪ MỤC CON NẾU ĐỂ TRỐNG
+        # TU DONG LAY GIA BAN & MO TA TU MUC CON
         subcat_price = getattr(subcat_obj, "price", None)
         subcat_desc = getattr(subcat_obj, "description", None)
 
         user_price = data.get("price")
-        if (user_price is None or str(user_price).strip() == "" or float(user_price or 0) <= 0):
-            if subcat_price and float(subcat_price) > 0:
+        # Neu muc con da co gia: bat buoc mac dinh theo dung gia cua muc con
+        if subcat_price and float(subcat_price) > 0:
+            if user_price is None or str(user_price).strip() == "" or float(user_price or 0) <= 0:
                 data["price"] = float(subcat_price)
             else:
-                data["price"] = 0.02
+                data["price"] = float(user_price)
         else:
-            data["price"] = float(user_price)
-            if subcat_obj and (not subcat_price or float(subcat_price) <= 0):
-                from models.subcategory import Subcategory
-                from sqlalchemy import update
-                async with self.session_maker() as session:
-                    await session.execute(
-                        update(Subcategory).where(Subcategory.id == subcat_obj.id).values(price=float(user_price))
-                    )
-                    await session.commit()
+            if user_price is not None and str(user_price).strip() != "" and float(user_price or 0) > 0:
+                data["price"] = float(user_price)
+                if subcat_id:
+                    from sqlalchemy import update
+                    async with self.session_maker() as session:
+                        await session.execute(
+                            update(Subcategory).where(Subcategory.id == subcat_id).values(price=float(user_price))
+                        )
+                        await session.commit()
+            else:
+                data["price"] = 0.02
 
         user_desc = data.get("description")
         if not user_desc or not str(user_desc).strip():
@@ -304,14 +564,14 @@ class ItemAdmin(ModelView, model=Item):
 
         if len(clean_lines) > 1:
             from db import get_db_session, session_commit
-            cat_id = getattr(first_obj, "category_id", None) or getattr(data.get("category"), "id", None)
-            subcat_id = getattr(first_obj, "subcategory_id", None) or getattr(data.get("subcategory"), "id", None)
+            final_cat_id = getattr(first_obj, "category_id", None) or getattr(data.get("category"), "id", None) or cat_id
+            final_subcat_id = getattr(first_obj, "subcategory_id", None) or getattr(data.get("subcategory"), "id", None) or subcat_id
 
             extra_items = [
                 Item(
                     item_type=first_obj.item_type,
-                    category_id=cat_id,
-                    subcategory_id=subcat_id,
+                    category_id=final_cat_id,
+                    subcategory_id=final_subcat_id,
                     private_data=line,
                     price=first_obj.price,
                     is_sold=first_obj.is_sold,
