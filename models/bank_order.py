@@ -71,7 +71,8 @@ class BankDepositOrderAdmin(ModelView, model=BankDepositOrder):
     column_sortable_list = ["id", "amount_vnd", "amount_usd", "status", "created_at"]
     column_searchable_list = ["memo", "transaction_id"]
     can_delete = True
-    can_edit = False
+    can_view_details = True
+    can_edit = True
     can_create = False
     can_export = True
 

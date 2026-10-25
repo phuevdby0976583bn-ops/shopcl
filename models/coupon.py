@@ -73,6 +73,7 @@ class CouponAdmin(ModelView, model=Coupon):
     can_edit = True
     can_create = True
     can_delete = True
+    can_view_details = True
     can_export = True
 
     async def delete_model(self, request, pk: Any) -> None:

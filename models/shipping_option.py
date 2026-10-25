@@ -43,6 +43,7 @@ class ShippingOptionAdmin(ModelView, model=ShippingOption):
                             ShippingOption.price,
                             ShippingOption.is_disabled]
     can_delete = True
+    can_view_details = True
     can_edit = True
     can_create = True
     can_export = True

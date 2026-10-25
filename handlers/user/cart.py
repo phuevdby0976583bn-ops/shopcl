@@ -22,13 +22,26 @@ async def cart_text_message(message: Message, session: AsyncSession, state: FSMC
         callback_data=AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL)
     )
     kb_builder.adjust(1)
-    await message.answer(
-        '⚡ <b>Hệ thống áp dụng cơ chế MUA NGAY (Trừ tiền trực tiếp)!</b>\n\n'
-        '👉 Bạn không cần thêm vào giỏ hàng rườm rà. Chỉ cần chọn loại tài khoản và số lượng cần mua, tiền sẽ được trừ trực tiếp từ số dư ví và nick LIVE 100% sẽ được giao ngay lập tức!\n\n'
-        '👇 Bấm nút bên dưới để chọn sản phẩm:',
-        reply_markup=kb_builder.as_markup(),
-        parse_mode='HTML'
+    btn_text = "🛒 Xem danh mục sản phẩm" if language == Language.VI else "🛒 Browse Products"
+    kb_builder = InlineKeyboardBuilder()
+    kb_builder.button(
+        text=btn_text,
+        callback_data=AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL)
     )
+    kb_builder.adjust(1)
+    if language == Language.VI:
+        msg = (
+            '⚡ <b>Hệ thống áp dụng cơ chế MUA NGAY (Trừ tiền trực tiếp)!</b>\n\n'
+            '👉 Bạn không cần thêm vào giỏ hàng rườm rà. Chỉ cần chọn loại tài khoản và số lượng cần mua, tiền sẽ được trừ trực tiếp từ số dư ví và nick LIVE 100% sẽ được giao ngay lập tức!\n\n'
+            '👇 Bấm nút bên dưới để chọn sản phẩm:'
+        )
+    else:
+        msg = (
+            '⚡ <b>INSTANT PURCHASE ENABLED (Direct Balance Deduction)!</b>\n\n'
+            '👉 No tedious cart management needed. Simply select your desired account type and quantity, your wallet balance will be debited and 100% LIVE accounts delivered immediately!\n\n'
+            '👇 Tap the button below to browse products:'
+        )
+    await message.answer(msg, reply_markup=kb_builder.as_markup(), parse_mode='HTML')
 
 
 @cart_router.callback_query(CartCallback.filter(), IsUserExistFilter())
@@ -43,10 +56,23 @@ async def navigate_cart_process(callback: CallbackQuery,
         callback_data=AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL)
     )
     kb_builder.adjust(1)
-    text = (
-        '⚡ <b>Hệ thống áp dụng cơ chế MUA NGAY (Trừ tiền trực tiếp)!</b>\n\n'
-        '👉 Bấm nút bên dưới để chọn loại tài khoản và mua ngay:'
+    btn_text = "🛒 Xem danh mục sản phẩm" if language == Language.VI else "🛒 Browse Products"
+    kb_builder = InlineKeyboardBuilder()
+    kb_builder.button(
+        text=btn_text,
+        callback_data=AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL)
     )
+    kb_builder.adjust(1)
+    if language == Language.VI:
+        text = (
+            '⚡ <b>Hệ thống áp dụng cơ chế MUA NGAY (Trừ tiền trực tiếp)!</b>\n\n'
+            '👉 Bấm nút bên dưới để chọn loại tài khoản và mua ngay:'
+        )
+    else:
+        text = (
+            '⚡ <b>INSTANT PURCHASE ENABLED!</b>\n\n'
+            '👉 Tap the button below to browse account types and buy now:'
+        )
     if callback.message.caption:
         try:
             await callback.message.delete()

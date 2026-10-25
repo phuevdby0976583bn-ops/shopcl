@@ -236,17 +236,26 @@ async def start(message: Message, session: AsyncSession, language: Language, com
 @main_router.callback_query(F.data.startswith("set_lang:"))
 async def on_language_selected(callback: CallbackQuery, session: AsyncSession):
     from utils.localizator import Localizator
+    from middleware.language import set_cached_user_language
+    from models.user import UserDTO
     lang_code = callback.data.split(":")[1]
     new_lang = Language.from_locale(lang_code)
+
+    set_cached_user_language(callback.from_user.id, new_lang)
 
     user_dto = await UserRepository.get_by_tgid(callback.from_user.id, session)
     if user_dto:
         user_dto.language = new_lang
         await UserRepository.update(user_dto, session)
-        await session_commit(session)
-        from middleware.language import set_cached_user_language
-        set_cached_user_language(callback.from_user.id, new_lang)
-
+    else:
+        new_user = UserDTO(
+            telegram_id=callback.from_user.id,
+            telegram_username=callback.from_user.username,
+            language=new_lang,
+            can_receive_messages=True
+        )
+        await UserRepository.create(new_user, session)
+    await session_commit(session)
     Localizator.clear_cache()
 
     success_messages = {
@@ -308,36 +317,134 @@ async def handle_wallet(message: Message, session: AsyncSession, state: FSMConte
 
         user_name = f"@{message.from_user.username}" if message.from_user.username else (message.from_user.full_name or "Khách")
 
-        if language == Language.VI:
-            text = (
-                "💳 <b>VÍ & TÀI KHOẢN CỦA BẠN</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 <b>Tài khoản:</b> {user_name} (ID: <code>{message.from_user.id}</code>)\n"
-                f"💰 <b>Số dư khả dụng:</b> <b>{balance}$</b> (USDT)\n"
-                f"📥 <b>Đã nạp:</b> {top_up:.2f}$ | 📤 <b>Đã tiêu:</b> {consume:.2f}$\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "⚡ <i>Khuyên dùng <b>Binance Pay</b>: Miễn phí 100%, nạp tự động nhận ngay sau 1-5 giây.</i>\n"
-                "👇 <b>Bấm nút bên dưới để nạp tiền tự động:</b>"
-            )
-            btn_binance = "🟡 Binance Pay (0% Phí - Nhận 1s)"
-            btn_onchain = "🌐 Nạp On-chain (BSC, TRX, TON...)"
-            btn_history = "📜 Lịch sử mua hàng"
-        else:
-            text = (
-                "💳 <b>YOUR WALLET & ACCOUNT</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 <b>Account:</b> {user_name} (ID: <code>{message.from_user.id}</code>)\n"
-                f"💰 <b>Available Balance:</b> <b>{balance}$</b> (USDT)\n"
-                f"📥 <b>Deposited:</b> {top_up:.2f}$ | 📤 <b>Spent:</b> {consume:.2f}$\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "⚡ <i>Recommended: <b>Binance Pay</b> (0% fee, instant credit in 1-5s).</i>\n"
-                "👇 <b>Tap a button below to deposit:</b>"
-            )
-            btn_binance = "🟡 Binance Pay (0% Fee - Instant 1s)"
-            btn_onchain = "🌐 Other Wallets / Exchanges"
-            btn_history = "📜 Purchase History"
-
-        btn_bank = "🏦 Chuyển khoản Ngân hàng (VietQR / BIDV)" if language == Language.VI else "🏦 Vietnam Bank Transfer (VietQR / BIDV)"
+        wallet_texts = {
+            Language.VI: {
+                "title": (
+                    "💳 <b>VÍ & TÀI KHOẢN CỦA BẠN</b>\n━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"👤 <b>Tài khoản:</b> {user_name} (ID: <code>{message.from_user.id}</code>)\n"
+                    f"💰 <b>Số dư khả dụng:</b> <b>{balance}$</b> (USDT)\n"
+                    f"📥 <b>Đã nạp:</b> {top_up:.2f}$ | 📤 <b>Đã tiêu:</b> {consume:.2f}$\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "⚡ <i>Khuyên dùng <b>Binance Pay</b>: Miễn phí 100%, nạp tự động nhận ngay sau 1-5 giây.</i>\n"
+                    "👇 <b>Bấm nút bên dưới để nạp tiền tự động:</b>"
+                ),
+                "btn_bank": "🏦 Chuyển khoản Ngân hàng (VietQR / BIDV)",
+                "btn_binance": "🟡 Binance Pay (0% Phí - Nhận 1s)",
+                "btn_onchain": "🌐 Nạp On-chain (BSC, TRX, TON...)",
+                "btn_history": "📜 Lịch sử mua hàng"
+            },
+            Language.EN: {
+                "title": (
+                    "💳 <b>YOUR WALLET & ACCOUNT</b>\n━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"👤 <b>Account:</b> {user_name} (ID: <code>{message.from_user.id}</code>)\n"
+                    f"💰 <b>Available Balance:</b> <b>{balance}$</b> (USDT)\n"
+                    f"📥 <b>Deposited:</b> {top_up:.2f}$ | 📤 <b>Spent:</b> {consume:.2f}$\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "⚡ <i>Recommended: <b>Binance Pay</b> (0% fee, instant credit in 1-5s).</i>\n"
+                    "👇 <b>Tap a button below to deposit:</b>"
+                ),
+                "btn_bank": "🏦 Vietnam Bank Transfer (VietQR / BIDV)",
+                "btn_binance": "🟡 Binance Pay (0% Fee - Instant 1s)",
+                "btn_onchain": "🌐 Other Wallets / Exchanges (On-chain)",
+                "btn_history": "📜 Purchase History"
+            },
+            Language.HI: {
+                "title": (
+                    "💳 <b>आपका वॉलेट और खाता</b>\n━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"👤 <b>खाता:</b> {user_name} (ID: <code>{message.from_user.id}</code>)\n"
+                    f"💰 <b>उपलब्ध शेष राशि:</b> <b>{balance}$</b> (USDT)\n"
+                    f"📥 <b>जमा:</b> {top_up:.2f}$ | 📤 <b>खर्च:</b> {consume:.2f}$\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "⚡ <i>सुझाव: <b>Binance Pay</b> (0% शुल्क, 1-5 सेकंड)।</i>\n"
+                    "👇 <b>जमा करने के लिए नीचे दिए गए बटन पर टैप करें:</b>"
+                ),
+                "btn_bank": "🏦 वियतनाम बैंक (VietQR / BIDV)",
+                "btn_binance": "🟡 Binance Pay (0% शुल्क - 1s)",
+                "btn_onchain": "🌐 अन्य वॉलेट (On-chain)",
+                "btn_history": "📜 खरीद इतिहास"
+            },
+            Language.ZH: {
+                "title": (
+                    "💳 <b>您的钱包与账户</b>\n━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"👤 <b>账户：</b> {user_name} (ID: <code>{message.from_user.id}</code>)\n"
+                    f"💰 <b>可用余额：</b> <b>{balance}$</b> (USDT)\n"
+                    f"📥 <b>总充值：</b> {top_up:.2f}$ | 📤 <b>已消费：</b> {consume:.2f}$\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "⚡ <i>推荐使用 <b>Binance Pay</b>：0 手续费，1-5 秒自动秒到账。</i>\n"
+                    "👇 <b>点击下方按钮进行自动充值：</b>"
+                ),
+                "btn_bank": "🏦 越南银行转账 (VietQR / BIDV)",
+                "btn_binance": "🟡 币安支付 Binance Pay (0费率 - 秒到)",
+                "btn_onchain": "🌐 链上充值 (BSC, TRX, TON...)",
+                "btn_history": "📜 购买历史"
+            },
+            Language.FR: {
+                "title": (
+                    "💳 <b>VOTRE PORTEFEUILLE & COMPTE</b>\n━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"👤 <b>Compte :</b> {user_name} (ID : <code>{message.from_user.id}</code>)\n"
+                    f"💰 <b>Solde disponible :</b> <b>{balance}$</b> (USDT)\n"
+                    f"📥 <b>Déposé :</b> {top_up:.2f}$ | 📤 <b>Dépensé :</b> {consume:.2f}$\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "⚡ <i>Recommandé : <b>Binance Pay</b> (0% frais, instantané 1-5s).</i>\n"
+                    "👇 <b>Appuyez ci-dessous pour recharger :</b>"
+                ),
+                "btn_bank": "🏦 Virement Vietnam (VietQR / BIDV)",
+                "btn_binance": "🟡 Binance Pay (0% Frais - Instant 1s)",
+                "btn_onchain": "🌐 Autres portefeuilles (On-chain)",
+                "btn_history": "📜 Historique d'achats"
+            },
+            Language.DE: {
+                "title": (
+                    "💳 <b>IHRE GELDBÖRSE & KONTO</b>\n━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"👤 <b>Konto:</b> {user_name} (ID: <code>{message.from_user.id}</code>)\n"
+                    f"💰 <b>Verfügbares Guthaben:</b> <b>{balance}$</b> (USDT)\n"
+                    f"📥 <b>Eingezahlt:</b> {top_up:.2f}$ | 📤 <b>Ausgegeben:</b> {consume:.2f}$\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "⚡ <i>Empfohlen: <b>Binance Pay</b> (0% Gebühr, sofort 1-5s).</i>\n"
+                    "👇 <b>Klicken Sie unten zum Aufladen:</b>"
+                ),
+                "btn_bank": "🏦 Banküberweisung Vietnam (VietQR / BIDV)",
+                "btn_binance": "🟡 Binance Pay (0% Gebühr - Sofort 1s)",
+                "btn_onchain": "🌐 Andere Wallets (On-chain)",
+                "btn_history": "📜 Bestellhistorie"
+            },
+            Language.IT: {
+                "title": (
+                    "💳 <b>IL TUO PORTAFOGLIO & ACCOUNT</b>\n━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"👤 <b>Account:</b> {user_name} (ID: <code>{message.from_user.id}</code>)\n"
+                    f"💰 <b>Saldo disponibile:</b> <b>{balance}$</b> (USDT)\n"
+                    f"📥 <b>Depositato:</b> {top_up:.2f}$ | 📤 <b>Speso:</b> {consume:.2f}$\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "⚡ <i>Consigliato: <b>Binance Pay</b> (0% commissioni, 1-5s).</i>\n"
+                    "👇 <b>Tocca un pulsante sotto per ricaricare:</b>"
+                ),
+                "btn_bank": "🏦 Bonifico Vietnam (VietQR / BIDV)",
+                "btn_binance": "🟡 Binance Pay (0% Commissioni - 1s)",
+                "btn_onchain": "🌐 Altri portafogli (On-chain)",
+                "btn_history": "📜 Storico acquisti"
+            },
+            Language.ES: {
+                "title": (
+                    "💳 <b>TU BILLETERA Y CUENTA</b>\n━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"👤 <b>Cuenta:</b> {user_name} (ID: <code>{message.from_user.id}</code>)\n"
+                    f"💰 <b>Saldo disponible:</b> <b>{balance}$</b> (USDT)\n"
+                    f"📥 <b>Depositado:</b> {top_up:.2f}$ | 📤 <b>Gastado:</b> {consume:.2f}$\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "⚡ <i>Recomendado: <b>Binance Pay</b> (0% comisión, 1-5s).</i>\n"
+                    "👇 <b>Toca un botón abajo para recargar:</b>"
+                ),
+                "btn_bank": "🏦 Transferencia Vietnam (VietQR / BIDV)",
+                "btn_binance": "🟡 Binance Pay (0% Comisión - Instant 1s)",
+                "btn_onchain": "🌐 Otras billeteras (On-chain)",
+                "btn_history": "📜 Historial de compras"
+            }
+        }
+        cfg = wallet_texts.get(language, wallet_texts[Language.EN])
+        text = cfg["title"]
+        btn_bank = cfg["btn_bank"]
+        btn_binance = cfg["btn_binance"]
+        btn_onchain = cfg["btn_onchain"]
+        btn_history = cfg["btn_history"]
         kb = InlineKeyboardBuilder()
         kb.button(text=btn_bank, callback_data="dep_method:bank")
         kb.button(text=btn_binance, callback_data="dep_method:binance")

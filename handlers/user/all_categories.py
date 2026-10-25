@@ -184,8 +184,10 @@ async def execute_instant_buy(**kwargs):
         unit_price = (getattr(subcategory, 'price', None) or (getattr(item, 'price', 0.0) if item else 0.0)) or 0.0
         if not item and not (subcategory and getattr(subcategory, 'price', None)):
             kb_builder = InlineKeyboardBuilder()
-            kb_builder.button(text='📁 Xem sản phẩm khác', callback_data=AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL))
-            return await _send_or_edit_text(callback, '❌ <b>Sản phẩm này tạm thời hết hàng hoặc không tồn tại.</b>', kb_builder.as_markup())
+            btn_other = '📁 Xem sản phẩm khác' if language == Language.VI else '📁 View Other Products'
+            kb_builder.button(text=btn_other, callback_data=AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL))
+            out_msg = '❌ <b>Sản phẩm này tạm thời hết hàng hoặc không tồn tại.</b>' if language == Language.VI else '❌ <b>This product is currently out of stock or does not exist.</b>'
+            return await _send_or_edit_text(callback, out_msg, kb_builder.as_markup())
 
         qty = callback_data.quantity or 1
         total_price = unit_price * qty
@@ -196,10 +198,13 @@ async def execute_instant_buy(**kwargs):
         if user_balance < total_price:
             missing = total_price - user_balance
             kb_builder = InlineKeyboardBuilder()
-            kb_builder.button(text='⚡ Nạp Binance Pay (0% Phí - Tự Động)', callback_data='binance_pay:view')
-            kb_builder.button(text='💳 Nạp On-chain Crypto (USDT)', callback_data='deposit:start')
+            btn_bin = '⚡ Nạp Binance Pay (0% Phí - Tự Động)' if language == Language.VI else '⚡ Binance Pay (0% Fee - Instant)'
+            btn_on = '💳 Nạp On-chain Crypto (USDT)' if language == Language.VI else '💳 Crypto Deposit (USDT)'
+            btn_re = '⬅️ Chọn lại số lượng' if language == Language.VI else '⬅️ Change Quantity'
+            kb_builder.button(text=btn_bin, callback_data='binance_pay:view')
+            kb_builder.button(text=btn_on, callback_data='deposit:start')
             kb_builder.button(
-                text='⬅️ Chọn lại số lượng',
+                text=btn_re,
                 callback_data=AllCategoriesCallback.create(
                     level=3,
                     item_type=callback_data.item_type,
@@ -208,13 +213,22 @@ async def execute_instant_buy(**kwargs):
                 )
             )
             kb_builder.adjust(1, 1, 1)
-            insufficient_msg = (
-                f'❌ <b>Số dư ví không đủ để thanh toán!</b>\n\n'
-                f'💰 <b>Cần thanh toán:</b> <code>{total_price:.2f} {sym}</code>\n'
-                f'💳 <b>Số dư hiện tại:</b> <code>{user_balance:.2f} {sym}</code>\n'
-                f'⚠️ <b>Còn thiếu:</b> <code>{missing:.2f} {sym}</code>\n\n'
-                f'👉 Vui lòng nạp thêm tiền vào tài khoản để nhận clone ngay lập tức!'
-            )
+            if language == Language.VI:
+                insufficient_msg = (
+                    f'❌ <b>Số dư ví không đủ để thanh toán!</b>\n\n'
+                    f'💰 <b>Cần thanh toán:</b> <code>{total_price:.2f} {sym}</code>\n'
+                    f'💳 <b>Số dư hiện tại:</b> <code>{user_balance:.2f} {sym}</code>\n'
+                    f'⚠️ <b>Còn thiếu:</b> <code>{missing:.2f} {sym}</code>\n\n'
+                    f'👉 Vui lòng nạp thêm tiền vào tài khoản để nhận clone ngay lập tức!'
+                )
+            else:
+                insufficient_msg = (
+                    f'❌ <b>Insufficient wallet balance!</b>\n\n'
+                    f'💰 <b>Amount needed:</b> <code>{total_price:.2f} {sym}</code>\n'
+                    f'💳 <b>Current balance:</b> <code>{user_balance:.2f} {sym}</code>\n'
+                    f'⚠️ <b>Missing:</b> <code>{missing:.2f} {sym}</code>\n\n'
+                    f'👉 Please top up your wallet to receive accounts immediately!'
+                )
             return await _send_or_edit_text(callback, insufficient_msg, kb_builder.as_markup())
 
         # Lấy danh sách ứng viên tài khoản trong kho
@@ -386,42 +400,55 @@ async def execute_instant_buy(**kwargs):
         items_block = '\n\n'.join(formatted_items)
 
         kb_builder = InlineKeyboardBuilder()
-        kb_builder.button(
-            text=f'📦 Xem đơn hàng #{buy_dto.id}',
-            callback_data=MyProfileCallback.create(level=4, buy_id=buy_dto.id)
-        )
-        kb_builder.button(
-            text='🛒 Mua tiếp tài khoản khác',
-            callback_data=AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL)
-        )
-        kb_builder.button(
-            text='🛡️ Chính sách bảo hành & Miễn trừ',
-            callback_data='view_full_policy'
-        )
-        kb_builder.button(
-            text='💬 Hỗ trợ Admin (@truongdvfb)',
-            url=getattr(config, "SUPPORT_LINK", "https://t.me/truongdvfb") or "https://t.me/truongdvfb"
-        )
+        if language == Language.VI:
+            btn_view = f'📦 Xem đơn hàng #{buy_dto.id}'
+            btn_more = '🛒 Mua tiếp tài khoản khác'
+            btn_policy = '🛡️ Chính sách bảo hành & Miễn trừ'
+            btn_supp = '💬 Hỗ trợ Admin (@truongdvfb)'
+            success_header = (
+                f'🎉 <b>MUA HÀNG THÀNH CÔNG!</b>\n\n'
+                f'🧾 <b>Mã đơn hàng:</b> <code>#{buy_dto.id}</code>\n'
+                f'📁 <b>Danh mục:</b> <code>{cat_name}</code>\n'
+                f'📦 <b>Loại tài khoản:</b> <code>{subcat_name}</code>\n'
+                f'🔢 <b>Số lượng:</b> <code>{len(purchased_items)}</code> nick\n'
+                f'💰 <b>Tổng thanh toán:</b> <code>{total_price:.2f} {sym}</code> (Đã trừ ví)\n'
+                f'💳 <b>Số dư ví còn lại:</b> <code>{remaining_balance:.2f} {sym}</code>\n\n'
+            )
+            full_text = (
+                success_header +
+                f'━━━━━━━━━━━━━━━━━━\n'
+                f'📦 <b>DANH SÁCH TÀI KHOẢN CỦA BẠN:</b>\n'
+                f'{items_block}\n'
+                f'━━━━━━━━━━━━━━━━━━\n'
+                f'🛡️ <b>Bảo hành:</b> 24h lỗi 1 đổi 1. Điều khoản & Miễn trừ: /policy. Hỗ trợ Admin: @truongdvfb'
+            )
+        else:
+            btn_view = f'📦 View Order #{buy_dto.id}'
+            btn_more = '🛒 Buy More Accounts'
+            btn_policy = '🛡️ Warranty Policy & Legal'
+            btn_supp = '💬 Admin Support (@truongdvfb)'
+            success_header = (
+                f'🎉 <b>PURCHASE SUCCESSFUL!</b>\n\n'
+                f'🧾 <b>Order ID:</b> <code>#{buy_dto.id}</code>\n'
+                f'📁 <b>Category:</b> <code>{cat_name}</code>\n'
+                f'📦 <b>Account:</b> <code>{subcat_name}</code>\n'
+                f'🔢 <b>Quantity:</b> <code>{len(purchased_items)}</code> pcs\n'
+                f'💰 <b>Total Paid:</b> <code>{total_price:.2f} {sym}</code> (Debited from wallet)\n'
+                f'💳 <b>Remaining Balance:</b> <code>{remaining_balance:.2f} {sym}</code>\n\n'
+            )
+            full_text = (
+                success_header +
+                f'━━━━━━━━━━━━━━━━━━\n'
+                f'📦 <b>YOUR ACCOUNTS:</b>\n'
+                f'{items_block}\n'
+                f'━━━━━━━━━━━━━━━━━━\n'
+                f'🛡️ <b>Warranty:</b> 24h replacement guarantee. Terms: /policy. Support: @truongdvfb'
+            )
+        kb_builder.button(text=btn_view, callback_data=MyProfileCallback.create(level=4, buy_id=buy_dto.id))
+        kb_builder.button(text=btn_more, callback_data=AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL))
+        kb_builder.button(text=btn_policy, callback_data='view_full_policy')
+        kb_builder.button(text=btn_supp, url=getattr(config, "SUPPORT_LINK", "https://t.me/truongdvfb") or "https://t.me/truongdvfb")
         kb_builder.adjust(1)
-
-        success_header = (
-            f'🎉 <b>MUA HÀNG THÀNH CÔNG!</b>\n\n'
-            f'🧾 <b>Mã đơn hàng:</b> <code>#{buy_dto.id}</code>\n'
-            f'📁 <b>Danh mục:</b> <code>{cat_name}</code>\n'
-            f'📦 <b>Loại tài khoản:</b> <code>{subcat_name}</code>\n'
-            f'🔢 <b>Số lượng:</b> <code>{len(purchased_items)}</code> nick\n'
-            f'💰 <b>Tổng thanh toán:</b> <code>{total_price:.2f} {sym}</code> (Đã trừ ví)\n'
-            f'💳 <b>Số dư ví còn lại:</b> <code>{remaining_balance:.2f} {sym}</code>\n\n'
-        )
-
-        full_text = (
-            success_header +
-            f'━━━━━━━━━━━━━━━━━━\n'
-            f'📦 <b>DANH SÁCH TÀI KHOẢN CỦA BẠN:</b>\n'
-            f'{items_block}\n'
-            f'━━━━━━━━━━━━━━━━━━\n'
-            f'🛡️ <b>Bảo hành:</b> 24h lỗi 1 đổi 1. Điều khoản & Miễn trừ: /policy. Hỗ trợ Admin: @truongdvfb'
-        )
 
         file_content = '\n'.join(it.private_data for it in purchased_items if it.private_data)
         file_doc = BufferedInputFile(

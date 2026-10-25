@@ -58,5 +58,6 @@ class CartItemAdmin(ModelView, model=CartItem):
                            CartItem.cart_id]
     can_create = False
     can_delete = True
-    can_edit = False
+    can_view_details = True
+    can_edit = True
     can_export = True

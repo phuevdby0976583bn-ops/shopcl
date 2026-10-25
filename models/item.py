@@ -87,6 +87,7 @@ class ItemAdmin(ModelView, model=Item):
         Item.description
     ]
     can_delete = True
+    can_view_details = True
     can_create = True
     can_edit = True
     can_export = True

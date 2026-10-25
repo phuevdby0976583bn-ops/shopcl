@@ -86,32 +86,125 @@ class DepositFlowService:
 
     @staticmethod
     def get_method_selection_keyboard(language: Language = Language.VI) -> tuple[str, InlineKeyboardBuilder]:
-        if language == Language.VI:
-            text = (
-                "💰 <b>BẠN MUỐN NẠP TIỀN BẰNG CÁCH NÀO?</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "🏦 <b>Ngân Hàng Việt Nam:</b> Quét mã VietQR chuyển khoản BIDV, tự động cộng tiền 10s.\n"
-                "⚡ <b>Binance Pay:</b> 0% phí chuyển, nạp tự động nhận ngay sau 1-5 giây.\n"
-                "🌐 <b>On-chain:</b> Nạp qua USDT các mạng BSC, Solana, Tron, ERC20.\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "👇 <i>Vui lòng chọn hình thức bên dưới:</i>"
-            )
-            btn_bank = "🏦 Chuyển khoản Ngân hàng (VietQR / BIDV)"
-            btn_binance = "🟡 Binance Pay (0% phí - Nhận ngay 1s)"
-            btn_onchain = "🌐 Ví / Sàn khác (On-chain BSC, TRX, TON...)"
-        else:
-            text = (
-                "💰 <b>CHOOSE YOUR DEPOSIT METHOD</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "🏦 <b>Vietnam Bank:</b> VietQR instant transfer (BIDV), auto-credit in 10s.\n"
-                "⚡ <b>Binance Pay:</b> 0% fee, instant credit in 1-5 seconds.\n"
-                "🌐 <b>On-chain:</b> Deposit USDT via BSC, Solana, Tron, ERC20.\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "👇 <i>Please choose an option below:</i>"
-            )
-            btn_bank = "🏦 Vietnam Bank Transfer (VietQR / BIDV)"
-            btn_binance = "🟡 Binance Pay (0% Fee - Instant 1s)"
-            btn_onchain = "🌐 Other Wallets / Exchanges (On-chain)"
+        methods_dict = {
+            Language.VI: {
+                "text": (
+                    "💰 <b>BẠN MUỐN NẠP TIỀN BẰNG CÁCH NÀO?</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "🏦 <b>Ngân Hàng Việt Nam:</b> Quét mã VietQR chuyển khoản BIDV, tự động cộng tiền 10s.\n"
+                    "⚡ <b>Binance Pay:</b> 0% phí chuyển, nạp tự động nhận ngay sau 1-5 giây.\n"
+                    "🌐 <b>On-chain:</b> Nạp qua USDT các mạng BSC, Solana, Tron, ERC20.\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "👇 <i>Vui lòng chọn hình thức bên dưới:</i>"
+                ),
+                "bank": "🏦 Chuyển khoản Ngân hàng (VietQR / BIDV)",
+                "binance": "🟡 Binance Pay (0% phí - Nhận ngay 1s)",
+                "onchain": "🌐 Ví / Sàn khác (On-chain BSC, TRX, TON...)"
+            },
+            Language.EN: {
+                "text": (
+                    "💰 <b>CHOOSE YOUR DEPOSIT METHOD</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "🏦 <b>Vietnam Bank:</b> VietQR instant transfer (BIDV), auto-credit in 10s.\n"
+                    "⚡ <b>Binance Pay:</b> 0% fee, instant credit in 1-5 seconds.\n"
+                    "🌐 <b>On-chain:</b> Deposit USDT via BSC, Solana, Tron, ERC20.\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "👇 <i>Please choose an option below:</i>"
+                ),
+                "bank": "🏦 Vietnam Bank Transfer (VietQR / BIDV)",
+                "binance": "🟡 Binance Pay (0% Fee - Instant 1s)",
+                "onchain": "🌐 Other Wallets / Exchanges (On-chain)"
+            },
+            Language.HI: {
+                "text": (
+                    "💰 <b>जमा विधि चुनें</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "🏦 <b>वियतनाम बैंक:</b> VietQR त्वरित स्थानांतरण (BIDV), 10 सेकंड में स्वतः जमा।\n"
+                    "⚡ <b>Binance Pay:</b> 0% शुल्क, 1-5 सेकंड में त्वरित जमा।\n"
+                    "🌐 <b>On-chain:</b> BSC, Solana, Tron, ERC20 के माध्यम से USDT जमा करें।\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "👇 <i>कृपया नीचे दिए गए विकल्पों में से चुनें:</i>"
+                ),
+                "bank": "🏦 वियतनाम बैंक (VietQR / BIDV)",
+                "binance": "🟡 Binance Pay (0% शुल्क - 1s)",
+                "onchain": "🌐 अन्य वॉलेट / एक्सचेंज (On-chain)"
+            },
+            Language.ZH: {
+                "text": (
+                    "💰 <b>请选择充值方式</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "🏦 <b>越南银行：</b> VietQR 扫码转账 (BIDV)，10秒自动到账。\n"
+                    "⚡ <b>币安支付 (Binance Pay)：</b> 0 手续费，1-5秒全自动秒到。\n"
+                    "🌐 <b>链上充值 (On-chain)：</b> 支持 BSC、Tron、Solana 等多链。\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "👇 <i>请在下方选择充值通道：</i>"
+                ),
+                "bank": "🏦 越南银行转账 (VietQR / BIDV)",
+                "binance": "🟡 币安支付 Binance Pay (0费率 - 秒到)",
+                "onchain": "🌐 链上充值 (On-chain BSC, TRX, TON...)"
+            },
+            Language.FR: {
+                "text": (
+                    "💰 <b>CHOISISSEZ VOTRE MODE DE DÉPÔT</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "🏦 <b>Banque Vietnam :</b> Virement VietQR (BIDV), crédit auto en 10s.\n"
+                    "⚡ <b>Binance Pay :</b> 0% frais, crédit instantané en 1-5 secondes.\n"
+                    "🌐 <b>On-chain :</b> USDT via BSC, Solana, Tron, ERC20.\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "👇 <i>Veuillez choisir une option ci-dessous :</i>"
+                ),
+                "bank": "🏦 Virement bancaire Vietnam (VietQR / BIDV)",
+                "binance": "🟡 Binance Pay (0% Frais - Instant 1s)",
+                "onchain": "🌐 Autres portefeuilles (On-chain)"
+            },
+            Language.DE: {
+                "text": (
+                    "💰 <b>WÄHLEN SIE IHRE EINZAHLUNGSMETHODE</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "🏦 <b>Vietnam Bank:</b> VietQR Überweisung (BIDV), automatische Gutschrift in 10s.\n"
+                    "⚡ <b>Binance Pay:</b> 0% Gebühr, Sofortgutschrift in 1-5 Sekunden.\n"
+                    "🌐 <b>On-chain:</b> USDT über BSC, Solana, Tron, ERC20.\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "👇 <i>Bitte wählen Sie unten eine Option:</i>"
+                ),
+                "bank": "🏦 Banküberweisung Vietnam (VietQR / BIDV)",
+                "binance": "🟡 Binance Pay (0% Gebühr - Sofort 1s)",
+                "onchain": "🌐 Andere Wallets (On-chain)"
+            },
+            Language.IT: {
+                "text": (
+                    "💰 <b>SCEGLI IL TUO METODO DI DEPOSITO</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "🏦 <b>Banca Vietnam:</b> Bonifico VietQR (BIDV), accredito auto in 10s.\n"
+                    "⚡ <b>Binance Pay:</b> 0% commissioni, accredito istantaneo in 1-5 secondi.\n"
+                    "🌐 <b>On-chain:</b> Deposita USDT via BSC, Solana, Tron, ERC20.\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "👇 <i>Scegli un'opzione qui sotto:</i>"
+                ),
+                "bank": "🏦 Bonifico bancario Vietnam (VietQR / BIDV)",
+                "binance": "🟡 Binance Pay (0% Commissioni - Immediato 1s)",
+                "onchain": "🌐 Altri portafogli (On-chain)"
+            },
+            Language.ES: {
+                "text": (
+                    "💰 <b>ELIGE TU MÉTODO DE DEPÓSITO</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "🏦 <b>Banco Vietnam:</b> Transferencia VietQR (BIDV), acreditación auto en 10s.\n"
+                    "⚡ <b>Binance Pay:</b> 0% comisión, acreditación instantánea en 1-5 segundos.\n"
+                    "🌐 <b>On-chain:</b> Depósito USDT vía BSC, Solana, Tron, ERC20.\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "👇 <i>Por favor, selecciona una opción:</i>"
+                ),
+                "bank": "🏦 Transferencia bancaria Vietnam (VietQR / BIDV)",
+                "binance": "🟡 Binance Pay (0% Comisión - Instant 1s)",
+                "onchain": "🌐 Otras billeteras (On-chain)"
+            }
+        }
+        cfg = methods_dict.get(language, methods_dict[Language.EN])
+        text = cfg["text"]
+        btn_bank = cfg["bank"]
+        btn_binance = cfg["binance"]
+        btn_onchain = cfg["onchain"]
 
         kb = InlineKeyboardBuilder()
         kb.button(text=btn_bank, callback_data="dep_method:bank")
@@ -122,15 +215,17 @@ class DepositFlowService:
 
     @staticmethod
     def get_network_selection_keyboard(language: Language = Language.VI) -> tuple[str, InlineKeyboardBuilder]:
-        text = (
-            "🌐 <b>CHỌN MẠNG CHUYỂN USDT:</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "<i>Vui lòng chọn mạng blockchain tương ứng với ví/sàn của bạn:</i>"
-            if language == Language.VI else
-            "🌐 <b>SELECT USDT NETWORK:</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "<i>Please select the corresponding blockchain network:</i>"
-        )
+        prompts = {
+            Language.VI: ("🌐 <b>CHỌN MẠNG CHUYỂN USDT:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n<i>Vui lòng chọn mạng blockchain tương ứng với ví/sàn của bạn:</i>", "‹ Quay lại"),
+            Language.EN: ("🌐 <b>SELECT USDT NETWORK:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n<i>Please select the corresponding blockchain network:</i>", "‹ Back"),
+            Language.HI: ("🌐 <b>USDT नेटवर्क चुनें:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n<i>कृपया संगत ब्लॉकचेन नेटवर्क चुनें:</i>", "‹ वापस"),
+            Language.ZH: ("🌐 <b>选择 USDT 充值网络：</b>\n━━━━━━━━━━━━━━━━━━━━━━\n<i>请选择与您的钱包或交易所对应的网络：</i>", "‹ 返回"),
+            Language.FR: ("🌐 <b>SÉLECTIONNEZ LE RÉSEAU USDT :</b>\n━━━━━━━━━━━━━━━━━━━━━━\n<i>Veuillez sélectionner le réseau blockchain correspondant :</i>", "‹ Retour"),
+            Language.DE: ("🌐 <b>USDT-NETZWERK WÄHLEN:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n<i>Bitte wählen Sie das entsprechende Blockchain-Netzwerk:</i>", "‹ Zurück"),
+            Language.IT: ("🌐 <b>SELEZIONA RETE USDT:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n<i>Seleziona la rete blockchain corrispondente:</i>", "‹ Indietro"),
+            Language.ES: ("🌐 <b>SELECCIONA RED USDT:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n<i>Selecciona la red blockchain correspondiente:</i>", "‹ Volver")
+        }
+        text, back_text = prompts.get(language, prompts[Language.EN])
         kb = InlineKeyboardBuilder()
         kb.button(text="BSC - BNB Smart Chain (BEP20)", callback_data="dep_net:BSC")
         kb.button(text="OPBNB - opBNB", callback_data="dep_net:OPBNB")
@@ -138,7 +233,7 @@ class DepositFlowService:
         kb.button(text="TON - The Open Network", callback_data="dep_net:TON")
         kb.button(text="CELO", callback_data="dep_net:CELO")
         kb.button(text="ETH - Ethereum (ERC20)", callback_data="dep_net:ETH")
-        back_text = "‹ Quay lại" if language == Language.VI else "‹ Back"
+        
         kb.button(text=back_text, callback_data="dep_back:methods")
         kb.adjust(1)
         return text, kb

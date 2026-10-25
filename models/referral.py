@@ -68,6 +68,7 @@ class ReferralBonusAdmin(ModelView, model=ReferralBonus):
                             ReferralBonus.applied_referrer_bonus,
                             ReferralBonus.applied_referral_bonus]
     can_delete = True
-    can_edit = False
+    can_view_details = True
+    can_edit = True
     can_create = False
     can_export = True

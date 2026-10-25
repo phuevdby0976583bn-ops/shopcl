@@ -57,7 +57,8 @@ class PaymentService:
             callback_data=MyProfileCallback.create(level=1)
         )
         bot_photo_id = get_bot_photo_id()
-        base_prompt = "Nhập số USDT muốn nạp (tối thiểu 1):" if language == Language.VI else "Enter USDT amount to deposit (min 1):"
+        min_deposit = float(getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0)
+        base_prompt = f"Nhập số USDT muốn nạp (tối thiểu {min_deposit:g}):" if language == Language.VI else f"Enter USDT amount to deposit (min {min_deposit:g}):"
         bonus_text = DepositBonusService.get_bonus_display_text(language)
         request_caption = f"{base_prompt}\n\n{bonus_text}".strip() if bonus_text else base_prompt
         caption = request_caption if error_text is None else f"{error_text}\n\n{request_caption}"
@@ -74,7 +75,8 @@ class PaymentService:
             parsed_amount = Decimal(normalized_amount)
         except InvalidOperation:
             return None
-        if parsed_amount < Decimal("1") or parsed_amount >= Decimal("1000000"):
+        min_deposit = Decimal(str(getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0))
+        if parsed_amount < min_deposit or parsed_amount >= Decimal("1000000"):
             return None
         return parsed_amount
 

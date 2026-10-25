@@ -40,6 +40,7 @@ class CategoryAdmin(ModelView, model=Category):
                            Category.media_id,
                            Category.cart_items]
     can_delete = True
+    can_view_details = True
     can_edit = True
     can_create = True
     can_export = True

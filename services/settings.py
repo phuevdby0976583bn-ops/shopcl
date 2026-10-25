@@ -41,6 +41,7 @@ SUPPORTED_SETTING_KEYS = [
     "BANK_AUTO_CHECK",
     "DEPOSIT_BONUS_ENABLED",
     "DEPOSIT_BONUS_TIERS",
+    "MIN_DEPOSIT_USDT",
 ]
 
 BOOLEAN_KEYS = {
@@ -96,7 +97,7 @@ class SettingsService:
                         loaded_count += 1
                     except ValueError:
                         pass
-                elif k == "BANK_EXCHANGE_RATE":
+                elif k in ("BANK_EXCHANGE_RATE", "MIN_DEPOSIT_USDT"):
                     try:
                         setattr(config, k, float(v))
                         loaded_count += 1
@@ -205,6 +206,7 @@ class SettingsService:
                 else getattr(config, "DEPOSIT_BONUS_ENABLED", False)
             ),
             "DEPOSIT_BONUS_TIERS": db_settings.get("DEPOSIT_BONUS_TIERS") or getattr(config, "DEPOSIT_BONUS_TIERS", "100:2,200:5,300:6,500:7,1000:8"),
+            "MIN_DEPOSIT_USDT": float(db_settings.get("MIN_DEPOSIT_USDT") or getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0),
         }
         return res
 
@@ -232,7 +234,7 @@ class SettingsService:
                     setattr(config, k, int(str_val))
                 except ValueError:
                     pass
-            elif k == "BANK_EXCHANGE_RATE":
+            elif k in ("BANK_EXCHANGE_RATE", "MIN_DEPOSIT_USDT"):
                 try:
                     setattr(config, k, float(str_val))
                 except ValueError:

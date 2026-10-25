@@ -35,7 +35,8 @@ class CartAdmin(ModelView, model=Cart):
     column_sortable_list = [Cart.id]
     column_exclude_list = [Cart.user_id, Cart.cart_items]
     can_delete = True
-    can_edit = False
+    can_view_details = True
+    can_edit = True
     can_create = False
     can_export = True
 

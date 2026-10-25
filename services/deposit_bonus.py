@@ -89,21 +89,22 @@ class DepositBonusService:
         if not tiers:
             return ""
 
-        if language == Language.VI:
-            lines = ["🎁 <b>Thưởng nạp qua bot:</b>"]
-            for idx, (min_amt, pct) in enumerate(tiers):
-                amt_str = f"{min_amt:,.0f}".replace(",", ".")
-                if idx == len(tiers) - 1:
-                    lines.append(f"• {amt_str} USDT trở lên: +{pct:g}%")
-                else:
-                    lines.append(f"• {amt_str} USDT: +{pct:g}%")
-            return "\n".join(lines)
-        else:
-            lines = ["🎁 <b>Deposit bonus:</b>"]
-            for idx, (min_amt, pct) in enumerate(tiers):
-                amt_str = f"{min_amt:,.0f}"
-                if idx == len(tiers) - 1:
-                    lines.append(f"• {amt_str}+ USDT: +{pct:g}%")
-                else:
-                    lines.append(f"• {amt_str} USDT: +{pct:g}%")
-            return "\n".join(lines)
+        headers = {
+            Language.VI: ("🎁 <b>Thưởng nạp qua bot:</b>", "• {amt} USDT trở lên: +{pct:g}%", "• {amt} USDT: +{pct:g}%"),
+            Language.EN: ("🎁 <b>Deposit bonus:</b>", "• {amt}+ USDT: +{pct:g}%", "• {amt} USDT: +{pct:g}%"),
+            Language.HI: ("🎁 <b>जमा बोनस:</b>", "• {amt}+ USDT या अधिक: +{pct:g}%", "• {amt} USDT: +{pct:g}%"),
+            Language.ZH: ("🎁 <b>充值额外奖励：</b>", "• {amt} USDT 以上: +{pct:g}%", "• {amt} USDT: +{pct:g}%"),
+            Language.FR: ("🎁 <b>Bonus de dépôt :</b>", "• {amt}+ USDT ou plus : +{pct:g}%", "• {amt} USDT : +{pct:g}%"),
+            Language.DE: ("🎁 <b>Einzahlungsbonus:</b>", "• {amt}+ USDT oder mehr: +{pct:g}%", "• {amt} USDT: +{pct:g}%"),
+            Language.IT: ("🎁 <b>Bonus di deposito:</b>", "• {amt}+ USDT o più: +{pct:g}%", "• {amt} USDT: +{pct:g}%"),
+            Language.ES: ("🎁 <b>Bono por depósito:</b>", "• {amt}+ USDT o más: +{pct:g}%", "• {amt} USDT: +{pct:g}%")
+        }
+        hdr, last_pat, pat = headers.get(language, headers[Language.EN])
+        lines = [hdr]
+        for idx, (min_amt, pct) in enumerate(tiers):
+            amt_str = f"{min_amt:,.0f}" if language != Language.VI else f"{min_amt:,.0f}".replace(",", ".")
+            if idx == len(tiers) - 1:
+                lines.append(last_pat.format(amt=amt_str, pct=pct))
+            else:
+                lines.append(pat.format(amt=amt_str, pct=pct))
+        return "\n".join(lines)

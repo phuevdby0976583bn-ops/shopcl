@@ -99,6 +99,7 @@ class SubcategoryAdmin(ModelView, model=Subcategory):
         }
     }
     can_delete = True
+    can_view_details = True
     can_edit = True
     can_create = True
     can_export = True

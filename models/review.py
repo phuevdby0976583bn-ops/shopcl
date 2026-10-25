@@ -54,6 +54,7 @@ class ReviewAdmin(ModelView, model=Review):
     column_exclude_list = [Review.buyItem_id,
                            Review.image_id]
     can_delete = True
+    can_view_details = True
     can_edit = True
     can_create = False
     can_export = True

@@ -64,27 +64,22 @@ async def prompt_binance_pay_amount(callback: CallbackQuery, state: FSMContext, 
     except Exception:
         pass
     await state.set_state(UserStates.binance_pay_amount)
+    min_usdt = float(getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0)
     bonus_text = DepositBonusService.get_bonus_display_text(language)
-    if language == Language.VI:
-        msg = (
-            "🟡 <b>NẠP TIỀN QUA BINANCE PAY (0% PHÍ)</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "👉 <b>Vui lòng nhập số USDT bạn muốn nạp:</b>\n"
-            "<i>(Ví dụ: <code>1</code>, <code>5</code>, <code>10.5</code> - Tối thiểu 1 USDT)</i>"
-        )
-        if bonus_text:
-            msg += f"\n\n{bonus_text}"
-        btn_cancel = "‹ Huỷ / Quay lại"
-    else:
-        msg = (
-            "🟡 <b>TOP UP VIA BINANCE PAY (0% FEE)</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "👉 <b>Please enter the USDT amount to deposit:</b>\n"
-            "<i>(e.g., <code>1</code>, <code>5</code>, <code>10.5</code> - Minimum 1 USDT)</i>"
-        )
-        if bonus_text:
-            msg += f"\n\n{bonus_text}"
-        btn_cancel = "‹ Cancel / Back"
+    prompts = {
+        Language.VI: ("🟡 <b>NẠP TIỀN QUA BINANCE PAY (0% PHÍ)</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👉 <b>Vui lòng nhập số USDT bạn muốn nạp:</b>\n<i>(Ví dụ: <code>{min:g}</code>, <code>5</code>, <code>10.5</code> - Tối thiểu {min:g} USDT)</i>", "‹ Huỷ / Quay lại"),
+        Language.EN: ("🟡 <b>TOP UP VIA BINANCE PAY (0% FEE)</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👉 <b>Please enter the USDT amount to deposit:</b>\n<i>(e.g., <code>{min:g}</code>, <code>5</code>, <code>10.5</code> - Minimum {min:g} USDT)</i>", "‹ Cancel / Back"),
+        Language.HI: ("🟡 <b>BINANCE PAY के माध्यम से जमा करें (0% शुल्क)</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👉 <b>कृपया वह USDT राशि दर्ज करें जिसे आप जमा करना चाहते हैं:</b>\n<i>(उदा., <code>{min:g}</code>, <code>5</code> - न्यूनतम {min:g} USDT)</i>", "‹ रद्द करें / वापस"),
+        Language.ZH: ("🟡 <b>通过币安支付充值 (0 手续费)</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👉 <b>请输入您要充值的 USDT 金额：</b>\n<i>(例如: <code>{min:g}</code>, <code>5</code>, <code>10.5</code> - 最低 {min:g} USDT)</i>", "‹ 取消 / 返回"),
+        Language.FR: ("🟡 <b>RECHARGE VIA BINANCE PAY (0% FRAIS)</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👉 <b>Veuillez saisir le montant en USDT à déposer :</b>\n<i>(ex. : <code>{min:g}</code>, <code>5</code> - Minimum {min:g} USDT)</i>", "‹ Annuler / Retour"),
+        Language.DE: ("🟡 <b>AUFLADEN ÜBER BINANCE PAY (0% GEBÜHR)</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👉 <b>Bitte geben Sie den USDT-Betrag ein:</b>\n<i>(z. B. <code>{min:g}</code>, <code>5</code> - Mindestens {min:g} USDT)</i>", "‹ Abbrechen / Zurück"),
+        Language.IT: ("🟡 <b>RICARICA TRAMITE BINANCE PAY (0% COMMISSIONI)</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👉 <b>Inserisci l'importo in USDT da depositare:</b>\n<i>(es. <code>{min:g}</code>, <code>5</code> - Minimo {min:g} USDT)</i>", "‹ Annulla / Indietro"),
+        Language.ES: ("🟡 <b>RECARGA POR BINANCE PAY (0% COMISIÓN)</b>\n━━━━━━━━━━━━━━━━━━━━━━\n👉 <b>Por favor, introduce el monto en USDT a depositar:</b>\n<i>(ej. <code>{min:g}</code>, <code>5</code> - Mínimo {min:g} USDT)</i>", "‹ Cancelar / Volver")
+    }
+    pat, btn_cancel = prompts.get(language, prompts[Language.EN])
+    msg = pat.format(min=min_usdt)
+    if bonus_text:
+        msg += f"\n\n{bonus_text}"
 
     kb = InlineKeyboardBuilder()
     kb.button(text=btn_cancel, callback_data="dep_cancel_prompt")
@@ -125,23 +120,28 @@ async def receive_binance_amount(message: Message, state: FSMContext, session: A
 
     try:
         amount = float(text_val)
-        if amount < 1:
+        min_usdt = float(getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0)
+        if amount < min_usdt:
             kb = InlineKeyboardBuilder()
-            kb.button(text="‹ Huỷ", callback_data="dep_cancel_prompt")
-            await message.answer(
-                "⚠️ <b>Số tiền nạp tối thiểu là 1 USDT.</b>\nVui lòng nhập lại số tiền (ví dụ: <code>1</code> hoặc <code>5</code>):",
-                parse_mode="HTML",
-                reply_markup=kb.as_markup()
+            btn_cancel = "‹ Huỷ" if language == Language.VI else "‹ Cancel"
+            kb.button(text=btn_cancel, callback_data="dep_cancel_prompt")
+            msg_min = (
+                f"⚠️ <b>Số tiền nạp tối thiểu là {min_usdt:g} USDT.</b>\nVui lòng nhập lại số tiền:"
+                if language == Language.VI else
+                f"⚠️ <b>Minimum deposit is {min_usdt:g} USDT.</b>\nPlease enter an amount equal or greater:"
             )
+            await message.answer(msg_min, parse_mode="HTML", reply_markup=kb.as_markup())
             return
     except ValueError:
         kb = InlineKeyboardBuilder()
-        kb.button(text="‹ Huỷ", callback_data="dep_cancel_prompt")
-        await message.answer(
-            "⚠️ <b>Vui lòng nhập số tiền hợp lệ!</b>\nVí dụ: <code>1</code> hoặc <code>5.5</code>:",
-            parse_mode="HTML",
-            reply_markup=kb.as_markup()
+        btn_cancel = "‹ Huỷ" if language == Language.VI else "‹ Cancel"
+        kb.button(text=btn_cancel, callback_data="dep_cancel_prompt")
+        msg_inv = (
+            "⚠️ <b>Vui lòng nhập số tiền hợp lệ!</b>\nVí dụ: <code>1</code> hoặc <code>5.5</code>:"
+            if language == Language.VI else
+            "⚠️ <b>Please enter a valid amount!</b>\nExample: <code>1</code> or <code>5.5</code>:"
         )
+        await message.answer(msg_inv, parse_mode="HTML", reply_markup=kb.as_markup())
         return
 
     try:
@@ -275,7 +275,8 @@ async def choose_network(callback: CallbackQuery, state: FSMContext, language: L
     await state.update_data(deposit_network=net_code)
     await state.set_state(UserStates.onchain_amount)
 
-    base_prompt = "Nhập số USDT muốn nạp (tối thiểu 1):" if language == Language.VI else "Enter USDT amount to deposit (min 1):"
+    min_usdt = float(getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0)
+    base_prompt = f"Nhập số USDT muốn nạp (tối thiểu {min_usdt:g}):" if language == Language.VI else f"Enter USDT amount to deposit (min {min_usdt:g}):"
     bonus_text = DepositBonusService.get_bonus_display_text(language)
     msg = f"{base_prompt}\n\n{bonus_text}".strip() if bonus_text else base_prompt
     kb = InlineKeyboardBuilder()
@@ -305,8 +306,9 @@ async def receive_onchain_amount(message: Message, state: FSMContext, session: A
 
     try:
         amount = float(text_val)
-        if amount < 1:
-            await message.answer("⚠️ Số tiền nạp tối thiểu là 1 USDT. Vui lòng nhập lại:")
+        min_usdt = float(getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0)
+        if amount < min_usdt:
+            await message.answer(f"⚠️ Số tiền nạp tối thiểu là {min_usdt:g} USDT. Vui lòng nhập lại:")
             return
     except ValueError:
         await message.answer("⚠️ Vui lòng nhập số tiền hợp lệ (ví dụ: <code>10</code> hoặc <code>50</code>):", parse_mode="HTML")
@@ -396,6 +398,8 @@ async def prompt_bank_amount(callback: CallbackQuery, state: FSMContext, languag
         pass
     await state.set_state(UserStates.bank_deposit_amount)
     rate = float(getattr(config, "BANK_EXCHANGE_RATE", 26000) or 26000)
+    min_usdt = float(getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0)
+    min_vnd = min_usdt * rate
     stk = getattr(config, "BANK_ACCOUNT_NUMBER", "8880117869")
     bonus_text = DepositBonusService.get_bonus_display_text(language)
     if language == Language.VI:
@@ -407,9 +411,9 @@ async def prompt_bank_amount(callback: CallbackQuery, state: FSMContext, languag
             f"💱 <b>Tỷ giá:</b> <b>1$ = {rate:,.0f} đ</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━━━\n"
             f"👉 <b>Vui lòng nhập số tiền bạn muốn nạp:</b>\n"
-            f"• Nhập theo USD (ví dụ: <code>1</code>, <code>2</code>, <code>5</code>, <code>10</code>$)\n"
-            f"• Hoặc nhập theo VNĐ (ví dụ: <code>26000</code>, <code>50000</code>, <code>100k</code>)\n"
-            f"<i>(Hạn mức tối thiểu: <b>1$ (~{rate:,.0f}đ)</b>)</i>"
+            f"• Nhập theo USD (ví dụ: <code>{min_usdt:g}</code>, <code>2</code>, <code>5</code>, <code>10</code>$)\n"
+            f"• Hoặc nhập theo VNĐ (ví dụ: <code>{min_vnd:,.0f}</code>, <code>50000</code>, <code>100k</code>)\n"
+            f"<i>(Hạn mức tối thiểu: <b>{min_usdt:g}$ (~{min_vnd:,.0f}đ)</b>)</i>"
         )
         if bonus_text:
             msg += f"\n\n{bonus_text}"
@@ -423,9 +427,9 @@ async def prompt_bank_amount(callback: CallbackQuery, state: FSMContext, languag
             f"💱 <b>Rate:</b> <b>$1 = {rate:,.0f} VND</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━━━\n"
             f"👉 <b>Please enter the amount you want to deposit:</b>\n"
-            f"• In USD (e.g., <code>1</code>, <code>5</code>, <code>10</code>$)\n"
-            f"• Or in VND (e.g., <code>50000</code>, <code>100000</code>)\n"
-            f"<i>(Minimum: <b>$1 (~{rate:,.0f} VND)</b>)</i>"
+            f"• In USD (e.g., <code>{min_usdt:g}</code>, <code>5</code>, <code>10</code>$)\n"
+            f"• Or in VND (e.g., <code>{min_vnd:,.0f}</code>, <code>100000</code>)\n"
+            f"<i>(Minimum: <b>${min_usdt:g} (~{min_vnd:,.0f} VND)</b>)</i>"
         )
         if bonus_text:
             msg += f"\n\n{bonus_text}"
@@ -462,7 +466,8 @@ async def receive_bank_amount(message: Message, state: FSMContext, session: Asyn
             val_vnd = float(cleaned[:-1]) * 1000
             amount_usd = round(val_vnd / rate, 2)
         except ValueError:
-            await message.answer("⚠️ Vui lòng nhập số tiền hợp lệ:")
+            msg_val = "⚠️ Vui lòng nhập số tiền hợp lệ:" if language == Language.VI else "⚠️ Please enter a valid number:"
+            await message.answer(msg_val)
             return
     else:
         raw_num = raw_text.replace(",", ".").replace("$", "").replace("VND", "").replace("vnd", "").strip()
@@ -473,11 +478,15 @@ async def receive_bank_amount(message: Message, state: FSMContext, session: Asyn
             else:
                 amount_usd = round(val, 2)
         except ValueError:
-            await message.answer("⚠️ Vui lòng nhập số tiền hợp lệ (ví dụ: <code>2</code> hoặc <code>50000</code>):", parse_mode="HTML")
+            msg_val = "⚠️ Vui lòng nhập số tiền hợp lệ (ví dụ: <code>2</code> hoặc <code>50000</code>):" if language == Language.VI else "⚠️ Please enter a valid amount (e.g., <code>2</code> or <code>50000</code>):"
+            await message.answer(msg_val, parse_mode="HTML")
             return
 
-    if amount_usd < 0.5:
-        await message.answer(f"⚠️ Số tiền nạp tối thiểu là 1$ (~{rate:,.0f} đ). Vui lòng nhập lại:")
+    min_usdt = float(getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0)
+    min_vnd = min_usdt * rate
+    if amount_usd < min_usdt:
+        msg_min = f"⚠️ Số tiền nạp tối thiểu là {min_usdt:g}$ (~{min_vnd:,.0f} đ). Vui lòng nhập lại:" if language == Language.VI else f"⚠️ Minimum deposit is ${min_usdt:g} (~{min_vnd:,.0f} VND). Please try again:"
+        await message.answer(msg_min)
         return
 
     try:
@@ -604,7 +613,7 @@ async def handle_bank_check_invoice(callback: CallbackQuery, session: AsyncSessi
 
 
 @deposit_router.callback_query(F.data.startswith("bank_cancel:"))
-async def handle_bank_cancel_invoice(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+async def handle_bank_cancel_invoice(callback: CallbackQuery, state: FSMContext, session: AsyncSession, language: Language = Language.VI):
     await state.clear()
     parts = callback.data.split(":", 1)
     if len(parts) > 1 and parts[1].isdigit():
@@ -620,5 +629,7 @@ async def handle_bank_cancel_invoice(callback: CallbackQuery, state: FSMContext,
         await callback.message.delete()
     except Exception:
         pass
-    await callback.message.answer("❌ <b>Hoá đơn nạp tiền ngân hàng đã được huỷ.</b>", parse_mode="HTML")
-    await callback.answer("Đã huỷ hoá đơn thành công!")
+    cancel_msg = "❌ <b>Hoá đơn nạp tiền ngân hàng đã được huỷ.</b>" if language == Language.VI else "❌ <b>Bank deposit invoice has been cancelled.</b>"
+    toast_msg = "Đã huỷ hoá đơn thành công!" if language == Language.VI else "Invoice cancelled successfully!"
+    await callback.message.answer(cancel_msg, parse_mode="HTML")
+    await callback.answer(toast_msg)

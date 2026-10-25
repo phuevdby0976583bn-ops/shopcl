@@ -83,6 +83,7 @@ def test_admin_policy_view_metadata():
 
 @pytest.mark.asyncio
 async def test_admin_policy_view_renders_200():
+    import re
     from admin_policy_view import WarrantyPolicyAdminView
     from utils.utils import create_access_token
     view = WarrantyPolicyAdminView()
@@ -91,6 +92,15 @@ async def test_admin_policy_view_renders_200():
     resp = await view.policy_page(req)
     assert resp.status_code == 200
     assert len(resp.body) > 1000
+    html_str = resp.body.decode("utf-8")
+    unreplaced = re.findall(r'\{\{\s*[A-Z_]+\s*\}\}', html_str)
+    assert not unreplaced, f"Unreplaced placeholders found: {unreplaced}"
+    assert "tab-easy" in html_str
+    assert "tab-full" in html_str
+    assert "tab-summary" in html_str
+    assert "tab-preview" in html_str
+    assert "form_fb_hours" in html_str
+    assert "generateAndSaveFromEasyForm" in html_str
 
 
 def test_bot_registered_warranty_policy_view():

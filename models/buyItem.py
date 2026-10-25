@@ -48,7 +48,8 @@ class BuyItemAdmin(ModelView, model=BuyItem):
     column_exclude_list = [BuyItem.buy_id]
     can_create = False
     can_delete = True
-    can_edit = False
+    can_view_details = True
+    can_edit = True
     can_export = True
 
     async def delete_model(self, request, pk: Any) -> None:
