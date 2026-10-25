@@ -29,8 +29,11 @@ class UserService:
 
     @staticmethod
     async def create_if_not_exist(user_dto: UserDTO,
-                                  referrer_code: str | None,
-                                  session: AsyncSession | Session) -> None:
+                                  referrer_code: str | None = None,
+                                  session: AsyncSession | Session = None) -> None:
+        if isinstance(referrer_code, (AsyncSession, Session)):
+            session = referrer_code
+            referrer_code = None
         user = await UserRepository.get_by_tgid(user_dto.telegram_id, session)
         match user:
             case None:

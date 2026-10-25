@@ -33,7 +33,7 @@ class SmartMockDbSession:
     def __init__(self, user=None, categories=None, subcategories=None):
         self.user = user
         self.categories = categories or [SimpleNamespace(id=1, name="Facebook Clone", media_id="cat1")]
-        self.subcategories = subcategories or [SimpleNamespace(id=1, name="Clone Nu?i 2FA", price=0.05, description="Acc live", media_id="sub1")]
+        self.subcategories = subcategories or [SimpleNamespace(id=1, name="Clone Nuôi 2FA", price=0.05, description="Acc live", media_id="sub1")]
 
     async def execute(self, stmt, *args, **kwargs):
         s_str = str(stmt).lower()

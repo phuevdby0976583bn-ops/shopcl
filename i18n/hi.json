@@ -328,7 +328,7 @@
     "purchases": "🧾 <b>आपकी खरीदारी:</b>",
     "refresh_balance_button": "🔄 बैलेंस रीफ़्रेश करें",
     "refund_notification": "↩️ आपको {subcategory} के {quantity} पीस के लिए {currency_sym}{total_price:.2f} वापस कर दिया गया है",
-    "subcategory_button": "📦 {subcategory_name}| मूल्य: {currency_sym}{subcategory_price:.2f} | उपलब्ध: {available_quantity}",
+    "subcategory_button": "📦 {subcategory_name} | मूल्य: {currency_sym}{subcategory_price:.2f} | शेष: {available_quantity} | बेचा गया: {sold_quantity}",
     "subcategories": "📦 <b>उपश्रेणियां:</b>",
     "top_up_balance_button": "➕ बैलेंस जोड़ें",
     "usdc_erc20_top_up": "USDC ERC-20",

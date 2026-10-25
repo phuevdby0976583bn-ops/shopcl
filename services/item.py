@@ -108,10 +108,14 @@ class ItemService:
             )
             subcategory_lines = []
             for subcategory, item in subcategory_item_dict.items():
+                sub_id = getattr(item[0], "subcategory_id", None) if item else None
+                sub_obj = subcategory_map.get(sub_id) if sub_id is not None else None
+                sold_qty = getattr(sub_obj, "sold_count", 0) if sub_obj else 0
                 subcategory_lines.append(get_text(language, BotEntity.USER, "subcategory_button").format(
                     subcategory_name=subcategory,
                     available_quantity=len(item),
                     subcategory_price=item[0].price,
+                    sold_quantity=sold_qty,
                     currency_sym=config.CURRENCY.get_localized_symbol()) + "\n")
             category_blocks.extend(
                 ItemService._split_category_into_blocks(header, category_header, subcategory_lines)

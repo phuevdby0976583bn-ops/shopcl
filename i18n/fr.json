@@ -328,7 +328,7 @@
     "purchases": "🧾 <b>Vos achats :</b>",
     "refresh_balance_button": "🔄 Mettre à jour le solde",
     "refund_notification": "↩️ Vous avez été remboursé de {currency_sym}{total_price:.2f} pour l’achat de {quantity} pcs de {subcategory}",
-    "subcategory_button": "📦 {subcategory_name}| Prix : {currency_sym}{subcategory_price:.2f} | Disp. : {available_quantity}",
+    "subcategory_button": "📦 {subcategory_name} | Prix: {currency_sym}{subcategory_price:.2f} | En stock: {available_quantity} | Vendu: {sold_quantity}",
     "subcategories": "📦 <b>Sous-catégories :</b>",
     "top_up_balance_button": "➕ Recharger le solde",
     "usdc_erc20_top_up": "USDC ERC-20",

@@ -130,18 +130,6 @@ async def enable_search(callback_data: SortingCallback,
     await state.set_state(search_state)
     ent_val = entity_type.value if hasattr(entity_type, 'value') else 1
     await state.update_data(entity_type=ent_val, entity_id_dict=entity_id_dict or {})
-    if language == Language.VI:
-        caption = (
-            "🔎 <b>TÌM KIẾM THEO TÊN SẢN PHẨM / DANH MỤC</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "👉 <b>Vui lòng nhập tên bạn muốn tìm kiếm vào ô chat bên dưới:</b>\n"
-            "<i>(Ví dụ: <code>clone</code>, <code>facebook</code>, <code>via</code>...)</i>"
-        )
-    else:
-        caption = (
-            "🔎 <b>SEARCH PRODUCTS / CATEGORIES</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "👉 <b>Please enter the keyword you want to search below:</b>\n"
-            "<i>(e.g., <code>clone</code>, <code>facebook</code>, <code>via</code>...)</i>"
-        )
+    from services.i18n_messages import get_search_prompt_caption
+    caption = get_search_prompt_caption(language)
     return InputMediaPhoto(media=get_bot_photo_id(), caption=caption), kb_builder

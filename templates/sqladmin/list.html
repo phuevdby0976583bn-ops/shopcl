@@ -1,5 +1,28 @@
 {% extends "sqladmin/layout.html" %}
 <style>
+/* Ensure Actions and all dropdowns are properly positioned and visible on all tabs */
+.dropdown {
+  position: relative !important;
+}
+.card, .card-header, .card-body, .table-responsive {
+  overflow: visible !important;
+}
+.dropdown-menu {
+  display: none;
+  background-color: #ffffff !important;
+}
+.dropdown-menu.show {
+  display: block !important;
+  position: absolute !important;
+  top: 100% !important;
+  left: 0 !important;
+  z-index: 1055 !important;
+  min-width: 15rem !important;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(0,0,0,0.15) !important;
+  border-radius: 4px !important;
+}
+
 /* An tab ngoai sidebar Chinh sach & Bao hanh */
 .navbar-nav a.nav-link[href*="/policy"], .navbar-nav .nav-item:has(a[href*="/policy"]), .navbar-nav a.nav-link:has(.fa-shield-halved), .navbar-nav .nav-item:has(.fa-shield-halved) { display: none !important; }
 </style>
@@ -16,7 +39,7 @@
                 {% if model_view.can_export %}
                 {% if model_view.export_types | length > 1 %}
                 <div class="ms-3 d-inline-block dropdown">
-                  <a href="#" class="btn btn-secondary dropdown-toggle" id="dropdownMenuButton1" data-bs-toggle="dropdown"
+                  <a href="#" class="btn btn-secondary dropdown-toggle" id="dropdownMenuButton1" data-custom-dropdown="export"
                     aria-expanded="false">
                     Export
                   </a>
@@ -51,7 +74,7 @@
                 <div class="d-flex align-items-center flex-wrap gap-2">
                   <div class="dropdown">
                   <button {% if not model_view.can_delete and not model_view._custom_actions_in_list %} disabled {% endif %}
-                    class="btn btn-light dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" data-toggle="dropdown"
+                    class="btn btn-light dropdown-toggle" type="button" id="dropdownMenuButton" data-custom-dropdown="actions"
                     aria-haspopup="true" aria-expanded="false">
                     Actions
                   </button>
@@ -322,36 +345,50 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {
-      // 1. Bulletproof Actions dropdown button toggle for all tabs
-      var actionsBtn = document.getElementById("dropdownMenuButton");
-      if (actionsBtn) {
-        actionsBtn.addEventListener("click", function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          var menu = this.nextElementSibling;
-          if (menu && menu.classList.contains("dropdown-menu")) {
-            menu.classList.toggle("show");
-          }
-        });
-      }
-
-      // Close dropdown when clicking outside
+      // 1. Independent custom dropdown toggle for Actions and Export (no conflict with Bootstrap)
       document.addEventListener("click", function (e) {
-        if (!e.target.closest(".dropdown")) {
+        var toggle = e.target.closest("[data-custom-dropdown], .dropdown-toggle");
+        if (toggle) {
+          var parent = toggle.closest(".dropdown");
+          if (parent) {
+            var menu = parent.querySelector(".dropdown-menu");
+            if (menu) {
+              e.preventDefault();
+              e.stopPropagation();
+              var isOpen = menu.classList.contains("show");
+              document.querySelectorAll(".dropdown-menu.show").forEach(function(m) {
+                m.classList.remove("show");
+              });
+              if (!isOpen) {
+                menu.classList.add("show");
+              }
+              return;
+            }
+          }
+        }
+        if (!e.target.closest(".dropdown-menu")) {
           document.querySelectorAll(".dropdown-menu.show").forEach(function (m) {
             m.classList.remove("show");
           });
         }
       });
 
-      // 2. Validate selected items on bulk delete
+      // Close dropdown when item is clicked
+      document.addEventListener("click", function(e) {
+        if (e.target.closest(".dropdown-item")) {
+          document.querySelectorAll(".dropdown-menu.show").forEach(function (m) {
+            m.classList.remove("show");
+          });
+        }
+      });
+
+      // 2. Bulk delete with validation
       var delBtn = document.getElementById("action-delete");
       if (delBtn) {
         delBtn.addEventListener("click", function (e) {
+          e.preventDefault();
           var checkedBoxes = document.querySelectorAll(".select-box:checked");
           if (checkedBoxes.length === 0) {
-            e.preventDefault();
-            e.stopPropagation();
             alert("⚠️ Vui lòng tích chọn ít nhất một mục trong danh sách để thực hiện xoá!");
             return false;
           }
@@ -375,10 +412,19 @@
           if (modalBtn) {
             modalBtn.setAttribute("data-url", newUrl);
           }
+          var modalText = document.getElementById("modal-delete-text");
+          if (modalText) {
+            modalText.innerText = "Xác nhận xoá vĩnh viễn " + pks.length + " mục đã chọn?";
+          }
+          if (window.bootstrap && bootstrap.Modal) {
+            new bootstrap.Modal(document.getElementById("modal-delete")).show();
+          } else if (window.$ && $.fn.modal) {
+            $("#modal-delete").modal("show");
+          }
         });
       }
 
-      // 3. Fix confirmation modal YES button for custom actions
+      // 3. Confirmation modal YES button for custom actions
       document.querySelectorAll("[id^='action-custom-modal-']").forEach(function (modalBtn) {
         modalBtn.addEventListener("click", function (e) {
           e.preventDefault();
@@ -393,8 +439,33 @@
             }
           });
           var baseUrl = this.getAttribute("data-url") || "";
+          var sep = baseUrl.indexOf("?") !== -1 ? "&" : "?";
           if (pks.length > 0) {
-            window.location.href = baseUrl + (baseUrl.indexOf("?") !== -1 ? "&" : "?") + "pks=" + pks.join(",");
+            window.location.href = baseUrl + sep + "pks=" + pks.join(",");
+          } else {
+            window.location.href = baseUrl;
+          }
+        });
+      });
+
+      // 4. Direct custom action click (without modal)
+      document.querySelectorAll("[id^='action-custom-']:not([id*='modal'])").forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          var checkedBoxes = document.querySelectorAll(".select-box:checked");
+          var pks = [];
+          checkedBoxes.forEach(function (cb) {
+            var hiddenInput = cb.parentElement ? cb.parentElement.querySelector("input[type='hidden']") : null;
+            if (hiddenInput && hiddenInput.value) {
+              pks.push(hiddenInput.value);
+            } else if (cb.value) {
+              pks.push(cb.value);
+            }
+          });
+          var baseUrl = this.getAttribute("data-url") || "";
+          var sep = baseUrl.indexOf("?") !== -1 ? "&" : "?";
+          if (pks.length > 0) {
+            window.location.href = baseUrl + sep + "pks=" + pks.join(",");
           } else {
             window.location.href = baseUrl;
           }

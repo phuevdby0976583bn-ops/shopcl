@@ -205,8 +205,8 @@ def render_base_layout(
             <a href="/login" class="btn btn-outline-purple btn-sm fw-bold px-3">
                 <i class="fa-solid fa-right-to-bracket me-1"></i> Đăng nhập
             </a>
-            <a href="/register" class="btn btn-purple btn-sm fw-bold px-3 shadow-sm">
-                <i class="fa-solid fa-user-plus me-1"></i> Đăng ký
+            <a href="/register" class="btn btn-warning text-dark btn-sm fw-bold px-3 shadow-sm">
+                <i class="fa-solid fa-user-plus me-1"></i> ✨ Đăng ký ngay
             </a>
         </div>
         """
@@ -546,6 +546,7 @@ def render_base_layout(
             <div class="d-flex align-items-center gap-2">
                 <i class="fa-solid fa-bullhorn text-warning"></i>
                 <span>Chào mừng bạn đến với <strong>Bubba Gump FB Clone Shop</strong> - Hệ thống bán clone Facebook tự động 24/7!</span>
+                {"" if user else '<a href="/register" class="badge bg-warning text-dark text-decoration-none fw-bold ms-2 px-2 py-1"><i class="fa-solid fa-user-plus me-1"></i> Đăng ký miễn phí</a>'}
             </div>
             <div class="d-flex align-items-center gap-3">
                 <div class="dropdown">
@@ -756,16 +757,16 @@ async def web_home(request: Request):
         stmt_cat = select(Category).order_by(Category.id.asc())
         categories = (await session.execute(stmt_cat)).scalars().all()
 
-        # L?y danh m?c con
+        # Lấy danh mục con
         stmt_sub = select(Subcategory).order_by(Subcategory.id.asc())
         subcategories = (await session.execute(stmt_sub)).scalars().all()
 
-        # Map subcategory_id -> category_id t? b?ng items
+        # Map subcategory_id -> category_id từ bảng items
         cat_map_stmt = select(Item.subcategory_id, Item.category_id).distinct()
         cat_map_rows = (await session.execute(cat_map_stmt)).all()
         sub_to_cat = {row[0]: row[1] for row in cat_map_rows}
 
-        # T?n kho theo t?ng subcategory_id
+        # Tồn kho theo từng subcategory_id
         stock_stmt = (
             select(Item.subcategory_id, func.count(Item.id))
             .where(Item.is_sold == False)
@@ -773,6 +774,15 @@ async def web_home(request: Request):
         )
         stock_rows = (await session.execute(stock_stmt)).all()
         stock_dict = {row[0]: row[1] for row in stock_rows}
+
+        # Đã bán theo từng subcategory_id
+        sold_stmt = (
+            select(Item.subcategory_id, func.count(Item.id))
+            .where(Item.is_sold == True)
+            .group_by(Item.subcategory_id)
+        )
+        sold_rows = (await session.execute(sold_stmt)).all()
+        sold_dict = {row[0]: row[1] for row in sold_rows}
 
     # Group subcategories by category
     cats_data = []
@@ -809,12 +819,13 @@ async def web_home(request: Request):
         """
         for sub in group["subcats"]:
             stock_qty = stock_dict.get(sub.id, 0)
+            sold_qty = sold_dict.get(sub.id, 0)
             unit_price = float(sub.price or 0.02)
             price_vnd = format_vnd(unit_price)
             price_usd = format_usd(unit_price)
             has_stock = stock_qty > 0
             stock_cls = "has-stock" if has_stock else "empty"
-            stock_text = f"Kho hàng: {stock_qty}" if has_stock else "Hết hàng"
+            stock_text = f"Kho: {stock_qty} nick" if has_stock else "Kho: 0 nick (Hết)"
             desc_text = html.escape(sub.description or "Clone chất lượng cao, bảo hành 1 đổi 1 trong 24 giờ.")
 
             buy_btn_html = f"""
@@ -834,6 +845,7 @@ async def web_home(request: Request):
                         <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
                             <h6 class="product-title mb-0">{html.escape(sub.name)}</h6>
                             <span class="stock-badge {stock_cls}"><i class="fa-solid fa-box me-1"></i>{stock_text}</span>
+                            <span class="badge bg-blue text-white" style="font-size: 11.5px; border-radius: 6px; padding: 4px 8px;"><i class="fa-solid fa-cart-shopping me-1"></i>Đã bán: {sold_qty} nick</span>
                         </div>
                         <div class="product-desc mb-0">{desc_text}</div>
                     </div>
@@ -1213,6 +1225,12 @@ async def api_web_buy(request: Request):
         if not user:
             return JSONResponse({"status": "error", "message": "Vui lòng đăng nhập để thực hiện mua hàng!", "require_login": True}, status_code=401)
 
+        stmt_lock_user = select(User).where(User.id == user.id).with_for_update()
+        user = (await session.execute(stmt_lock_user)).scalar_one_or_none()
+        if not user:
+            return JSONResponse({"status": "error", "message": "Không tìm thấy thông tin tài khoản người dùng!"}, status_code=404)
+        balance = max(0.0, float(user.top_up_amount or 0.0) - float(user.consume_records or 0.0))
+
         # Anti-spam click lock per user (1 second cooldown)
         now = time.time()
         last_click = _user_buy_lock.get(user.id, 0.0)
@@ -1242,6 +1260,7 @@ async def api_web_buy(request: Request):
         stmt_items = (
             select(Item)
             .where(Item.subcategory_id == subcat_id, Item.is_sold == False)
+            .with_for_update()
             .order_by(Item.id.asc())
             .limit(quantity * 3 if is_fb_pre else quantity)
         )
@@ -1353,13 +1372,13 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
             <div class="d-flex align-items-center gap-2">
                 <i class="fa-solid fa-triangle-exclamation fs-4 text-warning"></i>
                 <div>
-                    <strong>B?n ch?a ??ng nh?p!</strong>
-                    <div class="small">Vui l?ng ??ng nh?p ho?c ??ng k? t?i kho?n ?? h? th?ng c?p m? n?p c? nh?n (NAP &lt;ID&gt;), gi?p ti?n ???c t? ??ng c?ng v?o v? c?a b?n sau 1 gi?y.</div>
+                    <strong>Bạn chưa đăng nhập!</strong>
+                    <div class="small">Vui lòng đăng nhập hoặc đăng ký tài khoản để hệ thống cấp mã nạp cá nhân (NAP &lt;ID&gt;), giúp tiền được tự động cộng vào ví của bạn sau 1 giây.</div>
                 </div>
             </div>
             <div class="d-flex gap-2">
-                <a href="/login?next=/recharge" class="btn btn-outline-dark btn-sm fw-bold">??ng nh?p</a>
-                <a href="/register?next=/recharge" class="btn btn-purple btn-sm fw-bold">??ng k? m?i</a>
+                <a href="/login?next=/recharge" class="btn btn-outline-dark btn-sm fw-bold">Đăng nhập</a>
+                <a href="/register?next=/recharge" class="btn btn-purple btn-sm fw-bold">Đăng ký mới</a>
             </div>
         </div>
         """
@@ -1371,15 +1390,15 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
                 <div class="d-flex align-items-center gap-3">
                     <div class="avatar-circle fs-4" style="width: 48px; height: 48px;"><i class="fa-solid fa-wallet"></i></div>
                     <div>
-                        <div class="small text-muted">T?i kho?n: <strong class="text-dark">{html.escape(user.web_username or user.telegram_username or str(user.id))}</strong> (ID: <span class="badge bg-purple text-white">#{user.id}</span>)</div>
-                        <div class="fs-5 fw-bold text-success">S? d?: {balance_vnd_str} <span class="text-muted fs-6">()</span></div>
+                        <div class="small text-muted">Tài khoản: <strong class="text-dark">{html.escape(user.web_username or user.telegram_username or str(user.id))}</strong> (ID: <span class="badge bg-purple text-white">#{user.id}</span>)</div>
+                        <div class="fs-5 fw-bold text-success">Số dư: {balance_vnd_str} <span class="text-muted fs-6">()</span></div>
                     </div>
                 </div>
                 <div class="bg-white p-2 px-3 rounded-3 shadow-sm border text-end">
-                    <div class="small text-muted">C? ph?p n?p ti?n c? nh?n c?a b?n:</div>
+                    <div class="small text-muted">Cú pháp nạp tiền cá nhân của bạn:</div>
                     <div class="d-flex align-items-center gap-2 mt-1">
                         <code class="fs-5 fw-bold text-danger user-select-all" id="myMemoText">{memo_code}</code>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText('{memo_code}'); Swal.fire({{icon:'success', title:'?? sao ch?p c? ph?p!', timer:1200, showConfirmButton:false}});" title="Sao ch?p c? ph?p">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText('{memo_code}'); Swal.fire({{icon:'success', title:'Đã sao chép cú pháp!', timer:1200, showConfirmButton:false}});" title="Sao chép cú pháp">
                             <i class="fa-regular fa-copy"></i>
                         </button>
                     </div>
@@ -1394,11 +1413,11 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-1">
                     <li class="breadcrumb-item"><a href="/" class="text-purple text-decoration-none">Trang ch?</a></li>
-                    <li class="breadcrumb-item active" aria-current="page">N?p ti?n t?i kho?n</li>
+                    <li class="breadcrumb-item active" aria-current="page">Nạp tiền tài khoản</li>
                 </ol>
             </nav>
-            <h2 class="fw-bold mb-1"><i class="fa-solid fa-wallet text-purple me-2"></i> N?p ti?n v?o t?i kho?n</h2>
-            <p class="text-muted">H? th?ng n?p ti?n t? ??ng 24/7. H? tr? Binance Pay (0% ph?), BIDV VietQR v? Crypto USDT.</p>
+            <h2 class="fw-bold mb-1"><i class="fa-solid fa-wallet text-purple me-2"></i> Nạp tiền vào tài khoản</h2>
+            <p class="text-muted">Hệ thống nạp tiền tự động 24/7. Hỗ trợ Binance Pay (0% phí), BIDV VietQR và Crypto USDT.</p>
         </div>
 
         {user_alert_html}
@@ -1406,13 +1425,13 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
         <ul class="nav nav-pills mb-4 nav-justified bg-white p-2 rounded-4 shadow-sm border" id="rechargeTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link {'active' if tab != 'bank' and tab != 'onchain' else ''} fw-bold py-3 rounded-3" id="binance-tab" data-bs-toggle="pill" data-bs-target="#binance-pane" type="button" role="tab">
-                    <i class="fa-solid fa-bolt text-warning me-2 fs-5"></i> Binance Pay (0% Ph? - Nh?n 1s)
-                    <span class="badge bg-danger ms-2">Khuy?n d?ng</span>
+                    <i class="fa-solid fa-bolt text-warning me-2 fs-5"></i> Binance Pay (0% Phí - Nhận 1s)
+                    <span class="badge bg-danger ms-2">Khuyên dùng</span>
                 </button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link {'active' if tab == 'bank' else ''} fw-bold py-3 rounded-3" id="bank-tab" data-bs-toggle="pill" data-bs-target="#bank-pane" type="button" role="tab">
-                    <i class="fa-solid fa-building-columns text-primary me-2 fs-5"></i> Ng?n h?ng BIDV (VietQR 24/7)
+                    <i class="fa-solid fa-building-columns text-primary me-2 fs-5"></i> Ngân hàng BIDV (VietQR 24/7)
                 </button>
             </li>
             <li class="nav-item" role="presentation">
@@ -1430,16 +1449,16 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
                         <div class="card border-0 shadow-sm rounded-4 h-100 p-4">
                             <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-3">
                                 <div>
-                                    <h5 class="fw-bold mb-0 text-purple"><i class="fa-solid fa-bolt text-warning me-2"></i> N?p qua Binance Pay</h5>
-                                    <small class="text-muted">Chuy?n n?i b? Binance - Mi?n ph? 100% ph? giao d?ch</small>
+                                    <h5 class="fw-bold mb-0 text-purple"><i class="fa-solid fa-bolt text-warning me-2"></i> Nạp qua Binance Pay</h5>
+                                    <small class="text-muted">Chuyển nội bộ Binance - Miễn phí 100% phí giao dịch</small>
                                 </div>
                                 <span class="badge bg-success-subtle text-success border border-success fw-bold px-3 py-2 rounded-pill">
-                                    <i class="fa-solid fa-circle-check me-1"></i> Nh?n ngay 1 gi?y
+                                    <i class="fa-solid fa-circle-check me-1"></i> Nhận ngay 1 giây
                                 </span>
                             </div>
 
                             <div class="mb-4">
-                                <label class="form-label text-muted small fw-bold">BINANCE UID NH?N TI?N:</label>
+                                <label class="form-label text-muted small fw-bold">BINANCE UID NHẬN TIỀN:</label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0 fw-bold"><i class="fa-solid fa-id-badge text-purple me-1"></i> UID</span>
                                     <input type="text" class="form-control fw-bold fs-5 bg-white border-start-0 text-purple" id="binanceUidInput" value="{binance_uid}" readonly>
@@ -1450,33 +1469,33 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
                             </div>
 
                             <div class="mb-4">
-                                <label class="form-label text-muted small fw-bold">N?I DUNG CHUY?N TI?N (REMARK / NOTE):</label>
+                                <label class="form-label text-muted small fw-bold">NỘI DUNG CHUYỂN TIỀN (REMARK / NOTE):</label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0 fw-bold"><i class="fa-solid fa-comment-dots text-danger me-1"></i> Memo</span>
                                     <input type="text" class="form-control fw-bold fs-5 bg-white border-start-0 text-danger" id="binanceMemoInput" value="{memo_code}" readonly>
-                                    <button class="btn btn-outline-danger px-4" type="button" onclick="navigator.clipboard.writeText('{memo_code}'); Swal.fire({{icon:'success', title:'?? copy C? ph?p Memo!', timer:1200, showConfirmButton:false}});">
+                                    <button class="btn btn-outline-danger px-4" type="button" onclick="navigator.clipboard.writeText('{memo_code}'); Swal.fire({{icon:'success', title:'Đã copy Cú pháp Memo!', timer:1200, showConfirmButton:false}});">
                                         <i class="fa-regular fa-copy me-1"></i> Copy Memo
                                     </button>
                                 </div>
                                 <div class="form-text text-danger fw-semibold mt-1">
-                                    <i class="fa-solid fa-circle-exclamation me-1"></i> <strong>B?t bu?c</strong> nh?p ch?nh x?c n?i dung <code>{memo_code}</code> ?? h? th?ng t? ??ng c?ng ti?n trong 1 gi?y!
+                                    <i class="fa-solid fa-circle-exclamation me-1"></i> <strong>Bắt buộc</strong> nhập chính xác nội dung <code>{memo_code}</code> để hệ thống tự động cộng tiền trong 1 giây!
                                 </div>
                             </div>
 
                             <div class="bg-light p-3 rounded-3 border mb-4">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="small fw-bold text-muted">T? gi? n?p Binance Pay:</span>
+                                    <span class="small fw-bold text-muted">Tỷ giá nạp Binance Pay:</span>
                                     <span class="fw-bold text-success fs-6">1 USDT = 1.00 USD (S? d? Bot)</span>
                                 </div>
                                 <div class="d-flex justify-content-between align-items-center">
-                                    <span class="small fw-bold text-muted">H?n m?c n?p t?i thi?u:</span>
-                                    <span class="fw-bold text-dark">0.01 USDT (Kh?ng gi?i h?n)</span>
+                                    <span class="small fw-bold text-muted">Hạn mức nạp tối thiểu:</span>
+                                    <span class="fw-bold text-dark">0.01 USDT (Không giới hạn)</span>
                                 </div>
                             </div>
 
                             <div class="mt-auto">
                                 <a href="https://app.binance.com" target="_blank" class="btn btn-warning w-100 py-3 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2 text-dark">
-                                    <i class="fa-solid fa-arrow-up-right-from-square"></i> M? App Binance ?? n?p ti?n ngay
+                                    <i class="fa-solid fa-arrow-up-right-from-square"></i> Mở App Binance để nạp tiền ngay
                                 </a>
                             </div>
                         </div>
@@ -1484,30 +1503,30 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
 
                     <div class="col-lg-5">
                         <div class="card border-0 shadow-sm rounded-4 h-100 p-4">
-                            <h6 class="fw-bold mb-3"><i class="fa-solid fa-list-ol text-purple me-2"></i> H??ng d?n 3 b??c n?p Binance Pay:</h6>
+                            <h6 class="fw-bold mb-3"><i class="fa-solid fa-list-ol text-purple me-2"></i> Hướng dẫn 3 bước nạp Binance Pay:</h6>
                             <div class="step-item d-flex gap-3 mb-3">
                                 <div class="step-number bg-purple text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 32px; height: 32px; font-weight: bold;">1</div>
                                 <div>
                                     <div class="fw-bold">M? App Binance</div>
-                                    <div class="small text-muted">B?m v?o bi?u t??ng <strong>Pay (Thanh to?n)</strong> ? g?c tr?n ho?c m?c V? Funding ? Pay.</div>
+                                    <div class="small text-muted">Bấm vào biểu tượng <strong>Pay (Thanh toán)</strong> ở góc trên hoặc mục Ví Funding &gt; Pay.</div>
                                 </div>
                             </div>
                             <div class="step-item d-flex gap-3 mb-3">
                                 <div class="step-number bg-purple text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 32px; height: 32px; font-weight: bold;">2</div>
                                 <div>
-                                    <div class="fw-bold">G?i ti?n t?i UID</div>
-                                    <div class="small text-muted">Ch?n <strong>G?i (Send)</strong> ? Ch?n tab <strong>Binance ID (UID)</strong> ? D?n UID: <code>{binance_uid}</code>.</div>
+                                    <div class="fw-bold">Gửi tiền tới UID</div>
+                                    <div class="small text-muted">Chọn <strong>Gửi (Send)</strong> &gt; Chọn tab <strong>Binance ID (UID)</strong> &gt; Dán UID: <code>{binance_uid}</code>.</div>
                                 </div>
                             </div>
                             <div class="step-item d-flex gap-3 mb-3">
                                 <div class="step-number bg-purple text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 32px; height: 32px; font-weight: bold;">3</div>
                                 <div>
-                                    <div class="fw-bold">?i?n s? ti?n &amp; Memo</div>
-                                    <div class="small text-muted">Nh?p s? USDT mu?n n?p. ? ph?n <strong>Ghi ch? / Note (Memo)</strong>: nh?p ??ng <code>{memo_code}</code> r?i b?m X?c nh?n.</div>
+                                    <div class="fw-bold">Điền số tiền &amp; Memo</div>
+                                    <div class="small text-muted">Nhập số USDT muốn nạp. Ở phần <strong>Ghi chú / Note (Memo)</strong>: nhập đúng <code>{memo_code}</code> rồi bấm Xác nhận.</div>
                                 </div>
                             </div>
                             <div class="alert alert-info border-0 rounded-3 small mt-auto mb-0">
-                                <i class="fa-solid fa-bolt me-1 text-warning"></i> Sau khi chuy?n th?nh c?ng, Binance API s? t? ki?m tra v? t?i kho?n c?a b?n s? ???c c?ng ti?n sau 1 gi?y!
+                                <i class="fa-solid fa-bolt me-1 text-warning"></i> Sau khi chuyển thành công, Binance API sẽ tự kiểm tra và tài khoản của bạn sẽ được cộng tiền sau 1 giây!
                             </div>
                         </div>
                     </div>
@@ -1521,24 +1540,24 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
                         <div class="card border-0 shadow-sm rounded-4 h-100 p-4">
                             <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-3">
                                 <div>
-                                    <h5 class="fw-bold mb-0 text-primary"><i class="fa-solid fa-building-columns me-2"></i> Chuy?n kho?n BIDV (VietQR)</h5>
-                                    <small class="text-muted">Qu?t m? QR t? ??ng ?i?n STK &amp; N?i dung</small>
+                                    <h5 class="fw-bold mb-0 text-primary"><i class="fa-solid fa-building-columns me-2"></i> Chuyển khoản BIDV (VietQR)</h5>
+                                    <small class="text-muted">Quét mã QR tự động điền STK &amp; Nội dung</small>
                                 </div>
                                 <span class="badge bg-primary-subtle text-primary border border-primary fw-bold px-3 py-2 rounded-pill">
-                                    <i class="fa-solid fa-bolt me-1"></i> T? ??ng 30s
+                                    <i class="fa-solid fa-bolt me-1"></i> Tự động 30s
                                 </span>
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label text-muted small fw-bold">NG?N H?NG TH? H??NG:</label>
+                                <label class="form-label text-muted small fw-bold">NGÂN HÀNG THỤ HƯỞNG:</label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0 fw-bold"><i class="fa-solid fa-bank text-primary"></i></span>
-                                    <input type="text" class="form-control fw-bold bg-white border-start-0" value="BIDV - Ng?n h?ng TMCP ??u t? v? Ph?t tri?n VN" readonly>
+                                    <input type="text" class="form-control fw-bold bg-white border-start-0" value="BIDV - Ngân hàng TMCP Đầu tư và Phát triển VN" readonly>
                                 </div>
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label text-muted small fw-bold">S? T?I KHO?N (STK):</label>
+                                <label class="form-label text-muted small fw-bold">SỐ TÀI KHOẢN (STK):</label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0 fw-bold"><i class="fa-solid fa-credit-card text-primary"></i></span>
                                     <input type="text" class="form-control fw-bold fs-5 bg-white border-start-0 text-primary" value="{bank_stk}" id="bankStkInput" readonly>
@@ -1549,7 +1568,7 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label text-muted small fw-bold">CH? T?I KHO?N:</label>
+                                <label class="form-label text-muted small fw-bold">CHỦ TÀI KHOẢN:</label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0 fw-bold"><i class="fa-solid fa-user-check text-primary"></i></span>
                                     <input type="text" class="form-control fw-bold bg-white border-start-0" value="{bank_acc_name}" readonly>
@@ -1557,27 +1576,27 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label text-muted small fw-bold">N?I DUNG CHUY?N KHO?N (MEMO):</label>
+                                <label class="form-label text-muted small fw-bold">NỘI DUNG CHUYỂN KHOẢN (MEMO):</label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0 fw-bold"><i class="fa-solid fa-comment-dots text-danger"></i></span>
                                     <input type="text" class="form-control fw-bold fs-5 bg-white border-start-0 text-danger" value="{memo_code}" id="bankMemoInput" readonly>
-                                    <button class="btn btn-outline-danger px-3" type="button" onclick="navigator.clipboard.writeText('{memo_code}'); Swal.fire({{icon:'success', title:'?? copy C? ph?p!', timer:1200, showConfirmButton:false}});">
+                                    <button class="btn btn-outline-danger px-3" type="button" onclick="navigator.clipboard.writeText('{memo_code}'); Swal.fire({{icon:'success', title:'Đã copy Cú pháp!', timer:1200, showConfirmButton:false}});">
                                         <i class="fa-regular fa-copy"></i>
                                     </button>
                                 </div>
                                 <div class="form-text text-danger fw-semibold mt-1">
-                                    <i class="fa-solid fa-triangle-exclamation me-1"></i> B?t bu?c chuy?n ??ng n?i dung <code>{memo_code}</code> ?? h? th?ng nh?n di?n t? ??ng!
+                                    <i class="fa-solid fa-triangle-exclamation me-1"></i> Bắt buộc chuyển đúng nội dung <code>{memo_code}</code> để hệ thống nhận diện tự động!
                                 </div>
                             </div>
 
                             <div class="bg-light p-3 rounded-3 border mt-auto">
                                 <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <span class="small fw-bold text-muted">T? gi? quy ??i:</span>
-                                    <span class="fw-bold text-primary">1 USD = {rate:,} VN?</span>
+                                    <span class="small fw-bold text-muted">Tỷ giá quy đổi:</span>
+                                    <span class="fw-bold text-primary">1 USD = {rate:,} VNĐ</span>
                                 </div>
                                 <div class="d-flex justify-content-between align-items-center">
-                                    <span class="small fw-bold text-muted">N?p t?i thi?u:</span>
-                                    <span class="fw-bold text-dark">10,000 VN? (~0.4$)</span>
+                                    <span class="small fw-bold text-muted">Nạp tối thiểu:</span>
+                                    <span class="fw-bold text-dark">10,000 VNĐ (~0.4$)</span>
                                 </div>
                             </div>
                         </div>
@@ -1585,15 +1604,15 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
 
                     <div class="col-lg-6">
                         <div class="card border-0 shadow-sm rounded-4 h-100 p-4 text-center">
-                            <h6 class="fw-bold mb-2"><i class="fa-solid fa-qrcode text-primary me-2"></i> Qu?t m? VietQR chuy?n kho?n nhanh:</h6>
-                            <p class="text-muted small mb-3">M? app Ng?n h?ng b?t k? (Vietcombank, MB, Techcombank, VPBank, Momo...) qu?t m? ?? t? ?i?n STK &amp; N?i dung:</p>
+                            <h6 class="fw-bold mb-2"><i class="fa-solid fa-qrcode text-primary me-2"></i> Quét mã VietQR chuyển khoản nhanh:</h6>
+                            <p class="text-muted small mb-3">Mở app Ngân hàng bất kỳ (Vietcombank, MB, Techcombank, VPBank, Momo...) quét mã để tự điền STK &amp; Nội dung:</p>
                             <div class="d-flex justify-content-center my-auto">
                                 <div class="p-3 bg-white rounded-3 shadow-sm border d-inline-block">
-                                    <img src="{vietqr_url}" alt="M? VietQR n?p ti?n BIDV" class="img-fluid rounded" style="max-width: 280px; max-height: 280px;" onerror="this.src='https://placehold.co/280x280?text=BIDV+VietQR';">
+                                    <img src="{vietqr_url}" alt="Mã VietQR nạp tiền BIDV" class="img-fluid rounded" style="max-width: 280px; max-height: 280px;" onerror="this.src='https://placehold.co/280x280?text=BIDV+VietQR';">
                                 </div>
                             </div>
                             <div class="alert alert-light border small mt-3 mb-0 text-muted">
-                                <i class="fa-solid fa-shield-halved text-success me-1"></i> Qu?t m? QR gi?p tr?nh 100% r?i ro chuy?n sai s? t?i kho?n ho?c sai c? ph?p.
+                                <i class="fa-solid fa-shield-halved text-success me-1"></i> Quét mã QR giúp tránh 100% rủi ro chuyển sai số tài khoản hoặc sai cú pháp.
                             </div>
                         </div>
                     </div>
@@ -1605,38 +1624,38 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
                 <div class="card border-0 shadow-sm rounded-4 p-4">
                     <div class="d-flex align-items-center justify-content-between mb-4 border-bottom pb-3">
                         <div>
-                            <h5 class="fw-bold mb-0 text-success"><i class="fa-solid fa-coins me-2"></i> N?p ti?n Crypto On-Chain (USDT)</h5>
-                            <small class="text-muted">H? tr? c?c m?ng TRC20, BEP20 qua c?ng thanh to?n b?o m?t</small>
+                            <h5 class="fw-bold mb-0 text-success"><i class="fa-solid fa-coins me-2"></i> Nạp tiền Crypto On-Chain (USDT)</h5>
+                            <small class="text-muted">Hỗ trợ các mạng TRC20, BEP20 qua cổng thanh toán bảo mật</small>
                         </div>
                         <span class="badge bg-success-subtle text-success border border-success fw-bold px-3 py-2 rounded-pill">
-                            <i class="fa-solid fa-shield me-1"></i> B?o m?t On-Chain
+                            <i class="fa-solid fa-shield me-1"></i> Bảo mật On-Chain
                         </span>
                     </div>
 
                     <div class="row g-4 align-items-center">
                         <div class="col-lg-7">
-                            <p class="text-secondary">B?n c? th? n?p ti?n tr?c ti?p b?ng USDT th?ng qua v? On-chain. ??i v?i c?c ??n n?p On-chain s? l??ng l?n ho?c c?n x?c nh?n ngay, vui l?ng nh?n tr?c ti?p cho Admin qua Telegram.</p>
+                            <p class="text-secondary">Bạn có thể nạp tiền trực tiếp bằng USDT thông qua ví On-chain. Đối với các đơn nạp On-chain số lượng lớn hoặc cần xác nhận ngay, vui lòng nhắn trực tiếp cho Admin qua Telegram.</p>
                             <ul class="list-unstyled mb-4">
-                                <li class="mb-2"><i class="fa-solid fa-circle-check text-success me-2"></i> H? tr? m?ng: <strong>TRC20 (Tron)</strong>, <strong>BEP20 (BNB Smart Chain)</strong>.</li>
-                                <li class="mb-2"><i class="fa-solid fa-circle-check text-success me-2"></i> T? gi? quy ??i: <strong>1 USDT = 1.00 USD</strong> s? d? t?i kho?n.</li>
-                                <li class="mb-2"><i class="fa-solid fa-circle-check text-success me-2"></i> H?n m?c t?i thi?u: <strong>10 USDT</strong> (??i v?i On-chain ?? tr?nh ph? m?ng).</li>
+                                <li class="mb-2"><i class="fa-solid fa-circle-check text-success me-2"></i> Hỗ trợ mạng: <strong>TRC20 (Tron)</strong>, <strong>BEP20 (BNB Smart Chain)</strong>.</li>
+                                <li class="mb-2"><i class="fa-solid fa-circle-check text-success me-2"></i> Tỷ giá quy đổi: <strong>1 USDT = 1.00 USD</strong> số dư tài khoản.</li>
+                                <li class="mb-2"><i class="fa-solid fa-circle-check text-success me-2"></i> Hạn mức tối thiểu: <strong>10 USDT</strong> (đối với On-chain để tránh phí mạng).</li>
                             </ul>
                             <div class="d-flex gap-2 flex-wrap">
                                 <a href="https://t.me/truongdvfb" target="_blank" class="btn btn-purple fw-bold px-4 py-2">
-                                    <i class="fa-brands fa-telegram me-1"></i> Chat v?i Admin @truongdvfb ?? n?p nhanh
+                                    <i class="fa-brands fa-telegram me-1"></i> Chat với Admin @truongdvfb để nạp nhanh
                                 </a>
                                 <a href="/recharge?tab=binance" class="btn btn-outline-warning fw-bold px-4 py-2 text-dark">
-                                    <i class="fa-solid fa-bolt me-1"></i> D?ng Binance Pay ?? ???c 0% ph?
+                                    <i class="fa-solid fa-bolt me-1"></i> Dùng Binance Pay để được 0% phí
                                 </a>
                             </div>
                         </div>
                         <div class="col-lg-5 text-center">
                             <div class="p-4 bg-light rounded-4 border">
                                 <i class="fa-solid fa-headset fs-1 text-purple mb-3"></i>
-                                <h6 class="fw-bold mb-2">H? tr? N?p ti?n 24/7</h6>
-                                <p class="text-muted small mb-3">N?u sau 3-5 ph?t b?n ch?a nh?n ???c s? d? ho?c c? b?t k? th?c m?c n?o, li?n h? ngay:</p>
+                                <h6 class="fw-bold mb-2">Hỗ trợ Nạp tiền 24/7</h6>
+                                <p class="text-muted small mb-3">Nếu sau 3-5 phút bạn chưa nhận được số dư hoặc có bất kỳ thắc mắc nào, liên hệ ngay:</p>
                                 <a href="https://t.me/truongdvfb" target="_blank" class="btn btn-outline-purple btn-sm fw-bold">
-                                    <i class="fa-brands fa-telegram me-1"></i> @truongdvfb (Admin Duy Tr??ng)
+                                    <i class="fa-brands fa-telegram me-1"></i> @truongdvfb (Admin Duy Trường)
                                 </a>
                             </div>
                         </div>
@@ -1647,7 +1666,7 @@ async def web_recharge(request: Request, tab: str = Query("binance")):
     </div>
     """
     return HTMLResponse(content=render_base_layout(
-        title="N?p ti?n t?i kho?n - Bubba Gump Clone Shop",
+        title="Nạp tiền tài khoản - Bubba Gump Clone Shop",
         body_content=content,
         active_nav="recharge",
         user=user,
@@ -1671,7 +1690,7 @@ async def web_orders(request: Request):
         stmt_buys = (
             select(Buy)
             .where(Buy.buyer_id == user.id)
-            .options(selectinload(Buy.buyItems))
+            .options(selectinload(Buy.buy_items))
             .order_by(Buy.id.desc())
         )
         buys = (await session.execute(stmt_buys)).scalars().all()
@@ -1682,35 +1701,35 @@ async def web_orders(request: Request):
         <tr>
             <td colspan="6" class="text-center py-5 text-muted">
                 <i class="fa-solid fa-box-open fs-1 text-secondary mb-3 d-block"></i>
-                <div class="fw-bold fs-5">B?n ch?a c? ??n h?ng n?o</div>
-                <div class="small mb-3">H?y ch?n mua c?c t?i kho?n Facebook Clone ch?t l??ng cao tr?n trang ch?!</div>
-                <a href="/" class="btn btn-purple btn-sm fw-bold px-4"><i class="fa-solid fa-cart-shopping me-1"></i> Mua h?ng ngay</a>
+                <div class="fw-bold fs-5">Bạn chưa có đơn hàng nào</div>
+                <div class="small mb-3">Hãy chọn mua các tài khoản Facebook Clone chất lượng cao trên trang chủ!</div>
+                <a href="/" class="btn btn-purple btn-sm fw-bold px-4"><i class="fa-solid fa-cart-shopping me-1"></i> Mua hàng ngay</a>
             </td>
         </tr>
         """
     else:
         for b in buys:
             count = 0
-            for bi in b.buyItems:
+            for bi in b.buy_items:
                 if bi.item_ids:
                     count += len(bi.item_ids)
-            dt_str = b.created_at.strftime("%d/%m/%Y %H:%M") if b.created_at else "V?a xong"
-            price_usd = f""
-            price_vnd = format_vnd(b.total_price)
+            dt_str = b.buy_datetime.strftime("%d/%m/%Y %H:%M") if b.buy_datetime else "Vừa xong"
+            price_usd = format_usd(float(b.total_price or 0.0))
+            price_vnd = format_vnd(float(b.total_price or 0.0))
 
             orders_rows_html += f"""
             <tr>
                 <td class="fw-bold text-purple align-middle">#ORD-{b.id}</td>
                 <td class="align-middle text-muted small">{dt_str}</td>
-                <td class="align-middle"><span class="badge bg-light text-dark border fw-bold">{count} t?i kho?n</span></td>
+                <td class="align-middle"><span class="badge bg-light text-dark border fw-bold">{count} tài khoản</span></td>
                 <td class="align-middle fw-bold text-success">{price_vnd} <small class="text-muted">({price_usd})</small></td>
-                <td class="align-middle"><span class="badge bg-success-subtle text-success border border-success fw-bold"><i class="fa-solid fa-circle-check me-1"></i> Ho?n t?t</span></td>
+                <td class="align-middle"><span class="badge bg-success-subtle text-success border border-success fw-bold"><i class="fa-solid fa-circle-check me-1"></i> Hoàn tất</span></td>
                 <td class="align-middle text-end">
                     <button class="btn btn-sm btn-outline-purple fw-bold me-1" onclick="viewOrderModal({b.id})">
-                        <i class="fa-solid fa-eye me-1"></i> Xem t?i kho?n
+                        <i class="fa-solid fa-eye me-1"></i> Xem tài khoản
                     </button>
                     <button class="btn btn-sm btn-outline-success fw-bold" onclick="downloadOrderFile({b.id})">
-                        <i class="fa-solid fa-download me-1"></i> T?i .txt
+                        <i class="fa-solid fa-download me-1"></i> Tải .txt
                     </button>
                 </td>
             </tr>
@@ -1722,14 +1741,14 @@ async def web_orders(request: Request):
             <div>
                 <nav aria-label="breadcrumb">
                     <ol class="breadcrumb mb-1">
-                        <li class="breadcrumb-item"><a href="/" class="text-purple text-decoration-none">Trang ch?</a></li>
-                        <li class="breadcrumb-item active" aria-current="page">L?ch s? ??n h?ng</li>
+                        <li class="breadcrumb-item"><a href="/" class="text-purple text-decoration-none">Trang chủ</a></li>
+                        <li class="breadcrumb-item active" aria-current="page">Lịch sử đơn hàng</li>
                     </ol>
                 </nav>
-                <h2 class="fw-bold mb-0"><i class="fa-solid fa-box text-purple me-2"></i> L?ch s? ??n h?ng ?? mua</h2>
+                <h2 class="fw-bold mb-0"><i class="fa-solid fa-box text-purple me-2"></i> Lịch sử đơn hàng đã mua</h2>
             </div>
             <a href="/" class="btn btn-purple btn-sm fw-bold px-3">
-                <i class="fa-solid fa-cart-shopping me-1"></i> Mua th?m t?i kho?n
+                <i class="fa-solid fa-cart-shopping me-1"></i> Mua thêm tài khoản
             </a>
         </div>
 
@@ -1738,12 +1757,12 @@ async def web_orders(request: Request):
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light text-muted small">
                         <tr>
-                            <th scope="col" style="min-width: 110px;">M? ??n</th>
-                            <th scope="col" style="min-width: 140px;">Th?i gian mua</th>
-                            <th scope="col" style="min-width: 110px;">S? l??ng</th>
-                            <th scope="col" style="min-width: 160px;">T?ng ti?n</th>
-                            <th scope="col" style="min-width: 120px;">Tr?ng th?i</th>
-                            <th scope="col" class="text-end" style="min-width: 220px;">H?nh ??ng</th>
+                            <th scope="col" style="min-width: 110px;">Mã đơn</th>
+                            <th scope="col" style="min-width: 140px;">Thời gian mua</th>
+                            <th scope="col" style="min-width: 110px;">Số lượng</th>
+                            <th scope="col" style="min-width: 160px;">Tổng tiền</th>
+                            <th scope="col" style="min-width: 120px;">Trạng thái</th>
+                            <th scope="col" class="text-end" style="min-width: 220px;">Hành động</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1754,30 +1773,30 @@ async def web_orders(request: Request):
         </div>
     </div>
 
-    <!-- MODAL XEM CHI TI?T T?I KHO?N -->
+    <!-- MODAL XEM CHI TIẾT TÀI KHOẢN -->
     <div class="modal fade" id="orderDetailModal" tabindex="-1" aria-labelledby="orderDetailModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content rounded-4 border-0 shadow">
                 <div class="modal-header bg-light">
-                    <h5 class="modal-title fw-bold" id="orderDetailModalLabel"><i class="fa-solid fa-box text-purple me-2"></i> Chi ti?t ??n h?ng <span id="modalOrderCode" class="text-purple"></span></h5>
+                    <h5 class="modal-title fw-bold" id="orderDetailModalLabel"><i class="fa-solid fa-box text-purple me-2"></i> Chi tiết đơn hàng <span id="modalOrderCode" class="text-purple"></span></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body p-4">
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                        <div class="small text-muted">T?ng c?ng: <strong id="modalOrderCount" class="text-dark">0</strong> t?i kho?n | ??nh d?ng: <code>UID|Pass|2FA|Cookie|Mail</code></div>
+                        <div class="small text-muted">Tổng cộng: <strong id="modalOrderCount" class="text-dark">0</strong> tài khoản | Định dạng: <code>UID|Pass|2FA|Cookie|Mail</code></div>
                         <div class="d-flex gap-2">
                             <button class="btn btn-sm btn-purple fw-bold" onclick="copyAllModalAccounts()">
-                                <i class="fa-regular fa-copy me-1"></i> Sao ch?p t?t c?
+                                <i class="fa-regular fa-copy me-1"></i> Sao chép tất cả
                             </button>
                             <button class="btn btn-sm btn-outline-success fw-bold" onclick="downloadModalAccounts()">
-                                <i class="fa-solid fa-download me-1"></i> T?i file .txt
+                                <i class="fa-solid fa-download me-1"></i> Tải file .txt
                             </button>
                         </div>
                     </div>
                     <textarea class="form-control font-monospace small bg-light" id="modalOrderTextarea" rows="14" readonly style="font-size: 13px; white-space: pre;"></textarea>
                 </div>
                 <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-secondary px-4 fw-bold" data-bs-dismiss="modal">??ng</button>
+                    <button type="button" class="btn btn-secondary px-4 fw-bold" data-bs-dismiss="modal">Đóng</button>
                 </div>
             </div>
         </div>
@@ -1790,7 +1809,7 @@ async def web_orders(request: Request):
     async function viewOrderModal(orderId) {{
         currentOrderId = orderId;
         document.getElementById('modalOrderCode').innerText = '#ORD-' + orderId;
-        document.getElementById('modalOrderTextarea').value = '?ang t?i danh s?ch t?i kho?n...';
+        document.getElementById('modalOrderTextarea').value = 'Đang tải danh sách tài khoản...';
         const modal = new bootstrap.Modal(document.getElementById('orderDetailModal'));
         modal.show();
 
@@ -1802,10 +1821,10 @@ async def web_orders(request: Request):
                 document.getElementById('modalOrderCount').innerText = currentOrderAccounts.length;
                 document.getElementById('modalOrderTextarea').value = currentOrderAccounts.join('\n');
             }} else {{
-                document.getElementById('modalOrderTextarea').value = 'L?i: ' + (data.message || 'Kh?ng th? t?i');
+                document.getElementById('modalOrderTextarea').value = 'Lỗi: ' + (data.message || 'Không thể tải');
             }}
         }} catch(e) {{
-            document.getElementById('modalOrderTextarea').value = 'L?i k?t n?i m?y ch?: ' + e;
+            document.getElementById('modalOrderTextarea').value = 'Lỗi kết nối máy chủ: ' + e;
         }}
     }}
 
@@ -1815,8 +1834,8 @@ async def web_orders(request: Request):
         navigator.clipboard.writeText(text);
         Swal.fire({{
             icon: 'success',
-            title: '?? sao ch?p!',
-            text: 'To?n b? danh s?ch t?i kho?n ?? ???c copy v?o b? nh? ??m.',
+            title: 'Đã sao chép!',
+            text: 'Toàn bộ danh sách tài khoản đã được copy vào bộ nhớ đệm.',
             timer: 1500,
             showConfirmButton: false
         }});
@@ -1851,16 +1870,16 @@ async def web_orders(request: Request):
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             }} else {{
-                Swal.fire('L?i', data.message || 'Kh?ng th? t?i ??n h?ng', 'error');
+                Swal.fire('Lỗi', data.message || 'Không thể tải đơn hàng', 'error');
             }}
         }} catch(e) {{
-            Swal.fire('L?i', 'L?i k?t n?i m?y ch?: ' + e, 'error');
+            Swal.fire('Lỗi', 'Lỗi kết nối máy chủ: ' + e, 'error');
         }}
     }}
     </script>
     """
     return HTMLResponse(content=render_base_layout(
-        title="L?ch s? ??n h?ng - Bubba Gump Clone Shop",
+        title="Lịch sử đơn hàng - Bubba Gump Clone Shop",
         body_content=content,
         active_nav="orders",
         user=user,
@@ -1875,18 +1894,18 @@ async def api_web_order_detail(order_id: int, request: Request):
     async with get_db_session() as session:
         user, balance, is_admin = await get_current_user_info(request, session)
         if not user:
-            return JSONResponse({"status": "error", "message": "Vui l?ng ??ng nh?p"}, status_code=401)
+            return JSONResponse({"status": "error", "message": "Vui lòng đăng nhập"}, status_code=401)
 
-        stmt = select(Buy).where(Buy.id == order_id).options(selectinload(Buy.buyItems))
+        stmt = select(Buy).where(Buy.id == order_id).options(selectinload(Buy.buy_items))
         buy = (await session.execute(stmt)).scalar_one_or_none()
         if not buy:
-            return JSONResponse({"status": "error", "message": "Kh?ng t?m th?y ??n h?ng"}, status_code=404)
+            return JSONResponse({"status": "error", "message": "Không tìm thấy đơn hàng"}, status_code=404)
 
         if buy.buyer_id != user.id and not is_admin:
-            return JSONResponse({"status": "error", "message": "B?n kh?ng c? quy?n xem ??n h?ng n?y"}, status_code=403)
+            return JSONResponse({"status": "error", "message": "Bạn không có quyền xem đơn hàng này"}, status_code=403)
 
         all_item_ids = []
-        for bi in buy.buyItems:
+        for bi in buy.buy_items:
             if bi.item_ids:
                 all_item_ids.extend(bi.item_ids)
 
@@ -1922,27 +1941,60 @@ async def web_balance_history(request: Request):
         stmt_buy = select(Buy).where(Buy.buyer_id == user.id).order_by(Buy.id.desc()).limit(50)
         buys = (await session.execute(stmt_buy)).scalars().all()
 
+        user_tg_id = user.telegram_id or 0
+        stmt_bank = select(BankDepositOrder).where(
+            or_(BankDepositOrder.user_id == user.id, BankDepositOrder.telegram_id == user_tg_id),
+            BankDepositOrder.status.in_(["COMPLETED", "PAID"])
+        ).order_by(BankDepositOrder.id.desc()).limit(50)
+        bank_orders = (await session.execute(stmt_bank)).scalars().all()
+
+        stmt_binance = select(BinancePayOrder).where(
+            or_(BinancePayOrder.user_id == user.id, BinancePayOrder.telegram_id == user_tg_id),
+            BinancePayOrder.status.in_(["COMPLETED", "PAID"])
+        ).order_by(BinancePayOrder.id.desc()).limit(50)
+        binance_orders = (await session.execute(stmt_binance)).scalars().all()
+
     timeline = []
     for dep in deposits:
-        t = dep.deposit_time or datetime.now(timezone.utc)
+        t = getattr(dep, "deposit_datetime", None) or datetime.now(timezone.utc)
         timeline.append({
             "time": t,
             "type": "deposit",
-            "amount": float(dep.amount or 0.0),
-            "title": "N?p ti?n v?o t?i kho?n",
-            "desc": f"N?p qua {dep.method or 'H? th?ng t? ??ng'}",
-            "status": "Ho?n t?t"
+            "amount": float(getattr(dep, "fiat_amount", 0.0) or 0.0),
+            "title": "Nạp tiền vào tài khoản",
+            "desc": f"Nạp qua Crypto ({getattr(dep.network, 'name', str(dep.network or 'USDT'))})",
+            "status": "Hoàn tất"
+        })
+    for bo in bank_orders:
+        t = getattr(bo, "created_at", None) or datetime.now(timezone.utc)
+        timeline.append({
+            "time": t,
+            "type": "deposit",
+            "amount": float(bo.amount_usd or 0.0),
+            "title": "Nạp tiền vào tài khoản",
+            "desc": f"Nạp qua BIDV VietQR ({bo.memo or ''})",
+            "status": "Hoàn tất"
+        })
+    for bpo in binance_orders:
+        t = getattr(bpo, "created_at", None) or datetime.now(timezone.utc)
+        timeline.append({
+            "time": t,
+            "type": "deposit",
+            "amount": float(bpo.amount or 0.0),
+            "title": "Nạp tiền vào tài khoản",
+            "desc": "Nạp qua Binance Pay (0% phí)",
+            "status": "Hoàn tất"
         })
 
     for b in buys:
-        t = b.created_at or datetime.now(timezone.utc)
+        t = b.buy_datetime or datetime.now(timezone.utc)
         timeline.append({
             "time": t,
             "type": "buy",
             "amount": -float(b.total_price or 0.0),
-            "title": f"Mua h?ng - ??n #ORD-{b.id}",
-            "desc": "Thanh to?n mua t?i kho?n t? ??ng",
-            "status": "Th?nh c?ng"
+            "title": f"Mua hàng - Đơn #ORD-{b.id}",
+            "desc": "Thanh toán mua tài khoản tự động",
+            "status": "Thành công"
         })
 
     timeline.sort(key=lambda x: x["time"], reverse=True)
@@ -1953,8 +2005,8 @@ async def web_balance_history(request: Request):
         <tr>
             <td colspan="5" class="text-center py-5 text-muted">
                 <i class="fa-solid fa-clock-rotate-left fs-1 text-secondary mb-3 d-block"></i>
-                <div class="fw-bold fs-5">Ch?a c? bi?n ??ng s? d? n?o</div>
-                <div class="small">L?ch s? n?p ti?n v? mua h?ng s? hi?n th? chi ti?t t?i ??y.</div>
+                <div class="fw-bold fs-5">Chưa có biến động số dư nào</div>
+                <div class="small">Lịch sử nạp tiền và mua hàng sẽ hiển thị chi tiết tại đây.</div>
             </td>
         </tr>
         """
@@ -1963,10 +2015,10 @@ async def web_balance_history(request: Request):
             dt_str = ev["time"].strftime("%d/%m/%Y %H:%M:%S")
             amt = ev["amount"]
             if ev["type"] == "deposit":
-                badge_type = '<span class="badge bg-success-subtle text-success border border-success fw-bold"><i class="fa-solid fa-arrow-down me-1"></i> N?p ti?n (+)</span>'
+                badge_type = '<span class="badge bg-success-subtle text-success border border-success fw-bold"><i class="fa-solid fa-arrow-down me-1"></i> Nạp tiền (+)</span>'
                 amt_str = f'<span class="fw-bold text-success">+{format_vnd(amt)} <small class="text-muted">(+)</small></span>'
             else:
-                badge_type = '<span class="badge bg-danger-subtle text-danger border border-danger fw-bold"><i class="fa-solid fa-arrow-up me-1"></i> Mua h?ng (-)</span>'
+                badge_type = '<span class="badge bg-danger-subtle text-danger border border-danger fw-bold"><i class="fa-solid fa-arrow-up me-1"></i> Mua hàng (-)</span>'
                 amt_str = f'<span class="fw-bold text-danger">-{format_vnd(abs(amt))} <small class="text-muted">(-)</small></span>'
 
             rows_html += f"""
@@ -1985,14 +2037,14 @@ async def web_balance_history(request: Request):
             <div>
                 <nav aria-label="breadcrumb">
                     <ol class="breadcrumb mb-1">
-                        <li class="breadcrumb-item"><a href="/" class="text-purple text-decoration-none">Trang ch?</a></li>
-                        <li class="breadcrumb-item active" aria-current="page">Bi?n ??ng s? d?</li>
+                        <li class="breadcrumb-item"><a href="/" class="text-purple text-decoration-none">Trang chủ</a></li>
+                        <li class="breadcrumb-item active" aria-current="page">Biến động số dư</li>
                     </ol>
                 </nav>
-                <h2 class="fw-bold mb-0"><i class="fa-solid fa-list-check text-purple me-2"></i> L?ch s? bi?n ??ng s? d?</h2>
+                <h2 class="fw-bold mb-0"><i class="fa-solid fa-list-check text-purple me-2"></i> Lịch sử biến động số dư</h2>
             </div>
             <a href="/recharge" class="btn btn-purple btn-sm fw-bold px-3">
-                <i class="fa-solid fa-plus me-1"></i> N?p ti?n ngay
+                <i class="fa-solid fa-plus me-1"></i> Nạp tiền ngay
             </a>
         </div>
 
@@ -2001,11 +2053,11 @@ async def web_balance_history(request: Request):
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light text-muted small">
                         <tr>
-                            <th scope="col" style="min-width: 150px;">Th?i gian</th>
-                            <th scope="col" style="min-width: 130px;">Lo?i giao d?ch</th>
-                            <th scope="col" style="min-width: 160px;">Bi?n ??ng</th>
-                            <th scope="col" style="min-width: 220px;">N?i dung chi ti?t</th>
-                            <th scope="col" style="min-width: 110px;">Tr?ng th?i</th>
+                            <th scope="col" style="min-width: 150px;">Thời gian</th>
+                            <th scope="col" style="min-width: 130px;">Loại giao dịch</th>
+                            <th scope="col" style="min-width: 160px;">Biến động</th>
+                            <th scope="col" style="min-width: 220px;">Nội dung chi tiết</th>
+                            <th scope="col" style="min-width: 110px;">Trạng thái</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2017,7 +2069,7 @@ async def web_balance_history(request: Request):
     </div>
     """
     return HTMLResponse(content=render_base_layout(
-        title="Bi?n ??ng s? d? - Bubba Gump Clone Shop",
+        title="Biến động số dư - Bubba Gump Clone Shop",
         body_content=content,
         active_nav="balance_history",
         user=user,
@@ -2040,88 +2092,88 @@ async def web_policy(request: Request):
         <div class="mb-4">
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-1">
-                    <li class="breadcrumb-item"><a href="/" class="text-purple text-decoration-none">Trang ch?</a></li>
-                    <li class="breadcrumb-item active" aria-current="page">?i?u kho?n &amp; Ch?nh s?ch b?o h?nh</li>
+                    <li class="breadcrumb-item"><a href="/" class="text-purple text-decoration-none">Trang chủ</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Điều khoản &amp; Chính sách bảo hành</li>
                 </ol>
             </nav>
-            <h2 class="fw-bold mb-1"><i class="fa-solid fa-shield-halved text-purple me-2"></i> Ch?nh s?ch b?o h?nh &amp; ?i?u kho?n s? d?ng</h2>
-            <p class="text-muted">Tu?n th? nghi?m ng?t Lu?t An ninh m?ng Vi?t Nam 2018 (Lu?t s? 24/2018/QH14) v? c?c quy ??nh th??ng m?i ?i?n t?.</p>
+            <h2 class="fw-bold mb-1"><i class="fa-solid fa-shield-halved text-purple me-2"></i> Chính sách bảo hành &amp; Điều khoản sử dụng</h2>
+            <p class="text-muted">Tuân thủ nghiêm ngặt Luật An ninh mạng Việt Nam 2018 (Luật số 24/2018/QH14) và các quy định thương mại điện tử.</p>
         </div>
 
         <div class="row g-4">
             <div class="col-lg-8">
                 <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
-                    <h5 class="fw-bold text-purple mb-3"><i class="fa-solid fa-scale-balanced me-2"></i> 1. M?c ??ch s? d?ng h?p ph?p</h5>
+                    <h5 class="fw-bold text-purple mb-3"><i class="fa-solid fa-scale-balanced me-2"></i> 1. Mục đích sử dụng hợp pháp</h5>
                     <p class="text-secondary leading-relaxed">
-                        T?t c? c?c t?i kho?n clone, t?i kho?n Facebook, t?i kho?n AI, CapCut Pro v? d?ch v? nguy?n li?u ???c cung c?p tr?n h? th?ng c?a ch?ng t?i <strong>ch? ph?c v? cho c?c m?c ??ch h?p ph?p</strong> bao g?m:
+                        Tất cả các tài khoản clone, tài khoản Facebook, tài khoản AI, CapCut Pro và dịch vụ nguyên liệu được cung cấp trên hệ thống của chúng tôi <strong>chỉ phục vụ cho các mục đích hợp pháp</strong> bao gồm:
                     </p>
                     <ul class="text-secondary">
-                        <li>Ki?m th? h? th?ng ph?n m?m, benchmark t?i m?y ch?, t? ??ng h?a QA/QC theo quy tr?nh l?p tr?nh.</li>
-                        <li>Ch?y chi?n d?ch qu?ng c?o Marketing (Facebook Ads), seeding th??ng hi?u s?n ph?m tu?n th? ch?nh s?ch qu?ng c?o.</li>
-                        <li>H?c t?p, nghi?n c?u an to?n th?ng tin v? b?o m?t m?ng (Cyber Security &amp; Information Safety).</li>
+                        <li>Kiểm thử hệ thống phần mềm, benchmark tải máy chủ, tự động hóa QA/QC theo quy trình lập trình.</li>
+                        <li>Chạy chiến dịch quảng cáo Marketing (Facebook Ads), seeding thương hiệu sản phẩm tuân thủ chính sách quảng cáo.</li>
+                        <li>Học tập, nghiên cứu an toàn thông tin và bảo mật mạng (Cyber Security &amp; Information Safety).</li>
                     </ul>
                     <div class="alert alert-danger border-0 rounded-3 small">
-                        <strong><i class="fa-solid fa-triangle-exclamation me-1"></i> C?NH B?O PH?P L?:</strong> Nghi?m c?m tuy?t ??i m?i h?nh vi s? d?ng t?i kho?n v?o m?c ??ch l?a ??o, chi?m ?o?t t?i s?n, tuy?n truy?n ch?ng ph? Nh? n??c, ph?t t?n m? ??c ho?c vi ph?m Lu?t An ninh m?ng 2018. M?i c? nh?n vi ph?m ph?i t? ch?u ho?n to?n tr?ch nhi?m tr??c ph?p lu?t!
+                        <strong><i class="fa-solid fa-triangle-exclamation me-1"></i> CẢNH BÁO PHÁP LÝ:</strong> Nghiêm cấm tuyệt đối mọi hành vi sử dụng tài khoản vào mục đích lừa đảo, chiếm đoạt tài sản, tuyên truyền chống phá Nhà nước, phát tán mã độc hoặc vi phạm Luật An ninh mạng 2018. Mọi cá nhân vi phạm phải tự chịu hoàn toàn trách nhiệm trước pháp luật!
                     </div>
 
-                    <h5 class="fw-bold text-purple mt-4 mb-3"><i class="fa-solid fa-check-double me-2"></i> 2. Ch?nh s?ch B?o h?nh (1 ??i 1 trong 24 gi?)</h5>
-                    <p class="text-secondary">H? th?ng ?p d?ng ch?nh s?ch b?o h?nh minh b?ch 1 ??i 1 ho?c ho?n ti?n v?o s? d? trong v?ng <strong>24 gi?</strong> k? t? th?i ?i?m giao ??n h?ng ??i v?i c?c tr??ng h?p:</p>
+                    <h5 class="fw-bold text-purple mt-4 mb-3"><i class="fa-solid fa-check-double me-2"></i> 2. Chính sách Bảo hành (1 đổi 1 trong 24 giờ)</h5>
+                    <p class="text-secondary">Hệ thống áp dụng chính sách bảo hành minh bạch 1 đổi 1 hoặc hoàn tiền vào số dư trong vòng <strong>24 giờ</strong> kể từ thời điểm giao đơn hàng đối với các trường hợp:</p>
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
                             <div class="p-3 bg-light rounded-3 border">
-                                <div class="fw-bold text-success mb-1"><i class="fa-solid fa-circle-check me-1"></i> ???c b?o h?nh:</div>
+                                <div class="fw-bold text-success mb-1"><i class="fa-solid fa-circle-check me-1"></i> Được bảo hành:</div>
                                 <ul class="small text-muted mb-0 ps-3">
-                                    <li>Sai m?t kh?u (Wrong Password) ngay khi xu?t kho.</li>
-                                    <li>M? 2FA b? l?i ho?c kh?ng t?o ???c m? 6 s?.</li>
-                                    <li>T?i kho?n b? checkpoint (kh?a) tr??c th?i gian xu?t kho.</li>
-                                    <li>T?i kho?n thi?u email / cookie so v?i m? t? g?i h?ng.</li>
+                                    <li>Sai mật khẩu (Wrong Password) ngay khi xuất kho.</li>
+                                    <li>Mã 2FA bị lỗi hoặc không tạo được mã 6 số.</li>
+                                    <li>Tài khoản bị checkpoint (khóa) trước thời gian xuất kho.</li>
+                                    <li>Tài khoản thiếu email / cookie so với mô tả gói hàng.</li>
                                 </ul>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="p-3 bg-light rounded-3 border">
-                                <div class="fw-bold text-danger mb-1"><i class="fa-solid fa-circle-xmark me-1"></i> T? ch?i b?o h?nh:</div>
+                                <div class="fw-bold text-danger mb-1"><i class="fa-solid fa-circle-xmark me-1"></i> Từ chối bảo hành:</div>
                                 <ul class="small text-muted mb-0 ps-3">
-                                    <li>?? ??ng nh?p th?nh c?ng nh?ng spam vi ph?m ch?nh s?ch FB.</li>
-                                    <li>??ng nh?p h?ng lo?t tr?n c?ng 1 IP b?n m? kh?ng d?ng Proxy.</li>
-                                    <li>T? ? ??i Password/Email m? kh?ng tu?n th? quy tr?nh an to?n.</li>
-                                    <li>Qu? h?n 24 gi? k? t? th?i ?i?m mua h?ng.</li>
+                                    <li>Đã đăng nhập thành công nhưng spam vi phạm chính sách FB.</li>
+                                    <li>Đăng nhập hàng loạt trên cùng 1 IP bẩn mà không dùng Proxy.</li>
+                                    <li>Tự ý đổi Password/Email mà không tuân thủ quy trình an toàn.</li>
+                                    <li>Quá hạn 24 giờ kể từ thời điểm mua hàng.</li>
                                 </ul>
                             </div>
                         </div>
                     </div>
 
-                    <h5 class="fw-bold text-purple mt-4 mb-3"><i class="fa-solid fa-hand-holding-hand me-2"></i> 3. Quy tr?nh Khi?u n?i &amp; H? tr?</h5>
+                    <h5 class="fw-bold text-purple mt-4 mb-3"><i class="fa-solid fa-hand-holding-hand me-2"></i> 3. Quy trình Khiếu nại &amp; Hỗ trợ</h5>
                     <p class="text-secondary">
-                        Khi g?p s? c? c?n b?o h?nh, qu? kh?ch vui l?ng gi? nguy?n tr?ng th?i t?i kho?n v? g?i ngay M? ??n h?ng (#ORD-xxx) k?m danh s?ch d?ng l?i qua k?nh Telegram h? tr?:
+                        Khi gặp sự cố cần bảo hành, quý khách vui lòng giữ nguyên trạng thái tài khoản và gửi ngay Mã đơn hàng (#ORD-xxx) kèm danh sách dòng lỗi qua kênh Telegram hỗ trợ:
                     </p>
                     <a href="https://t.me/truongdvfb" target="_blank" class="btn btn-purple fw-bold px-4 py-2">
-                        <i class="fa-brands fa-telegram me-1"></i> G?i khi?u n?i t?i Admin: @truongdvfb
+                        <i class="fa-brands fa-telegram me-1"></i> Gửi khiếu nại tới Admin: @truongdvfb
                     </a>
                 </div>
             </div>
 
             <div class="col-lg-4">
                 <div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-purple-subtle">
-                    <h6 class="fw-bold text-purple mb-3"><i class="fa-solid fa-headset me-2"></i> K?nh h? tr? duy nh?t</h6>
+                    <h6 class="fw-bold text-purple mb-3"><i class="fa-solid fa-headset me-2"></i> Kênh hỗ trợ duy nhất</h6>
                     <div class="d-flex align-items-center gap-3 mb-3">
                         <div class="avatar-circle fs-3" style="width: 48px; height: 48px;"><i class="fa-brands fa-telegram"></i></div>
                         <div>
-                            <div class="fw-bold">Admin Duy Tr??ng</div>
+                            <div class="fw-bold">Admin Duy Trường</div>
                             <div class="small text-muted">Telegram: <a href="https://t.me/truongdvfb" target="_blank" class="text-purple fw-bold">@truongdvfb</a></div>
                         </div>
                     </div>
                     <div class="small text-muted">
-                        <i class="fa-solid fa-clock me-1"></i> Th?i gian ph?n h?i: 8:00 - 24:00 h?ng ng?y (k? c? Th? 7, Ch? Nh?t &amp; Ng?y l?).
+                        <i class="fa-solid fa-clock me-1"></i> Thời gian phản hồi: 8:00 - 24:00 hàng ngày (kể cả Thứ 7, Chủ Nhật &amp; Ngày lễ).
                     </div>
                 </div>
 
                 <div class="card border-0 shadow-sm rounded-4 p-4">
-                    <h6 class="fw-bold mb-3"><i class="fa-solid fa-circle-info text-info me-2"></i> L?i khuy?n an to?n:</h6>
+                    <h6 class="fw-bold mb-3"><i class="fa-solid fa-circle-info text-info me-2"></i> Lời khuyên an toàn:</h6>
                     <div class="small text-muted">
-                        <p class="mb-2"><i class="fa-solid fa-check text-success me-1"></i> Lu?n d?ng ph?n m?m qu?n l? profile Antidetect (AdsPower, Gologin, Genlogin) khi nu?i s? l??ng l?n.</p>
-                        <p class="mb-2"><i class="fa-solid fa-check text-success me-1"></i> G?n Proxy t?nh (IPv4 Residential) ho?c xoay Dcom cho t?ng t?i kho?n.</p>
-                        <p class="mb-0"><i class="fa-solid fa-check text-success me-1"></i> ??ng nh?p qua Cookie ho?c 2FA t?i <code>mbasic.facebook.com</code> l?n ??u ?? gi?m thi?u checkpoint.</p>
+                        <p class="mb-2"><i class="fa-solid fa-check text-success me-1"></i> Luôn dùng phần mềm quản lý profile Antidetect (AdsPower, Gologin, Genlogin) khi nuôi số lượng lớn.</p>
+                        <p class="mb-2"><i class="fa-solid fa-check text-success me-1"></i> Gán Proxy tĩnh (IPv4 Residential) hoặc xoay Dcom cho từng tài khoản.</p>
+                        <p class="mb-0"><i class="fa-solid fa-check text-success me-1"></i> Đăng nhập qua Cookie hoặc 2FA tại <code>mbasic.facebook.com</code> lần đầu để giảm thiểu checkpoint.</p>
                     </div>
                 </div>
             </div>
@@ -2129,7 +2181,7 @@ async def web_policy(request: Request):
     </div>
     """
     return HTMLResponse(content=render_base_layout(
-        title="Ch?nh s?ch b?o h?nh & ?i?u kho?n - Bubba Gump Clone Shop",
+        title="Chính sách bảo hành & Điều khoản - Bubba Gump Clone Shop",
         body_content=content,
         active_nav="policy",
         user=user,
@@ -2152,26 +2204,26 @@ async def web_faq(request: Request):
         <div class="mb-4">
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-1">
-                    <li class="breadcrumb-item"><a href="/" class="text-purple text-decoration-none">Trang ch?</a></li>
-                    <li class="breadcrumb-item active" aria-current="page">C?u h?i th??ng g?p (FAQ)</li>
+                    <li class="breadcrumb-item"><a href="/" class="text-purple text-decoration-none">Trang chủ</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Câu hỏi thường gặp (FAQ)</li>
                 </ol>
             </nav>
-            <h2 class="fw-bold mb-1"><i class="fa-solid fa-circle-question text-purple me-2"></i> C?u h?i th??ng g?p (FAQ)</h2>
-            <p class="text-muted">T?ng h?p c?c th?c m?c ph? bi?n v? mua h?ng, n?p ti?n, b?o h?nh v? k? thu?t nu?i t?i kho?n.</p>
+            <h2 class="fw-bold mb-1"><i class="fa-solid fa-circle-question text-purple me-2"></i> Câu hỏi thường gặp (FAQ)</h2>
+            <p class="text-muted">Tổng hợp các thắc mắc phổ biến về mua hàng, nạp tiền, bảo hành và kỹ thuật nuôi tài khoản.</p>
         </div>
 
         <div class="accordion accordion-flush shadow-sm rounded-4 bg-white p-3 border" id="faqAccordion">
             <div class="accordion-item border-bottom py-2">
                 <h2 class="accordion-header" id="faqHead1">
                     <button class="accordion-button fw-bold text-purple collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse1">
-                        1. ??nh d?ng t?i kho?n nh?n ???c khi mua l? g??
+                        1. Định dạng tài khoản nhận được khi mua là gì?
                     </button>
                 </h2>
                 <div id="faqCollapse1" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
                     <div class="accordion-body text-secondary">
-                        ??nh d?ng chu?n xu?t kho c?a shop th?ng th??ng l?:<br>
-                        <code>UID|Pass|2FA_Secret_Key|Cookie|Mail|PassMail</code> ho?c <code>UID|Pass|2FA</code> t?y theo t?ng g?i h?ng m? b?n ch?n.<br>
-                        C?c tr??ng d? li?u ???c ng?n c?ch nhau b?ng d?u g?ch ??ng <code>|</code>, r?t thu?n ti?n ?? import th?ng v?o c?c ph?n m?m auto nh? FPlus, MaxCare, MKT Care, v.v.
+                        Định dạng chuẩn xuất kho của shop thông thường là:<br>
+                        <code>UID|Pass|2FA_Secret_Key|Cookie|Mail|PassMail</code> hoặc <code>UID|Pass|2FA</code> tùy theo từng gói hàng mà bạn chọn.<br>
+                        Các trường dữ liệu được ngăn cách nhau bằng dấu gạch đứng <code>|</code>, rất thuận tiện để import thẳng vào các phần mềm auto như FPlus, MaxCare, MKT Care, v.v.
                     </div>
                 </div>
             </div>
@@ -2179,12 +2231,12 @@ async def web_faq(request: Request):
             <div class="accordion-item border-bottom py-2">
                 <h2 class="accordion-header" id="faqHead2">
                     <button class="accordion-button fw-bold text-purple collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse2">
-                        2. L?m sao ?? l?y m? b?o m?t 2FA 6 ch? s? khi ??ng nh?p?
+                        2. Làm sao để lấy mã bảo mật 2FA 6 chữ số khi đăng nhập?
                     </button>
                 </h2>
                 <div id="faqCollapse2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
                     <div class="accordion-body text-secondary">
-                        B?n copy chu?i <strong>2FA_Secret_Key</strong> (chu?i k? t? vi?t hoa g?m 32 k? t? trong ??n h?ng) ? Truy c?p trang web <a href="https://2fa.live" target="_blank" class="fw-bold text-purple">2fa.live</a> ? D?n chu?i v?o ? v? b?m <strong>Submit</strong> ? H? th?ng s? sinh m? 6 s? thay ??i m?i 30 gi?y ?? b?n ?i?n v?o Facebook.
+                        Bạn copy chuỗi <strong>2FA_Secret_Key</strong> (chuỗi ký tự viết hoa gồm 32 ký tự trong đơn hàng) ➔ Truy cập trang web <a href="https://2fa.live" target="_blank" class="fw-bold text-purple">2fa.live</a> ➔ Dán chuỗi vào ô và bấm <strong>Submit</strong> ➔ Hệ thống sẽ sinh mã 6 số thay đổi mỗi 30 giây để bạn điền vào Facebook.
                     </div>
                 </div>
             </div>
@@ -2192,16 +2244,16 @@ async def web_faq(request: Request):
             <div class="accordion-item border-bottom py-2">
                 <h2 class="accordion-header" id="faqHead3">
                     <button class="accordion-button fw-bold text-purple collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse3">
-                        3. ??ng nh?p l?m sao ?? t?i kho?n kh?ng b? Checkpoint / Kh?a?
+                        3. Đăng nhập làm sao để tài khoản không bị Checkpoint / Khóa?
                     </button>
                 </h2>
                 <div id="faqCollapse3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
                     <div class="accordion-body text-secondary">
-                        ?? ??t ?? b?n t?i ?a:<br>
-                        - Kh?ng bao gi? ??ng nh?p h?ng ch?c t?i kho?n tr?n c?ng 1 tr?nh duy?t Chrome th?ng th??ng.<br>
-                        - N?n s? d?ng tr?nh duy?t b?o v? Antidetect (nh? AdsPower, Gologin, Genlogin) ?? c? l?p t?ng m?i tr??ng ph?n c?ng m?y t?nh.<br>
-                        - M?i t?i kho?n n?n g?n k?m 1 Proxy ri?ng (Proxy IPv4 t?nh ho?c Dcom xoay IP).<br>
-                        - L?n ??u ??ng nh?p, n?n truy c?p qua trang <code>mbasic.facebook.com</code> ho?c d?ng Cookie ?? load phi?n.
+                        Để đạt độ bền tối đa:<br>
+                        - Không bao giờ đăng nhập hàng chục tài khoản trên cùng 1 trình duyệt Chrome thông thường.<br>
+                        - Nên sử dụng trình duyệt bảo vệ Antidetect (như AdsPower, Gologin, Genlogin) để cô lập từng môi trường phần cứng máy tính.<br>
+                        - Mỗi tài khoản nên gắn kèm 1 Proxy riêng (Proxy IPv4 tĩnh hoặc Dcom xoay IP).<br>
+                        - Lần đầu đăng nhập, nên truy cập qua trang <code>mbasic.facebook.com</code> hoặc dùng Cookie để load phiên.
                     </div>
                 </div>
             </div>
@@ -2209,12 +2261,12 @@ async def web_faq(request: Request):
             <div class="accordion-item border-bottom py-2">
                 <h2 class="accordion-header" id="faqHead4">
                     <button class="accordion-button fw-bold text-purple collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse4">
-                        4. Ch?c n?ng Check Live t? ??ng tr??c khi giao h?ng l? g??
+                        4. Chức năng Check Live tự động trước khi giao hàng là gì?
                     </button>
                 </h2>
                 <div id="faqCollapse4" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
                     <div class="accordion-body text-secondary">
-                        H? th?ng c?a ch?ng t?i t?ch h?p s?n t?nh n?ng <strong>Qu?t Live UID th?i gian th?c</strong> qua Facebook Graph API. Tr??c khi xu?t kho v? tr? ti?n, bot s? qu?t to?n b? danh s?ch t?i kho?n trong kho ?? ??m b?o t?i kho?n giao ??n tay b?n <strong>100% ?ang LIVE (c?n ho?t ??ng)</strong>. N?u ph?t hi?n acc die, h? th?ng t? ??ng lo?i b? v? ch?n t?i kho?n live kh?c thay th?!
+                        Hệ thống của chúng tôi tích hợp sẵn tính năng <strong>Quét Live UID thời gian thực</strong> qua Facebook Graph API. Trước khi xuất kho và trừ tiền, bot sẽ quét toàn bộ danh sách tài khoản trong kho để đảm bảo tài khoản giao đến tay bạn <strong>100% đang LIVE (còn hoạt động)</strong>. Nếu phát hiện acc die, hệ thống tự động loại bỏ và chọn tài khoản live khác thay thế!
                     </div>
                 </div>
             </div>
@@ -2222,14 +2274,14 @@ async def web_faq(request: Request):
             <div class="accordion-item border-bottom py-2">
                 <h2 class="accordion-header" id="faqHead5">
                     <button class="accordion-button fw-bold text-purple collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse5">
-                        5. N?p ti?n qua Binance Pay &amp; Ng?n h?ng bao l?u th? v?o v??
+                        5. Nạp tiền qua Binance Pay &amp; Ngân hàng bao lâu thì vào ví?
                     </button>
                 </h2>
                 <div id="faqCollapse5" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
                     <div class="accordion-body text-secondary">
-                        - <strong>Binance Pay (0% ph?)</strong>: Ti?n v?o v? ch? sau <strong>1 gi?y</strong>! Binance API s? nh?n d? li?u t?c th?i ngay khi b?n x?c nh?n g?i.<br>
-                        - <strong>Ng?n h?ng BIDV (VietQR 24/7)</strong>: Ti?n t? ??ng c?ng trong kho?ng <strong>30 gi?y</strong> sau khi ng?n h?ng x? l? xong l?nh chuy?n.<br>
-                        S? d? tr?n Website v? tr?n Telegram Bot ???c ??ng b? v?i nhau 100%.
+                        - <strong>Binance Pay (0% phí)</strong>: Tiền vào ví chỉ sau <strong>1 giây</strong>! Binance API sẽ nhận dữ liệu tức thời ngay khi bạn xác nhận gửi.<br>
+                        - <strong>Ngân hàng BIDV (VietQR 24/7)</strong>: Tiền tự động cộng trong khoảng <strong>30 giây</strong> sau khi ngân hàng xử lý xong lệnh chuyển.<br>
+                        Số dư trên Website và trên Telegram Bot được đồng bộ với nhau 100%.
                     </div>
                 </div>
             </div>
@@ -2237,12 +2289,12 @@ async def web_faq(request: Request):
             <div class="accordion-item py-2">
                 <h2 class="accordion-header" id="faqHead6">
                     <button class="accordion-button fw-bold text-purple collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse6">
-                        6. T?i c? th? li?n k?t t?i kho?n ?? d?ng tr?n Bot Telegram kh?ng?
+                        6. Tôi có thể liên kết tài khoản để dùng trên Bot Telegram không?
                     </button>
                 </h2>
                 <div id="faqCollapse6" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
                     <div class="accordion-body text-secondary">
-                        <strong>Ho?n to?n ???c!</strong> Khi b?n b?m ??ng k? t?i kho?n tr?n Website, h?y ?i?n th?m <strong>Telegram ID</strong> c?a b?n v?o ? ??ng k?. H? th?ng s? ngay l?p t?c li?n k?t t?i kho?n Web v?i Bot, gi?p to?n b? s? d? v? l?ch s? giao d?ch tr??c ??y tr?n Telegram Bot hi?n di?n ??y ?? tr?n Website.
+                        <strong>Hoàn toàn được!</strong> Khi bạn bấm đăng ký tài khoản trên Website, hãy điền thêm <strong>Telegram ID</strong> của bạn vào ô đăng ký. Hệ thống sẽ ngay lập tức liên kết tài khoản Web với Bot, giúp toàn bộ số dư và lịch sử giao dịch trước đây trên Telegram Bot hiện diện đầy đủ trên Website.
                     </div>
                 </div>
             </div>
@@ -2250,7 +2302,7 @@ async def web_faq(request: Request):
     </div>
     """
     return HTMLResponse(content=render_base_layout(
-        title="C?u h?i th??ng g?p FAQ - Bubba Gump Clone Shop",
+        title="Câu hỏi thường gặp FAQ - Bubba Gump Clone Shop",
         body_content=content,
         active_nav="faq",
         user=user,
@@ -2289,7 +2341,7 @@ async def web_login_page(request: Request, next: str = Query("/"), error: Option
                         <div class="brand-logo justify-content-center text-white mb-2 fs-3">
                             <i class="fa-solid fa-shrimp"></i> Bubba Gump Shop
                         </div>
-                        <p class="mb-0 small opacity-75">??ng nh?p t?i kho?n Kh?ch h?ng / Qu?n tr? vi?n</p>
+                        <p class="mb-0 small opacity-75">Đăng nhập tài khoản Khách hàng / Quản trị viên</p>
                     </div>
 
                     <div class="card-body p-4 p-md-5">
@@ -2299,33 +2351,37 @@ async def web_login_page(request: Request, next: str = Query("/"), error: Option
                             <input type="hidden" name="next" value="{html.escape(next)}">
 
                             <div class="mb-3">
-                                <label for="usernameInput" class="form-label fw-bold small text-muted">T?n ??ng nh?p / Telegram Username:</label>
+                                <label for="usernameInput" class="form-label fw-bold small text-muted">Tên đăng nhập / Telegram Username:</label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0"><i class="fa-solid fa-user text-purple"></i></span>
-                                    <input type="text" class="form-control border-start-0" id="usernameInput" name="username" placeholder="Nh?p username (ho?c 'admin')" required autofocus>
+                                    <input type="text" class="form-control border-start-0" id="usernameInput" name="username" placeholder="Nhập username (hoặc 'admin')" required autofocus>
                                 </div>
                             </div>
 
                             <div class="mb-4">
-                                <label for="passwordInput" class="form-label fw-bold small text-muted">M?t kh?u:</label>
+                                <label for="passwordInput" class="form-label fw-bold small text-muted">Mật khẩu:</label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0"><i class="fa-solid fa-lock text-purple"></i></span>
-                                    <input type="password" class="form-control border-start-0" id="passwordInput" name="password" placeholder="Nh?p m?t kh?u c?a b?n" required>
+                                    <input type="password" class="form-control border-start-0" id="passwordInput" name="password" placeholder="Nhập mật khẩu của bạn" required>
                                 </div>
                             </div>
 
                             <button type="submit" class="btn btn-purple w-100 py-3 fw-bold rounded-3 shadow-sm mb-3">
-                                <i class="fa-solid fa-right-to-bracket me-2"></i> ??ng nh?p ngay
+                                <i class="fa-solid fa-right-to-bracket me-2"></i> Đăng nhập ngay
                             </button>
                         </form>
 
                         <div class="alert alert-light border small text-muted rounded-3 mb-4">
                             <i class="fa-solid fa-circle-info text-primary me-1"></i>
-                            <strong>D?nh cho Admin:</strong> Khi ??ng nh?p v?i t?i kho?n Admin, tr?n thanh ?i?u h??ng s? t? ??ng xu?t hi?n n?t <strong>[ ?? Chuy?n sang Admin Panel ]</strong> ?? qu?n l? to?n b? h? th?ng!
+                            <strong>Dành cho Admin:</strong> Khi đăng nhập với tài khoản Admin, trên thanh điều hướng sẽ tự động xuất hiện nút <strong>[ ⚙️ Chuyển sang Admin Panel ]</strong> để quản lý toàn bộ hệ thống!
                         </div>
 
-                        <div class="text-center small text-muted">
-                            Ch?a c? t?i kho?n? <a href="/register?next={html.escape(next)}" class="text-purple fw-bold text-decoration-none">??ng k? ngay t?i ??y</a>
+                        <div class="card border border-2 border-primary-subtle bg-purple-subtle shadow-sm rounded-4 p-4 text-center mt-4">
+                            <h6 class="fw-bold text-purple mb-2"><i class="fa-solid fa-user-plus me-2"></i>Chưa có tài khoản Bubba Gump Shop?</h6>
+                            <p class="text-muted small mb-3">Tạo tài khoản chỉ mất 10 giây để mua clone Facebook và nạp tiền tự động 24/7!</p>
+                            <a href="/register?next={html.escape(next)}" class="btn btn-purple btn-lg fw-bold w-100 shadow-sm py-3">
+                                <i class="fa-solid fa-sparkles me-2"></i>👉 ĐĂNG KÝ TÀI KHOẢN MỚI (MIỄN PHÍ)
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -2334,7 +2390,7 @@ async def web_login_page(request: Request, next: str = Query("/"), error: Option
     </div>
     """
     return HTMLResponse(content=render_base_layout(
-        title="??ng nh?p - Bubba Gump Clone Shop",
+        title="Đăng nhập - Bubba Gump Clone Shop",
         body_content=content,
         active_nav="login",
         user=None,
@@ -2356,7 +2412,7 @@ async def web_login_submit(
     target_url = next if next and next.startswith("/") else "/"
 
     async with get_db_session() as session:
-        # 1. KI?M TRA ??NG NH?P ADMIN (username == "admin" ho?c kh?p m?t kh?u admin)
+        # 1. KIỂM TRA ĐĂNG NHẬP ADMIN (username == "admin" hoặc khớp mật khẩu admin)
         is_admin_candidate = (clean_username.lower() == "admin")
         admin_raw_pw = getattr(config, "SQLADMIN_RAW_PASSWORD", "MatKhauAdminCuaBan123")
         admin_hashed = getattr(config, "SQLADMIN_HASHED_PASSWORD", "")
@@ -2368,11 +2424,11 @@ async def web_login_submit(
             is_admin_pw_ok = True
 
         if is_admin_candidate and is_admin_pw_ok:
-            # T?o Token SqlAdmin
+            # Tạo Token SqlAdmin
             admin_token = create_access_token({"sub": UserRole.ADMIN.name})
             request.session["token"] = admin_token
 
-            # ??m b?o c? User record ??i di?n cho admin trong DB
+            # Đảm bảo có User record đại diện cho admin trong DB
             stmt = select(User).where(or_(User.web_username == "admin", User.telegram_username == "admin"))
             admin_user = (await session.execute(stmt)).scalar_one_or_none()
             if not admin_user:
@@ -2395,7 +2451,7 @@ async def web_login_submit(
             }
             return RedirectResponse(url=target_url, status_code=302)
 
-        # 2. KI?M TRA ??NG NH?P USER TH??NG
+        # 2. KIỂM TRA ĐĂNG NHẬP USER THƯỜNG
         stmt_user = select(User).where(or_(User.web_username == clean_username, User.telegram_username == clean_username))
         if clean_username.isdigit():
             stmt_user = select(User).where(or_(
@@ -2417,7 +2473,7 @@ async def web_login_submit(
         if not verify_password(clean_password, user.password_hash):
             return RedirectResponse(url=f"/login?error=M%E1%BA%ADt%20kh%E1%BA%A9u%20kh%C3%B4ng%20ch%C3%ADnh%20x%C3%A1c&next={quote(target_url)}", status_code=302)
 
-        # ??ng nh?p User th?nh c?ng
+        # Đăng nhập User thành công
         is_user_admin = False
         if user.telegram_id in config.ADMIN_ID_LIST or user.web_username == "admin" or user.telegram_username == "admin":
             is_user_admin = True
@@ -2461,9 +2517,9 @@ async def web_register_page(request: Request, next: str = Query("/"), error: Opt
                 <div class="card border-0 shadow-lg rounded-4 overflow-hidden">
                     <div class="p-4 bg-purple text-white text-center">
                         <div class="brand-logo justify-content-center text-white mb-2 fs-3">
-                            <i class="fa-solid fa-user-plus"></i> ??ng K? T?i Kho?n
+                            <i class="fa-solid fa-user-plus"></i> Đăng Ký Tài Khoản
                         </div>
-                        <p class="mb-0 small opacity-75">T?o t?i kho?n mua h?ng &amp; n?p ti?n t? ??ng</p>
+                        <p class="mb-0 small opacity-75">Tạo tài khoản mua hàng &amp; nạp tiền tự động</p>
                     </div>
 
                     <div class="card-body p-4 p-md-5">
@@ -2473,50 +2529,50 @@ async def web_register_page(request: Request, next: str = Query("/"), error: Opt
                             <input type="hidden" name="next" value="{html.escape(next)}">
 
                             <div class="mb-3">
-                                <label for="regUsername" class="form-label fw-bold small text-muted">T?n ??ng nh?p (Username):</label>
+                                <label for="regUsername" class="form-label fw-bold small text-muted">Tên đăng nhập (Username):</label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0"><i class="fa-solid fa-user text-purple"></i></span>
-                                    <input type="text" class="form-control border-start-0" id="regUsername" name="username" placeholder="V? d?: truongmmo99" required minlength="3" maxlength="30" autofocus>
+                                    <input type="text" class="form-control border-start-0" id="regUsername" name="username" placeholder="Ví dụ: truongmmo99" required minlength="3" maxlength="30" autofocus>
                                 </div>
-                                <div class="form-text small">T? 3-30 k? t?, kh?ng d?u, kh?ng kho?ng tr?ng.</div>
+                                <div class="form-text small">Từ 3-30 ký tự, không dấu, không khoảng trắng.</div>
                             </div>
 
                             <div class="mb-3">
-                                <label for="regPassword" class="form-label fw-bold small text-muted">M?t kh?u:</label>
+                                <label for="regPassword" class="form-label fw-bold small text-muted">Mật khẩu:</label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0"><i class="fa-solid fa-lock text-purple"></i></span>
-                                    <input type="password" class="form-control border-start-0" id="regPassword" name="password" placeholder="T?i thi?u 6 k? t?" required minlength="6">
+                                    <input type="password" class="form-control border-start-0" id="regPassword" name="password" placeholder="Tối thiểu 6 ký tự" required minlength="6">
                                 </div>
                             </div>
 
                             <div class="mb-3">
-                                <label for="regConfirmPassword" class="form-label fw-bold small text-muted">Nh?p l?i m?t kh?u:</label>
+                                <label for="regConfirmPassword" class="form-label fw-bold small text-muted">Nhập lại mật khẩu:</label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0"><i class="fa-solid fa-lock-open text-purple"></i></span>
-                                    <input type="password" class="form-control border-start-0" id="regConfirmPassword" name="confirm_password" placeholder="X?c nh?n l?i m?t kh?u" required minlength="6">
+                                    <input type="password" class="form-control border-start-0" id="regConfirmPassword" name="confirm_password" placeholder="Xác nhận lại mật khẩu" required minlength="6">
                                 </div>
                             </div>
 
                             <div class="mb-4">
                                 <label for="regTelegramId" class="form-label fw-bold small text-muted">
-                                    Telegram ID <span class="badge bg-light text-muted border">T?y ch?n</span>:
+                                    Telegram ID <span class="badge bg-light text-muted border">Tùy chọn</span>:
                                 </label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light border-end-0"><i class="fa-brands fa-telegram text-purple"></i></span>
-                                    <input type="text" class="form-control border-start-0" id="regTelegramId" name="telegram_id" placeholder="Nh?p ID bot ?? ??ng b? s? d?">
+                                    <input type="text" class="form-control border-start-0" id="regTelegramId" name="telegram_id" placeholder="Nhập ID bot để đồng bộ số dư">
                                 </div>
                                 <div class="form-text small text-muted">
-                                    <i class="fa-solid fa-link me-1 text-purple"></i> Nh?p Telegram ID c?a b?n ?? <strong>??ng b? ngay s? d?</strong> ?ang c? tr?n Bot sang Web!
+                                    <i class="fa-solid fa-link me-1 text-purple"></i> Nhập Telegram ID của bạn để <strong>đồng bộ ngay số dư</strong> đang có trên Bot sang Web!
                                 </div>
                             </div>
 
                             <button type="submit" class="btn btn-purple w-100 py-3 fw-bold rounded-3 shadow-sm mb-3">
-                                <i class="fa-solid fa-user-check me-2"></i> ??ng k? t?i kho?n
+                                <i class="fa-solid fa-user-check me-2"></i> Đăng ký tài khoản
                             </button>
                         </form>
 
                         <div class="text-center small text-muted">
-                            ?? c? t?i kho?n? <a href="/login?next={html.escape(next)}" class="text-purple fw-bold text-decoration-none">??ng nh?p t?i ??y</a>
+                            Đã có tài khoản? <a href="/login?next={html.escape(next)}" class="text-purple fw-bold text-decoration-none">Đăng nhập tại đây</a>
                         </div>
                     </div>
                 </div>
@@ -2525,7 +2581,7 @@ async def web_register_page(request: Request, next: str = Query("/"), error: Opt
     </div>
     """
     return HTMLResponse(content=render_base_layout(
-        title="??ng k? t?i kho?n - Bubba Gump Clone Shop",
+        title="Đăng ký tài khoản - Bubba Gump Clone Shop",
         body_content=content,
         active_nav="register",
         user=None,
@@ -2559,13 +2615,13 @@ async def web_register_submit(
         return RedirectResponse(url=f"/register?error=M%E1%BA%ADt%20kh%E1%BA%A9u%20x%C3%A1c%20nh%E1%BA%ADn%20kh%C3%B4ng%20kh%E1%BB%9Bp&next={quote(target_url)}", status_code=302)
 
     async with get_db_session() as session:
-        # Ki?m tra tr?ng username
+        # Kiểm tra trùng username
         stmt_chk = select(User).where(or_(User.web_username == clean_un, User.telegram_username == clean_un))
         existing_user = (await session.execute(stmt_chk)).scalar_one_or_none()
         if existing_user and existing_user.web_username == clean_un:
             return RedirectResponse(url=f"/register?error=T%C3%AAn%20%C4%91%C4%83ng%20nh%E1%BA%ADp%20%C4%91%C3%A3%20t%E1%BB%93n%20t%E1%BA%A1i,%20vui%20l%C3%B2ng%20ch%E1%BB%8Dn%20t%C3%AAn%20kh%C3%A1c&next={quote(target_url)}", status_code=302)
 
-        # X? l? Telegram ID n?u c?
+        # Xử lý Telegram ID nếu có
         tid_val = None
         if telegram_id and telegram_id.strip():
             tid_str = telegram_id.strip()
@@ -2574,7 +2630,7 @@ async def web_register_submit(
                 stmt_tg = select(User).where(User.telegram_id == tid_val)
                 tg_user = (await session.execute(stmt_tg)).scalar_one_or_none()
                 if tg_user:
-                    # Li?n k?t t?i kho?n bot s?n c?
+                    # Liên kết tài khoản bot sẵn có
                     tg_user.web_username = clean_un
                     tg_user.password_hash = hash_password(clean_pw)
                     await session_commit(session)
@@ -2586,7 +2642,7 @@ async def web_register_submit(
                     }
                     return RedirectResponse(url=target_url, status_code=302)
 
-        # T?o t?i kho?n m?i
+        # Tạo tài khoản mới
         new_user = User(
             web_username=clean_un,
             password_hash=hash_password(clean_pw),
@@ -2609,4 +2665,3 @@ async def web_register_submit(
 async def web_logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="/", status_code=302)
-

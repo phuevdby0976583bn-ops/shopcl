@@ -17,7 +17,7 @@ from repositories.item import ItemRepository
 from repositories.subcategory import SubcategoryRepository
 from services.media import MediaService
 from utils.utils import get_text
-from services.i18n_messages import get_out_of_stock_text, get_select_quantity_text, get_instant_buy_confirm_text
+from services.i18n_messages import get_out_of_stock_text, get_select_quantity_text, get_instant_buy_confirm_text, get_all_qty_label
 from utils.utils import get_bot_photo_id
 
 
@@ -44,6 +44,17 @@ class SubcategoryService:
                                                                          callback_data.page, session)
         sub_ids = [item.subcategory_id for item in items]
         qty_map = await ItemRepository.get_available_qty_map(sub_ids, session)
+        from models.item import Item
+        from sqlalchemy import select, func
+        sold_map = {}
+        if sub_ids:
+            stmt_sold = (
+                select(Item.subcategory_id, func.count(Item.id))
+                .where(Item.subcategory_id.in_(sub_ids), Item.is_sold == True)
+                .group_by(Item.subcategory_id)
+            )
+            sold_res = await session.execute(stmt_sold)
+            sold_map = {row[0]: int(row[1]) for row in sold_res.all()}
         for item in items:
             if item.subcategory_id in qty_map:
                 available_qty = qty_map[item.subcategory_id]
@@ -56,6 +67,7 @@ class SubcategoryService:
                 subcategory_name=item.subcategory_name,
                 subcategory_price=item.price,
                 available_quantity=available_qty,
+                sold_quantity=sold_map.get(item.subcategory_id, 0),
                 currency_sym=_sym()),
                 callback_data=AllCategoriesCallback.create(
                     level=callback_data.level + 1,
@@ -129,20 +141,7 @@ class SubcategoryService:
         kb_builder = InlineKeyboardBuilder()
 
         if available_qty <= 0:
-            if language == Language.VI:
-                out_of_stock_caption = (
-                    f'📁 <b>Danh mục:</b> <code>{category_dto.name}</code>\n'
-                    f'📦 <b>Loại tài khoản:</b> <code>{subcategory_dto.name}</code>\n\n'
-                    f'❌ <b>Tạm thời hết hàng!</b>\n'
-                    f'Kho hiện tại đã bán hết loại tài khoản này. Vui lòng chọn loại tài khoản khác hoặc liên hệ Admin @truongdvfb để được hỗ trợ nhập thêm hàng.'
-                )
-            else:
-                out_of_stock_caption = (
-                    f'📁 <b>Category:</b> <code>{category_dto.name}</code>\n'
-                    f'📦 <b>Account:</b> <code>{subcategory_dto.name}</code>\n\n'
-                    f'❌ <b>Out of stock!</b>\n'
-                    f'This account type is currently out of stock. Please select another product or contact Admin @truongdvfb.'
-                )
+            out_of_stock_caption = get_out_of_stock_text(language, category_dto.name, subcategory_dto.name)
             kb_builder.row(callback_data.get_back_button(language, lvl=2))
             media = MediaService.convert_to_media(subcategory_dto.media_id, out_of_stock_caption)
             return media, kb_builder
@@ -153,24 +152,8 @@ class SubcategoryService:
         else:
             item_type = get_text(language, BotEntity.COMMON, 'all')
 
-        if language == Language.VI:
-            caption = (
-                f'📁 <b>Danh mục:</b> <code>{category_dto.name}</code>\n'
-                f'📦 <b>Loại tài khoản:</b> <code>{subcategory_dto.name}</code>\n'
-                f'💸 <b>Giá bán:</b> <code>{item_dto.price:.2f} {sym}</code> / nick\n'
-                f'✍️ <b>Mô tả:</b> <i>{item_dto.description}</i>\n'
-                f'🔢 <b>Số lượng có sẵn:</b> <code>{available_qty}</code> cái\n\n'
-                f'🔢 <b>Vui lòng chọn số lượng cần mua:</b>'
-            )
-        else:
-            caption = (
-                f'📁 <b>Category:</b> <code>{category_dto.name}</code>\n'
-                f'📦 <b>Account:</b> <code>{subcategory_dto.name}</code>\n'
-                f'💸 <b>Price:</b> <code>{item_dto.price:.2f} {sym}</code> / acc\n'
-                f'✍️ <b>Description:</b> <i>{item_dto.description}</i>\n'
-                f'🔢 <b>In stock:</b> <code>{available_qty}</code> pcs\n\n'
-                f'🔢 <b>Select quantity to buy:</b>'
-            )
+        desc = getattr(item_dto, 'description', '') or getattr(subcategory_dto, 'description', '') or ''
+        caption = get_select_quantity_text(language, category_dto.name, subcategory_dto.name, item_dto.price, sym, desc, available_qty)
 
         if available_qty <= 10:
             options = list(range(1, available_qty + 1))
@@ -181,7 +164,7 @@ class SubcategoryService:
                 options.append(available_qty)
 
         for qty in options:
-            btn_text = f'Tất cả ({qty})' if (qty == available_qty and qty > 10 and language == Language.VI) else (f'All ({qty})' if (qty == available_qty and qty > 10) else str(qty))
+            btn_text = get_all_qty_label(language, qty) if (qty == available_qty and qty > 10) else str(qty)
             kb_builder.button(text=btn_text, callback_data=AllCategoriesCallback.create(
                 level=callback_data.level + 1,
                 item_type=item_dto.item_type,
@@ -212,49 +195,23 @@ class SubcategoryService:
         is_enough = user_balance >= total_price
         missing = max(0.0, total_price - user_balance)
 
-        if language == Language.VI:
-            status_text = (
-                f'✅ <b>Số dư ví đủ thanh toán. Bấm \'MUA NGAY\' bên dưới để nhận tài khoản tức thì!</b>'
-                if is_enough
-                else f'⚠️ <b>Số dư ví không đủ! Còn thiếu: <code>{missing:.2f} {sym}</code>. Vui lòng nạp tiền vào ví trước khi mua.</b>'
-            )
-            message_text = (
-                f'⚡ <b>XÁC NHẬN MUA TÀI KHOẢN (TRỪ TIỀN TRỰC TIẾP)</b>\n\n'
-                f'📁 <b>Danh mục:</b> <code>{category.name}</code>\n'
-                f'📦 <b>Loại tài khoản:</b> <code>{subcategory.name}</code>\n'
-                f'💸 <b>Đơn giá:</b> <code>{unit_price:.2f} {sym}</code> / nick\n'
-                f'🔢 <b>Số lượng mua:</b> <code>{qty}</code> nick\n'
-                f'💰 <b>TỔNG THANH TOÁN:</b> <code>{total_price:.2f} {sym}</code>\n\n'
-                f'💳 <b>Số dư ví hiện tại:</b> <code>{user_balance:.2f} {sym}</code>\n'
-                f'{status_text}\n\n'
-                f'⚡ <i>Lưu ý: Hệ thống tự động Check Live UID Facebook qua Graph API ngay khi giao hàng, cam kết 100% clone Live!</i>'
-            )
-        else:
-            status_text = (
-                f'✅ <b>Sufficient balance. Click \'BUY NOW\' below to receive accounts immediately!</b>'
-                if is_enough
-                else f'⚠️ <b>Insufficient balance! Missing: <code>{missing:.2f} {sym}</code>. Please top up your wallet.</b>'
-            )
-            message_text = (
-                f'⚡ <b>INSTANT PURCHASE CONFIRMATION</b>\n\n'
-                f'📁 <b>Category:</b> <code>{category.name}</code>\n'
-                f'📦 <b>Account:</b> <code>{subcategory.name}</code>\n'
-                f'💸 <b>Unit Price:</b> <code>{unit_price:.2f} {sym}</code> / acc\n'
-                f'🔢 <b>Quantity:</b> <code>{qty}</code> pcs\n'
-                f'💰 <b>TOTAL AMOUNT:</b> <code>{total_price:.2f} {sym}</code>\n\n'
-                f'💳 <b>Wallet Balance:</b> <code>{user_balance:.2f} {sym}</code>\n'
-                f'{status_text}\n\n'
-                f'⚡ <i>Note: Live Facebook UIDs are automatically verified via Graph API upon delivery!</i>'
-            )
+        message_text, labels = get_instant_buy_confirm_text(
+            language=language,
+            cat_name=category.name if category else "",
+            subcat_name=subcategory.name if subcategory else "",
+            unit_price=unit_price,
+            qty=qty,
+            total_price=total_price,
+            sym=sym,
+            balance=user_balance,
+            is_enough=is_enough,
+            missing=missing
+        )
 
         kb_builder = InlineKeyboardBuilder()
         if is_enough:
-            confirm_label = f'⚡ MUA NGAY ({total_price:.2f} {sym})' if language == Language.VI else f'⚡ BUY NOW ({total_price:.2f} {sym})'
-            back_qty_label = '⬅️ Chọn lại số lượng' if language == Language.VI else '⬅️ Change quantity'
-            cancel_label = '❌ Hủy bỏ' if language == Language.VI else '❌ Cancel'
-
             kb_builder.button(
-                text=confirm_label,
+                text=labels["buy"],
                 callback_data=AllCategoriesCallback.create(
                     level=5,
                     item_type=callback_data.item_type,
@@ -265,7 +222,7 @@ class SubcategoryService:
                 )
             )
             kb_builder.button(
-                text=back_qty_label,
+                text=labels["back_qty"],
                 callback_data=AllCategoriesCallback.create(
                     level=3,
                     item_type=callback_data.item_type,
@@ -274,7 +231,7 @@ class SubcategoryService:
                 )
             )
             kb_builder.button(
-                text=cancel_label,
+                text=labels["cancel"],
                 callback_data=AllCategoriesCallback.create(
                     level=2,
                     item_type=callback_data.item_type,
@@ -283,15 +240,11 @@ class SubcategoryService:
             )
             kb_builder.adjust(1, 2)
         else:
-            binance_label = f'🟡 Nạp Binance Pay (0% Phí - Nhận ngay 1s)' if language == Language.VI else f'🟡 Deposit Binance Pay (0% Fee)'
-            crypto_label = '💳 Cổng Nạp On-chain Crypto' if language == Language.VI else '💳 Deposit On-chain Crypto'
-            back_qty_label = '⬅️ Chọn lại số lượng' if language == Language.VI else '⬅️ Change quantity'
-            cancel_label = '❌ Hủy bỏ' if language == Language.VI else '❌ Cancel'
-
-            kb_builder.button(text=binance_label, callback_data='binance_pay:view')
-            kb_builder.button(text=crypto_label, callback_data='deposit:start')
+            kb_builder.button(text=labels["binance"], callback_data='binance_pay:view')
+            kb_builder.button(text=labels["bank"], callback_data='dep_method:bank')
+            kb_builder.button(text=labels["crypto"], callback_data='deposit:start')
             kb_builder.button(
-                text=back_qty_label,
+                text=labels["back_qty"],
                 callback_data=AllCategoriesCallback.create(
                     level=3,
                     item_type=callback_data.item_type,
@@ -300,14 +253,14 @@ class SubcategoryService:
                 )
             )
             kb_builder.button(
-                text=cancel_label,
+                text=labels["cancel"],
                 callback_data=AllCategoriesCallback.create(
                     level=2,
                     item_type=callback_data.item_type,
                     category_id=callback_data.category_id
                 )
             )
-            kb_builder.adjust(1, 1, 2)
+            kb_builder.adjust(1, 1, 1, 2)
 
         return message_text, kb_builder
 

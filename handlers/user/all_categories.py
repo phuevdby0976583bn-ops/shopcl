@@ -171,7 +171,7 @@ async def execute_instant_buy(**kwargs):
         return await show_subcategories_in_category(**kwargs)
 
     try:
-        user = await UserRepository.get_by_tgid(callback.from_user.id, session)
+        user = await UserRepository.get_by_tgid(callback.from_user.id, session, for_update=True)
         if not user:
             return await callback.answer('Vui lòng gõ /start để khởi tạo tài khoản!', show_alert=True)
 
@@ -184,9 +184,25 @@ async def execute_instant_buy(**kwargs):
         unit_price = (getattr(subcategory, 'price', None) or (getattr(item, 'price', 0.0) if item else 0.0)) or 0.0
         if not item and not (subcategory and getattr(subcategory, 'price', None)):
             kb_builder = InlineKeyboardBuilder()
-            btn_other = '📁 Xem sản phẩm khác' if language == Language.VI else '📁 View Other Products'
+            btn_other = {
+                Language.VI: "📁 Xem sản phẩm khác",
+                Language.ZH: "📁 查看其他商品",
+                Language.HI: "📁 अन्य उत्पाद देखें",
+                Language.FR: "📁 Voir d'autres produits",
+                Language.DE: "📁 Andere Produkte ansehen",
+                Language.IT: "📁 Vedi altri prodotti",
+                Language.ES: "📁 Ver otros productos"
+            }.get(language, "📁 View Other Products")
             kb_builder.button(text=btn_other, callback_data=AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL))
-            out_msg = '❌ <b>Sản phẩm này tạm thời hết hàng hoặc không tồn tại.</b>' if language == Language.VI else '❌ <b>This product is currently out of stock or does not exist.</b>'
+            out_msg = {
+                Language.VI: "❌ <b>Sản phẩm này tạm thời hết hàng hoặc không tồn tại.</b>",
+                Language.ZH: "❌ <b>该商品暂时缺货或不存在。</b>",
+                Language.HI: "❌ <b>यह उत्पाद वर्तमान में स्टॉक में नहीं है या मौजूद नहीं है।</b>",
+                Language.FR: "❌ <b>Ce produit est actuellement en rupture de stock ou n'existe pas.</b>",
+                Language.DE: "❌ <b>Dieses Produkt ist derzeit nicht vorrätig oder existiert nicht.</b>",
+                Language.IT: "❌ <b>Questo prodotto è temporaneamente esaurito o non esiste.</b>",
+                Language.ES: "❌ <b>Este producto está agotado temporalmente o no existe.</b>"
+            }.get(language, "❌ <b>This product is currently out of stock or does not exist.</b>")
             return await _send_or_edit_text(callback, out_msg, kb_builder.as_markup())
 
         qty = callback_data.quantity or 1
@@ -198,10 +214,45 @@ async def execute_instant_buy(**kwargs):
         if user_balance < total_price:
             missing = total_price - user_balance
             kb_builder = InlineKeyboardBuilder()
-            btn_bin = '⚡ Nạp Binance Pay (0% Phí - Tự Động)' if language == Language.VI else '⚡ Binance Pay (0% Fee - Instant)'
-            btn_on = '💳 Nạp On-chain Crypto (USDT)' if language == Language.VI else '💳 Crypto Deposit (USDT)'
-            btn_re = '⬅️ Chọn lại số lượng' if language == Language.VI else '⬅️ Change Quantity'
+            btn_bin = {
+                Language.VI: "⚡ Nạp Binance Pay (0% Phí - Tự Động)",
+                Language.ZH: "⚡ 币安支付 (0手续费 - 秒到)",
+                Language.HI: "⚡ Binance Pay (0% शुल्क)",
+                Language.FR: "⚡ Binance Pay (0% Frais)",
+                Language.DE: "⚡ Binance Pay (0% Gebühr)",
+                Language.IT: "⚡ Binance Pay (0% Commissioni)",
+                Language.ES: "⚡ Binance Pay (0% Comisión)"
+            }.get(language, "⚡ Binance Pay (0% Fee - Instant)")
+            btn_bank = {
+                Language.VI: "🏦 Nạp Ngân Hàng (VietQR / BIDV)",
+                Language.ZH: "🏦 越南银行卡 (VietQR / BIDV)",
+                Language.HI: "🏦 वियतनाम बैंक (VietQR / BIDV)",
+                Language.FR: "🏦 Banque Vietnam (VietQR / BIDV)",
+                Language.DE: "🏦 Vietnam Bank (VietQR / BIDV)",
+                Language.IT: "🏦 Banca Vietnam (VietQR / BIDV)",
+                Language.ES: "🏦 Banco Vietnam (VietQR / BIDV)"
+            }.get(language, "🏦 Vietnam Bank (VietQR / BIDV)")
+            btn_on = {
+                Language.VI: "💳 Nạp On-chain Crypto (USDT)",
+                Language.ZH: "💳 链上充值 (USDT)",
+                Language.HI: "💳 ऑन-चेन क्रिप्टो (USDT)",
+                Language.FR: "💳 Dépôt Crypto On-chain (USDT)",
+                Language.DE: "💳 On-chain Krypto (USDT)",
+                Language.IT: "💳 Deposito On-chain (USDT)",
+                Language.ES: "💳 Depósito On-chain (USDT)"
+            }.get(language, "💳 Crypto Deposit (USDT)")
+            btn_re = {
+                Language.VI: "⬅️ Chọn lại số lượng",
+                Language.ZH: "⬅️ 重选数量",
+                Language.HI: "⬅️ मात्रा बदलें",
+                Language.FR: "⬅️ Changer la quantité",
+                Language.DE: "⬅️ Menge ändern",
+                Language.IT: "⬅️ Cambia quantità",
+                Language.ES: "⬅️ Cambiar cantidad"
+            }.get(language, "⬅️ Change Quantity")
+
             kb_builder.button(text=btn_bin, callback_data='binance_pay:view')
+            kb_builder.button(text=btn_bank, callback_data='dep_method:bank')
             kb_builder.button(text=btn_on, callback_data='deposit:start')
             kb_builder.button(
                 text=btn_re,
@@ -212,23 +263,66 @@ async def execute_instant_buy(**kwargs):
                     subcategory_id=callback_data.subcategory_id
                 )
             )
-            kb_builder.adjust(1, 1, 1)
-            if language == Language.VI:
-                insufficient_msg = (
+            kb_builder.adjust(1, 1, 1, 1)
+
+            insufficient_templates = {
+                Language.VI: (
                     f'❌ <b>Số dư ví không đủ để thanh toán!</b>\n\n'
                     f'💰 <b>Cần thanh toán:</b> <code>{total_price:.2f} {sym}</code>\n'
                     f'💳 <b>Số dư hiện tại:</b> <code>{user_balance:.2f} {sym}</code>\n'
                     f'⚠️ <b>Còn thiếu:</b> <code>{missing:.2f} {sym}</code>\n\n'
                     f'👉 Vui lòng nạp thêm tiền vào tài khoản để nhận clone ngay lập tức!'
-                )
-            else:
-                insufficient_msg = (
-                    f'❌ <b>Insufficient wallet balance!</b>\n\n'
-                    f'💰 <b>Amount needed:</b> <code>{total_price:.2f} {sym}</code>\n'
-                    f'💳 <b>Current balance:</b> <code>{user_balance:.2f} {sym}</code>\n'
-                    f'⚠️ <b>Missing:</b> <code>{missing:.2f} {sym}</code>\n\n'
-                    f'👉 Please top up your wallet to receive accounts immediately!'
-                )
+                ),
+                Language.ZH: (
+                    f'❌ <b>钱包余额不足以完成支付！</b>\n\n'
+                    f'💰 <b>需付金额:</b> <code>{total_price:.2f} {sym}</code>\n'
+                    f'💳 <b>当前余额:</b> <code>{user_balance:.2f} {sym}</code>\n'
+                    f'⚠️ <b>还缺:</b> <code>{missing:.2f} {sym}</code>\n\n'
+                    f'👉 请先充值后即可秒发卡！'
+                ),
+                Language.HI: (
+                    f'❌ <b>भुगतान के लिए वॉलेट में अपर्याप्त शेष राशि!</b>\n\n'
+                    f'💰 <b>आवश्यक राशि:</b> <code>{total_price:.2f} {sym}</code>\n'
+                    f'💳 <b>वर्तमान शेष:</b> <code>{user_balance:.2f} {sym}</code>\n'
+                    f'⚠️ <b>कमी:</b> <code>{missing:.2f} {sym}</code>\n\n'
+                    f'👉 तुरंत खाता प्राप्त करने के लिए कृपया वॉलेट टॉप अप करें!'
+                ),
+                Language.FR: (
+                    f'❌ <b>Solde insuffisant pour effectuer le paiement !</b>\n\n'
+                    f'💰 <b>Montant requis :</b> <code>{total_price:.2f} {sym}</code>\n'
+                    f'💳 <b>Solde actuel :</b> <code>{user_balance:.2f} {sym}</code>\n'
+                    f'⚠️ <b>Manquant :</b> <code>{missing:.2f} {sym}</code>\n\n'
+                    f'👉 Veuillez recharger votre portefeuille pour recevoir vos comptes immédiatement !'
+                ),
+                Language.DE: (
+                    f'❌ <b>Nicht genügend Guthaben für diese Zahlung!</b>\n\n'
+                    f'💰 <b>Erforderlich:</b> <code>{total_price:.2f} {sym}</code>\n'
+                    f'💳 <b>Aktuelles Guthaben:</b> <code>{user_balance:.2f} {sym}</code>\n'
+                    f'⚠️ <b>Fehlend:</b> <code>{missing:.2f} {sym}</code>\n\n'
+                    f'👉 Bitte laden Sie Ihr Wallet auf, um Ihre Konten sofort zu erhalten!'
+                ),
+                Language.IT: (
+                    f'❌ <b>Saldo insufficiente per completare il pagamento!</b>\n\n'
+                    f'💰 <b>Importo richiesto:</b> <code>{total_price:.2f} {sym}</code>\n'
+                    f'💳 <b>Saldo attuale:</b> <code>{user_balance:.2f} {sym}</code>\n'
+                    f'⚠️ <b>Mancante:</b> <code>{missing:.2f} {sym}</code>\n\n'
+                    f'👉 Ricarica il portafoglio per ricevere gli account immediatamente!'
+                ),
+                Language.ES: (
+                    f'❌ <b>¡Saldo insuficiente para realizar el pago!</b>\n\n'
+                    f'💰 <b>Monto requerido:</b> <code>{total_price:.2f} {sym}</code>\n'
+                    f'💳 <b>Saldo actual:</b> <code>{user_balance:.2f} {sym}</code>\n'
+                    f'⚠️ <b>Faltan:</b> <code>{missing:.2f} {sym}</code>\n\n'
+                    f'👉 ¡Por favor recarga tu billetera para recibir tus cuentas de inmediato!'
+                ),
+            }
+            insufficient_msg = insufficient_templates.get(language, (
+                f'❌ <b>Insufficient wallet balance!</b>\n\n'
+                f'💰 <b>Amount needed:</b> <code>{total_price:.2f} {sym}</code>\n'
+                f'💳 <b>Current balance:</b> <code>{user_balance:.2f} {sym}</code>\n'
+                f'⚠️ <b>Missing:</b> <code>{missing:.2f} {sym}</code>\n\n'
+                f'👉 Please top up your wallet to receive accounts immediately!'
+            ))
             return await _send_or_edit_text(callback, insufficient_msg, kb_builder.as_markup())
 
         # Lấy danh sách ứng viên tài khoản trong kho
@@ -401,12 +495,49 @@ async def execute_instant_buy(**kwargs):
         items_block = '\n\n'.join(formatted_items)
 
         kb_builder = InlineKeyboardBuilder()
-        if language == Language.VI:
-            btn_view = f'📦 Xem đơn hàng #{buy_dto.id}'
-            btn_more = '🛒 Mua tiếp tài khoản khác'
-            btn_policy = '🛡️ Chính sách bảo hành & Miễn trừ'
-            btn_supp = '💬 Hỗ trợ Admin (@truongdvfb)'
-            success_header = (
+        btn_view_map = {
+            Language.VI: f'📦 Xem đơn hàng #{buy_dto.id}',
+            Language.ZH: f'📦 查看订单 #{buy_dto.id}',
+            Language.HI: f'📦 ऑर्डर #{buy_dto.id} देखें',
+            Language.FR: f'📦 Voir commande #{buy_dto.id}',
+            Language.DE: f'📦 Bestellung #{buy_dto.id} ansehen',
+            Language.IT: f'📦 Visualizza ordine #{buy_dto.id}',
+            Language.ES: f'📦 Ver pedido #{buy_dto.id}'
+        }
+        btn_more_map = {
+            Language.VI: '🛒 Mua tiếp tài khoản khác',
+            Language.ZH: '🛒 继续购买其他商品',
+            Language.HI: '🛒 और खाते खरीदें',
+            Language.FR: '🛒 Acheter d\'autres comptes',
+            Language.DE: '🛒 Weitere Konten kaufen',
+            Language.IT: '🛒 Acquista altri account',
+            Language.ES: '🛒 Comprar más cuentas'
+        }
+        btn_policy_map = {
+            Language.VI: '🛡️ Chính sách bảo hành & Miễn trừ',
+            Language.ZH: '🛡️ 售后保障与条款',
+            Language.HI: '🛡️ वारंटी नीति और नियम',
+            Language.FR: '🛡️ Politique de garantie',
+            Language.DE: '🛡️ Garantie & Richtlinien',
+            Language.IT: '🛡️ Politica di garanzia',
+            Language.ES: '🛡️ Política de garantía'
+        }
+        btn_supp_map = {
+            Language.VI: '💬 Hỗ trợ Admin (@truongdvfb)',
+            Language.ZH: '💬 客服支持 (@truongdvfb)',
+            Language.HI: '💬 एडमिन सपोर्ट (@truongdvfb)',
+            Language.FR: '💬 Support Admin (@truongdvfb)',
+            Language.DE: '💬 Admin-Support (@truongdvfb)',
+            Language.IT: '💬 Supporto Admin (@truongdvfb)',
+            Language.ES: '💬 Soporte Admin (@truongdvfb)'
+        }
+        btn_view = btn_view_map.get(language, f'📦 View Order #{buy_dto.id}')
+        btn_more = btn_more_map.get(language, '🛒 Buy More Accounts')
+        btn_policy = btn_policy_map.get(language, '🛡️ Warranty Policy & Legal')
+        btn_supp = btn_supp_map.get(language, '💬 Admin Support (@truongdvfb)')
+
+        headers = {
+            Language.VI: (
                 f'🎉 <b>MUA HÀNG THÀNH CÔNG!</b>\n\n'
                 f'🧾 <b>Mã đơn hàng:</b> <code>#{buy_dto.id}</code>\n'
                 f'📁 <b>Danh mục:</b> <code>{cat_name}</code>\n'
@@ -414,37 +545,102 @@ async def execute_instant_buy(**kwargs):
                 f'🔢 <b>Số lượng:</b> <code>{len(purchased_items)}</code> nick\n'
                 f'💰 <b>Tổng thanh toán:</b> <code>{total_price:.2f} {sym}</code> (Đã trừ ví)\n'
                 f'💳 <b>Số dư ví còn lại:</b> <code>{remaining_balance:.2f} {sym}</code>\n\n'
-            )
-            full_text = (
-                success_header +
-                f'━━━━━━━━━━━━━━━━━━\n'
-                f'📦 <b>DANH SÁCH TÀI KHOẢN CỦA BẠN:</b>\n'
-                f'{items_block}\n'
-                f'━━━━━━━━━━━━━━━━━━\n'
-                f'🛡️ <b>Bảo hành:</b> 24h lỗi 1 đổi 1. Điều khoản & Miễn trừ: /policy. Hỗ trợ Admin: @truongdvfb'
-            )
-        else:
-            btn_view = f'📦 View Order #{buy_dto.id}'
-            btn_more = '🛒 Buy More Accounts'
-            btn_policy = '🛡️ Warranty Policy & Legal'
-            btn_supp = '💬 Admin Support (@truongdvfb)'
-            success_header = (
-                f'🎉 <b>PURCHASE SUCCESSFUL!</b>\n\n'
-                f'🧾 <b>Order ID:</b> <code>#{buy_dto.id}</code>\n'
-                f'📁 <b>Category:</b> <code>{cat_name}</code>\n'
+            ),
+            Language.ZH: (
+                f'🎉 <b>购买成功！</b>\n\n'
+                f'🧾 <b>订单编号:</b> <code>#{buy_dto.id}</code>\n'
+                f'📁 <b>商品分类:</b> <code>{cat_name}</code>\n'
+                f'📦 <b>账号类型:</b> <code>{subcat_name}</code>\n'
+                f'🔢 <b>购买数量:</b> <code>{len(purchased_items)}</code> 个\n'
+                f'💰 <b>实付金额:</b> <code>{total_price:.2f} {sym}</code> (已从余额扣除)\n'
+                f'💳 <b>剩余钱包余额:</b> <code>{remaining_balance:.2f} {sym}</code>\n\n'
+            ),
+            Language.HI: (
+                f'🎉 <b>खरीद सफल!</b>\n\n'
+                f'🧾 <b>ऑर्डर आईडी:</b> <code>#{buy_dto.id}</code>\n'
+                f'📁 <b>श्रेणी:</b> <code>{cat_name}</code>\n'
+                f'📦 <b>खाता प्रकार:</b> <code>{subcat_name}</code>\n'
+                f'🔢 <b>मात्रा:</b> <code>{len(purchased_items)}</code>\n'
+                f'💰 <b>कुल भुगतान:</b> <code>{total_price:.2f} {sym}</code> (वॉलेट से काटा गया)\n'
+                f'💳 <b>शेष राशि:</b> <code>{remaining_balance:.2f} {sym}</code>\n\n'
+            ),
+            Language.FR: (
+                f'🎉 <b>ACHAT RÉUSSI !</b>\n\n'
+                f'🧾 <b>ID commande :</b> <code>#{buy_dto.id}</code>\n'
+                f'📁 <b>Catégorie :</b> <code>{cat_name}</code>\n'
+                f'📦 <b>Compte :</b> <code>{subcat_name}</code>\n'
+                f'🔢 <b>Quantité :</b> <code>{len(purchased_items)}</code> pcs\n'
+                f'💰 <b>Total payé :</b> <code>{total_price:.2f} {sym}</code> (Déduit du solde)\n'
+                f'💳 <b>Solde restant :</b> <code>{remaining_balance:.2f} {sym}</code>\n\n'
+            ),
+            Language.DE: (
+                f'🎉 <b>KAUF ERFOLGREICH!</b>\n\n'
+                f'🧾 <b>Bestell-ID:</b> <code>#{buy_dto.id}</code>\n'
+                f'📁 <b>Kategorie:</b> <code>{cat_name}</code>\n'
+                f'📦 <b>Konto:</b> <code>{subcat_name}</code>\n'
+                f'🔢 <b>Menge:</b> <code>{len(purchased_items)}</code> Stk.\n'
+                f'💰 <b>Bezahlt:</b> <code>{total_price:.2f} {sym}</code> (Vom Wallet abgebucht)\n'
+                f'💳 <b>Restguthaben:</b> <code>{remaining_balance:.2f} {sym}</code>\n\n'
+            ),
+            Language.IT: (
+                f'🎉 <b>ACQUISTO COMPLETATO!</b>\n\n'
+                f'🧾 <b>ID Ordine:</b> <code>#{buy_dto.id}</code>\n'
+                f'📁 <b>Categoria:</b> <code>{cat_name}</code>\n'
                 f'📦 <b>Account:</b> <code>{subcat_name}</code>\n'
-                f'🔢 <b>Quantity:</b> <code>{len(purchased_items)}</code> pcs\n'
-                f'💰 <b>Total Paid:</b> <code>{total_price:.2f} {sym}</code> (Debited from wallet)\n'
-                f'💳 <b>Remaining Balance:</b> <code>{remaining_balance:.2f} {sym}</code>\n\n'
+                f'🔢 <b>Quantità:</b> <code>{len(purchased_items)}</code> pz\n'
+                f'💰 <b>Totale pagato:</b> <code>{total_price:.2f} {sym}</code> (Scalato dal saldo)\n'
+                f'💳 <b>Saldo residuo:</b> <code>{remaining_balance:.2f} {sym}</code>\n\n'
+            ),
+            Language.ES: (
+                f'🎉 <b>¡COMPRA EXITOSA!</b>\n\n'
+                f'🧾 <b>ID Pedido:</b> <code>#{buy_dto.id}</code>\n'
+                f'📁 <b>Categoría:</b> <code>{cat_name}</code>\n'
+                f'📦 <b>Cuenta:</b> <code>{subcat_name}</code>\n'
+                f'🔢 <b>Cantidad:</b> <code>{len(purchased_items)}</code> uds\n'
+                f'💰 <b>Total pagado:</b> <code>{total_price:.2f} {sym}</code> (Debitado de billetera)\n'
+                f'💳 <b>Saldo restante:</b> <code>{remaining_balance:.2f} {sym}</code>\n\n'
             )
-            full_text = (
-                success_header +
-                f'━━━━━━━━━━━━━━━━━━\n'
-                f'📦 <b>YOUR ACCOUNTS:</b>\n'
-                f'{items_block}\n'
-                f'━━━━━━━━━━━━━━━━━━\n'
-                f'🛡️ <b>Warranty:</b> 24h replacement guarantee. Terms: /policy. Support: @truongdvfb'
-            )
+        }
+        success_header = headers.get(language, (
+            f'🎉 <b>PURCHASE SUCCESSFUL!</b>\n\n'
+            f'🧾 <b>Order ID:</b> <code>#{buy_dto.id}</code>\n'
+            f'📁 <b>Category:</b> <code>{cat_name}</code>\n'
+            f'📦 <b>Account:</b> <code>{subcat_name}</code>\n'
+            f'🔢 <b>Quantity:</b> <code>{len(purchased_items)}</code> pcs\n'
+            f'💰 <b>Total Paid:</b> <code>{total_price:.2f} {sym}</code> (Debited from wallet)\n'
+            f'💳 <b>Remaining Balance:</b> <code>{remaining_balance:.2f} {sym}</code>\n\n'
+        ))
+
+        acc_headers = {
+            Language.VI: '📦 <b>DANH SÁCH TÀI KHOẢN CỦA BẠN:</b>',
+            Language.ZH: '📦 <b>您的账号列表：</b>',
+            Language.HI: '📦 <b>आपके खातों की सूची:</b>',
+            Language.FR: '📦 <b>VOS COMPTES :</b>',
+            Language.DE: '📦 <b>IHRE KONTEN:</b>',
+            Language.IT: '📦 <b>I TUOI ACCOUNT:</b>',
+            Language.ES: '📦 <b>TUS CUENTAS:</b>'
+        }
+        acc_hdr = acc_headers.get(language, '📦 <b>YOUR ACCOUNTS:</b>')
+
+        policy_footers = {
+            Language.VI: '🛡️ <b>Bảo hành:</b> 24h lỗi 1 đổi 1. Điều khoản: /policy. Hỗ trợ: @truongdvfb',
+            Language.ZH: '🛡️ <b>售后保证:</b> 24小时内首登问题1换1。条款: /policy。客服: @truongdvfb',
+            Language.HI: '🛡️ <b>वारंटी:</b> 24 घंटे में प्रतिस्थापन। नियम: /policy। सहायता: @truongdvfb',
+            Language.FR: '🛡️ <b>Garantie :</b> Remplacement 1 pour 1 en 24h. Politique : /policy. Support : @truongdvfb',
+            Language.DE: '🛡️ <b>Garantie:</b> 24h 1-zu-1 Ersatz. Richtlinien: /policy. Support: @truongdvfb',
+            Language.IT: '🛡️ <b>Garanzia:</b> Sostituzione 1 a 1 entro 24h. Termini: /policy. Supporto: @truongdvfb',
+            Language.ES: '🛡️ <b>Garantía:</b> Reemplazo 1 a 1 en 24h. Términos: /policy. Soporte: @truongdvfb'
+        }
+        policy_foot = policy_footers.get(language, '🛡️ <b>Warranty:</b> 24h 1-to-1 replacement. Policy: /policy. Support: @truongdvfb')
+
+        full_text = (
+            success_header +
+            f'━━━━━━━━━━━━━━━━━━\n'
+            f'{acc_hdr}\n'
+            f'{items_block}\n'
+            f'━━━━━━━━━━━━━━━━━━\n'
+            f'{policy_foot}\n'
+        )
         kb_builder.button(text=btn_view, callback_data=MyProfileCallback.create(level=4, buy_id=buy_dto.id))
         kb_builder.button(text=btn_more, callback_data=AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL))
         kb_builder.button(text=btn_policy, callback_data='view_full_policy')
@@ -573,34 +769,16 @@ async def execute_global_search(target: Message | CallbackQuery, query: str, ses
             kb_builder.button(text=f"📁 {cat.name}", callback_data=cb.pack())
 
         kb_builder.adjust(1)
-        btn_all = "📦 Xem tất cả sản phẩm" if language == Language.VI else "📦 All Products"
+        from services.i18n_messages import get_search_results_text
+        msg_text, btn_all = get_search_results_text(language, clean_query, found=True)
         cb_all = AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL)
         kb_builder.row(InlineKeyboardButton(text=btn_all, callback_data=cb_all.pack()))
-
-        msg_text = (
-            f'🔎 <b>KẾT QUẢ TÌM KIẾM CHO:</b> "<code>{clean_query}</code>"\n'
-            f"━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👇 <i>Vui lòng chọn sản phẩm bạn muốn mua bên dưới:</i>"
-        ) if language == Language.VI else (
-            f'🔎 <b>SEARCH RESULTS FOR:</b> "<code>{clean_query}</code>"\n'
-            f"━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👇 <i>Please choose a product below:</i>"
-        )
     else:
-        btn_all = "📦 Xem tất cả sản phẩm" if language == Language.VI else "📦 All Products"
+        from services.i18n_messages import get_search_results_text
+        msg_text, btn_all = get_search_results_text(language, clean_query, found=False)
         cb_all = AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL)
         kb_builder.button(text=btn_all, callback_data=cb_all.pack())
         kb_builder.adjust(1)
-
-        msg_text = (
-            f'🔎 Không tìm thấy sản phẩm nào phù hợp với từ khoá "<b>{clean_query}</b>".\n'
-            f"━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👇 Bạn có thể bấm <b>{btn_all}</b> để xem toàn bộ danh mục tài khoản:"
-        ) if language == Language.VI else (
-            f'🔎 No products found matching "<b>{clean_query}</b>".\n'
-            f"━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👇 Click below to view all available products:"
-        )
 
     await _send_or_edit_text(target, msg_text, kb_builder.as_markup())
 

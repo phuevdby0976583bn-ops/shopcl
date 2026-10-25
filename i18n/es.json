@@ -328,7 +328,7 @@
     "purchases": "🧾 <b>Tus compras:</b>",
     "refresh_balance_button": "🔄 Actualizar saldo",
     "refund_notification": "↩️ Se te ha reembolsado {currency_sym}{total_price:.2f} por la compra de {quantity} uds. de {subcategory}",
-    "subcategory_button": "📦 {subcategory_name}| Precio: {currency_sym}{subcategory_price:.2f} | Disp.: {available_quantity}",
+    "subcategory_button": "📦 {subcategory_name} | Precio: {currency_sym}{subcategory_price:.2f} | Stock: {available_quantity} | Vendido: {sold_quantity}",
     "subcategories": "📦 <b>Subcategorías:</b>",
     "top_up_balance_button": "➕ Recargar saldo",
     "usdc_erc20_top_up": "USDC ERC-20",

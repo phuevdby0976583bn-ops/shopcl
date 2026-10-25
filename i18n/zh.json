@@ -328,7 +328,7 @@
     "purchases": "🧾 <b>您的购买：</b>",
     "refresh_balance_button": "🔄 刷新余额",
     "refund_notification": "↩️ 您已收到退款 {currency_sym}{total_price:.2f}，对应商品：{quantity} 件 {subcategory}",
-    "subcategory_button": "📦 {subcategory_name} | 价格：{currency_sym}{subcategory_price:.2f} | 库存：{available_quantity}",
+    "subcategory_button": "📦 {subcategory_name} | 价格: {currency_sym}{subcategory_price:.2f} | 库存: {available_quantity} | 已售: {sold_quantity}",
     "subcategories": "📦 <b>子分类：</b>",
     "top_up_balance_button": "➕ 充值余额",
     "usdc_erc20_top_up": "USDC ERC-20",

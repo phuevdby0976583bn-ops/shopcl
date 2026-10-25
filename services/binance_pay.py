@@ -1,3 +1,4 @@
+import asyncio
 import io
 import time
 import hmac
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class BinancePayService:
+    _deposit_lock: asyncio.Lock | None = None
     @staticmethod
     async def fetch_binance_pay_transactions() -> list[dict]:
         api_key = getattr(config, "BINANCE_API_KEY", "") or ""
@@ -71,6 +73,13 @@ class BinancePayService:
 
     @staticmethod
     async def process_and_credit_transactions(bot, session: AsyncSession, target_order_id: int = None, target_telegram_id: int = None) -> list[dict]:
+        if BinancePayService._deposit_lock is None:
+            BinancePayService._deposit_lock = asyncio.Lock()
+        async with BinancePayService._deposit_lock:
+            return await BinancePayService._process_and_credit_transactions_internal(bot, session, target_order_id, target_telegram_id)
+
+    @staticmethod
+    async def _process_and_credit_transactions_internal(bot, session: AsyncSession, target_order_id: int = None, target_telegram_id: int = None) -> list[dict]:
         tx_list = await BinancePayService.fetch_binance_pay_transactions()
         if not tx_list:
             return []

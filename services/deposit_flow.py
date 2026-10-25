@@ -260,7 +260,7 @@ class DepositFlowService:
         if not user:
             from models.user import UserDTO
             from services.user import UserService
-            await UserService.create_if_not_exist(UserDTO(telegram_id=telegram_id), session)
+            await UserService.create_if_not_exist(UserDTO(telegram_id=telegram_id), None, session)
             user = (await session.execute(stmt_u)).scalar_one_or_none()
 
         binance_uid = (
@@ -354,7 +354,7 @@ class DepositFlowService:
         if not user:
             from models.user import UserDTO
             from services.user import UserService
-            await UserService.create_if_not_exist(UserDTO(telegram_id=telegram_id), session)
+            await UserService.create_if_not_exist(UserDTO(telegram_id=telegram_id), None, session)
             user = (await session.execute(stmt_u)).scalar_one_or_none()
 
         network_name = NETWORK_DISPLAY_NAMES.get(network_code, network_code)

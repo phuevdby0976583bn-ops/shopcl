@@ -16,7 +16,8 @@ class KeyboardButton(Enum):
     ADMIN_MENU = "MENU"
 
     def get_localized(self, language: Language):
-        return get_text(language, BotEntity.COMMON, "button")
+        bot_entity = BotEntity.ADMIN if self == KeyboardButton.ADMIN_MENU else BotEntity.USER
+        return get_text(language, bot_entity, self.value.lower())
 
     @staticmethod
     def get_localized_set(button: 'KeyboardButton') -> set[str]:

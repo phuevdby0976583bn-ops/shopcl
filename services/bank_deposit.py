@@ -1,3 +1,4 @@
+import asyncio
 import io
 import re
 import random
@@ -70,6 +71,7 @@ def build_vietqr_emvco_payload(bin_code: str, account_no: str, amount_vnd: int, 
 
 
 class BankDepositService:
+    _deposit_lock: asyncio.Lock | None = None
     @staticmethod
     def generate_vietqr_image(bin_code: str, account_no: str, amount_vnd: int, memo: str, bank_code: str = "BIDV") -> BufferedInputFile:
         """Sinh mã QR VietQR chuẩn, vẽ logo ngân hàng BIDV màu xanh ngọc ở giữa."""
@@ -114,7 +116,7 @@ class BankDepositService:
         if not user:
             from models.user import UserDTO
             from services.user import UserService
-            await UserService.create_if_not_exist(UserDTO(telegram_id=telegram_id), session)
+            await UserService.create_if_not_exist(UserDTO(telegram_id=telegram_id), None, session)
             user = (await session.execute(stmt_u)).scalar_one_or_none()
 
         account_number = getattr(config, "BANK_ACCOUNT_NUMBER", "8880117869") or "8880117869"
@@ -202,6 +204,13 @@ class BankDepositService:
 
     @staticmethod
     async def process_and_credit_transactions(bot, session: AsyncSession, target_telegram_id: int = None, target_order_id: int = None) -> list[dict]:
+        if BankDepositService._deposit_lock is None:
+            BankDepositService._deposit_lock = asyncio.Lock()
+        async with BankDepositService._deposit_lock:
+            return await BankDepositService._process_and_credit_transactions_internal(bot, session, target_telegram_id, target_order_id)
+
+    @staticmethod
+    async def _process_and_credit_transactions_internal(bot, session: AsyncSession, target_telegram_id: int = None, target_order_id: int = None) -> list[dict]:
         """
         Quét giao dịch ngân hàng từ ThueApi.pro (endpoint: /historyapibidvv2/:token).
         Tự động phân tích nội dung NAP {telegram_id}, quy đổi tỷ giá và cộng tiền vào tài khoản.
