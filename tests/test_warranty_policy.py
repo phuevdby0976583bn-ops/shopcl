@@ -149,3 +149,52 @@ async def test_run_py_handle_wallet_executes_cleanly():
     assert "Số dư khả dụng" in kwargs.get("text", "")
     kb = kwargs.get("reply_markup")
     assert kb is not None
+
+
+@pytest.mark.asyncio
+async def test_unified_views_settings_and_policy():
+    from admin_settings_view import PaymentApiConfigView
+    from admin_policy_view import WarrantyPolicyAdminView
+    from utils.utils import create_access_token
+
+    token = create_access_token({"sub": "admin"})
+    req = MagicMock()
+    req.session = {"token": token}
+    req.query_params = {}
+
+    settings_view = PaymentApiConfigView()
+    resp_settings = await settings_view.settings_page(req)
+    assert resp_settings.status_code == 200
+    html_settings = resp_settings.body.decode("utf-8")
+
+    policy_view = WarrantyPolicyAdminView()
+    resp_policy = await policy_view.policy_page(req)
+    assert resp_policy.status_code == 200
+    html_policy = resp_policy.body.decode("utf-8")
+
+    # Both must contain all 6 tabs in navbar
+    for tab_id in ["tab-binance", "tab-usdt", "tab-bank", "tab-facebook", "tab-bonus", "tab-policy"]:
+        assert tab_id in html_settings
+        assert tab_id in html_policy
+
+    # In settings page, Binance is active
+    assert 'class="nav-link active" id="tab-binance-nav"' in html_settings
+    assert 'class="tab-pane fade show active" id="tab-binance"' in html_settings
+    assert 'class="nav-link" id="tab-policy-nav"' in html_settings
+
+    # In policy page, Policy is active
+    assert 'class="nav-link active" id="tab-policy-nav"' in html_policy
+    assert 'class="tab-pane fade show active" id="tab-policy"' in html_policy
+    assert 'class="nav-link" id="tab-binance-nav"' in html_policy
+
+    # Both contain min deposit inputs
+    assert "binance_min_deposit" in html_settings
+    assert "binance_min_deposit" in html_policy
+    assert "bank_min_deposit" in html_settings
+    assert "bank_min_deposit" in html_policy
+
+    # Both contain policy forms
+    assert "form_fb_hours" in html_settings
+    assert "form_fb_hours" in html_policy
+    assert "generateAndSaveFromEasyForm" in html_settings
+    assert "generateAndSaveFromEasyForm" in html_policy

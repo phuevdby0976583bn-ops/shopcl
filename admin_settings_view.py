@@ -1,30 +1,20 @@
-from sqladmin import BaseView, expose
+import html as html_lib
+import json
+import os
 from fastapi import Request
+from sqladmin import BaseView, expose
 from starlette.responses import HTMLResponse, RedirectResponse
-from utils.utils import decode_token
+
 import config
+from utils.utils import decode_token
+from services.policy_defaults import (
+    DEFAULT_WARRANTY_LEGAL_POLICY,
+    DEFAULT_WARRANTY_SHORT_SUMMARY,
+)
 
 
-class PaymentApiConfigView(BaseView):
-    name = "Cài đặt & Clone FB"
-    icon = "fa-solid fa-sliders"
+async def render_unified_settings_page(request: Request, default_active_tab: str = 'binance') -> HTMLResponse:
 
-    def is_accessible(self, request: Request) -> bool:
-        try:
-            token = request.session.get("token")
-            return bool(token and decode_token(token))
-        except Exception:
-            return False
-
-    def is_visible(self, request: Request) -> bool:
-        try:
-            token = request.session.get("token")
-            return bool(token and decode_token(token))
-        except Exception:
-            return False
-
-    @expose("/settings", methods=["GET"])
-    async def settings_page(self, request: Request):
         # 1. Bắt buộc kiểm tra đăng nhập Admin
         try:
             token = request.session.get("token")
@@ -122,6 +112,22 @@ class PaymentApiConfigView(BaseView):
         else:
             preview_bonus_html = f"Nhập số USDT muốn nạp (tối thiểu {min_deposit_usdt:g}):\n\n{preview_text}"
 
+        
+        current_policy = cur_settings.get("WARRANTY_LEGAL_POLICY") or DEFAULT_WARRANTY_LEGAL_POLICY
+        current_summary = cur_settings.get("WARRANTY_SHORT_SUMMARY") or DEFAULT_WARRANTY_SHORT_SUMMARY
+        policy_escaped = html_lib.escape(current_policy)
+        summary_escaped = html_lib.escape(current_summary)
+        default_policy_json = json.dumps(DEFAULT_WARRANTY_LEGAL_POLICY)
+        default_summary_json = json.dumps(DEFAULT_WARRANTY_SHORT_SUMMARY)
+        initial_policy_json = json.dumps(current_policy)
+        initial_summary_json = json.dumps(current_summary)
+
+        is_policy_active = (default_active_tab == "policy")
+        binance_nav_cls = "nav-link" if is_policy_active else "nav-link active"
+        binance_pane_cls = "tab-pane fade" if is_policy_active else "tab-pane fade show active"
+        policy_nav_cls = "nav-link active" if is_policy_active else "nav-link"
+        policy_pane_cls = "tab-pane fade show active" if is_policy_active else "tab-pane fade"
+
         html_content = f"""<!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -139,9 +145,92 @@ class PaymentApiConfigView(BaseView):
         .step-badge {{ display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: #0d6efd; color: #fff; font-weight: bold; font-size: 0.85rem; margin-right: 8px; }}
         .step-badge.success {{ background: #10b981; }}
         .step-badge.warning {{ background: #f59e0b; }}
+    
+        .editor-textarea {{
+            background-color: #ffffff;
+            color: #0f172a;
+            font-family: "Fira Code", Consolas, "Courier New", monospace;
+            font-size: 13.5px;
+            line-height: 1.6;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 16px;
+            resize: vertical;
+        }}
+        .editor-textarea:focus {{
+            background-color: #ffffff;
+            color: #0f172a;
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15);
+        }}
+        .tg-mockup {{
+            max-width: 480px;
+            margin: 0 auto;
+            background: #17212b;
+            border-radius: 24px;
+            border: 8px solid #0e1621;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }}
+        .tg-header {{
+            background: #242f3d;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid #10161f;
+        }}
+        .tg-avatar {{
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #0284c7;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            margin-right: 12px;
+        }}
+        .tg-body {{
+            background: #0e1621;
+            padding: 16px;
+            min-height: 420px;
+            max-height: 550px;
+            overflow-y: auto;
+        }}
+        .tg-bubble {{
+            background: #182533;
+            color: #f5f5f5;
+            padding: 14px 16px;
+            border-radius: 12px 12px 12px 2px;
+            font-size: 13.5px;
+            line-height: 1.5;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }}
+        .tg-bubble b {{ color: #ffffff; font-weight: 700; }}
+        .tg-bubble i {{ color: #94a3b8; font-style: italic; }}
+        .tg-button {{
+            background: #2b5278;
+            color: #ffffff;
+            border-radius: 8px;
+            padding: 8px 12px;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 600;
+            margin-top: 6px;
+            cursor: pointer;
+        }}
+
     </style>
 </head>
 <body class="p-3 p-md-4">
+    <!-- Safe JSON Payloads for Policy & Settings -->
+    <script type="application/json" id="data-default-policy">{default_policy_json}</script>
+    <script type="application/json" id="data-default-summary">{default_summary_json}</script>
+    <script type="application/json" id="data-initial-policy">{initial_policy_json}</script>
+    <script type="application/json" id="data-initial-summary">{initial_summary_json}</script>
     <div class="container-fluid" style="max-width: 1400px;">
         <!-- Header -->
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom">
@@ -157,7 +246,7 @@ class PaymentApiConfigView(BaseView):
         <!-- Navigation Tabs -->
         <ul class="nav nav-pills mb-4" id="pills-tab" role="tablist">
             <li class="nav-item">
-                <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tab-binance">
+                <button class="{binance_nav_cls}" id="tab-binance-nav" data-bs-toggle="pill" data-bs-target="#tab-binance">
                     <i class="fa-brands fa-bitcoin text-warning me-1"></i> 1. Cổng Nạp Binance Pay (0% Phí - Quét Mã App & API)
                 </button>
             </li>
@@ -181,11 +270,16 @@ class PaymentApiConfigView(BaseView):
                     <i class="fa-solid fa-gift text-danger me-1"></i> 5. Khuyến Mãi Nạp Tiền (Deposit Bonus)
                 </button>
             </li>
+                    <li class="nav-item">
+                <button class="{policy_nav_cls}" id="tab-policy-nav" data-bs-toggle="pill" data-bs-target="#tab-policy" type="button" role="tab">
+                    <i class="fa-solid fa-shield-halved text-primary me-1"></i> 6. Ch?nh S?ch & B?o H?nh (Ph?p L? & Telegram)
+                </button>
+            </li>
         </ul>
 
         <div class="tab-content" id="pills-tabContent">
             <!-- TAB 1: BINANCE PAY -->
-            <div class="tab-pane fade show active" id="tab-binance">
+            <div class="{binance_pane_cls}" id="tab-binance">
                 <div class="row g-4">
                     <!-- Cột 1: Form lưu trực tiếp -->
                     <div class="col-lg-6">
@@ -804,6 +898,311 @@ class PaymentApiConfigView(BaseView):
                     </div>
                 </div>
             </div>
+
+            <!-- TAB 6: CH?NH S?CH B?O H?NH & PH?P L? -->
+            <div class="{policy_pane_cls}" id="tab-policy" role="tabpanel">
+        <ul class="nav nav-pills mb-4" id="policyTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tab-easy-btn" data-bs-toggle="pill" data-bs-target="#tab-easy" type="button" role="tab">
+                    <i class="fa-solid fa-wand-magic-sparkles me-2"></i>1. Nhập Nhanh Theo Mục (Dễ dùng nhất)
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-full-btn" data-bs-toggle="pill" data-bs-target="#tab-full" type="button" role="tab">
+                    <i class="fa-solid fa-file-contract me-2"></i>2. Soạn Thảo Toàn Văn (Gõ /policy)
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-summary-btn" data-bs-toggle="pill" data-bs-target="#tab-summary" type="button" role="tab">
+                    <i class="fa-solid fa-list-check me-2"></i>3. Bản Tóm Tắt Nhanh (Gõ /support & Sau khi Mua)
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-preview-btn" data-bs-toggle="pill" data-bs-target="#tab-preview" type="button" role="tab">
+                    <i class="fa-brands fa-telegram text-info me-2"></i>4. Mô Phỏng Telegram (Live Preview)
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="policyTabsContent">
+            <!-- TAB 1: NHAP NHANH THEO MUC (CUC KY DE DUNG) -->
+            <div class="tab-pane fade show active" id="tab-easy" role="tabpanel">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0 fw-bold">
+                            <i class="fa-solid fa-sliders text-warning me-2"></i>Cài Đặt Điều Khoản Theo Từng Mặt Hàng (Ai Cũng Chỉnh Sửa Được)
+                        </h5>
+                        <span class="badge bg-primary">Không cần gõ thẻ HTML</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info py-2 small mb-4">
+                            <i class="fa-solid fa-circle-info me-1"></i> <b>Hướng dẫn:</b> Bạn chỉ cần thay đổi số giờ hoặc ghi chú ngắn gọn bên dưới. Bấm nút <b>"✨ Tự Động Ghép & Lưu Vào Supabase"</b> ở cuối trang, hệ thống sẽ tự động ghép thành văn bản pháp lý chuyên nghiệp và gửi lên Bot Telegram!
+                        </div>
+
+                        <div class="row g-4">
+                            <!-- 1. Facebook -->
+                            <div class="col-md-6">
+                                <div class="p-3 rounded border border-primary-subtle shadow-sm bg-light bg-opacity-25 h-100">
+                                    <h6 class="fw-bold text-primary mb-3">
+                                        <i class="fa-brands fa-facebook me-2"></i>1. Tài Khoản Facebook (Clone, Via, BM)
+                                    </h6>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-secondary fw-bold">Thời gian bảo hành (1 đổi 1):</label>
+                                        <div class="input-group">
+                                            <input type="text" class="form-control form-control fw-bold" id="form_fb_hours" value="24 giờ">
+                                            <span class="input-group-text bg-secondary text-dark border">tính từ lúc mua</span>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-secondary fw-bold">Điều kiện được bảo hành:</label>
+                                        <textarea class="form-control form-control small" id="form_fb_warranty" rows="2">Sai mật khẩu ban đầu, sai mã 2FA, checkpoint/die TRƯỚC thời điểm mua (Hệ thống có Auto-check Live UID trước khi giao hàng).</textarea>
+                                    </div>
+                                    <div class="mb-0">
+                                        <label class="form-label small text-secondary fw-bold">Từ chối bảo hành khi:</label>
+                                        <textarea class="form-control form-control small" id="form_fb_refuse" rows="2">Đã login thành công; checkpoint do IP bẩn / proxy bẩn / thiết bị spam; spam vi phạm chính sách Meta; tự ý đổi mail/pass làm checkpoint; quá hạn bảo hành.</textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 2. AI -->
+                            <div class="col-md-6">
+                                <div class="p-3 rounded border border-info-subtle shadow-sm bg-light bg-opacity-25 h-100">
+                                    <h6 class="fw-bold text-info mb-3">
+                                        <i class="fa-solid fa-robot me-2"></i>2. Tài Khoản AI (ChatGPT Plus/Team, Claude Pro, Midjourney)
+                                    </h6>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-secondary fw-bold">Chính sách bảo hành gói Pro/Plus:</label>
+                                        <textarea class="form-control form-control small" id="form_ai_warranty" rows="2">1 đổi 1 hoặc hoàn tiền/gia hạn lại gói nếu mất quyền lợi Pro/Plus trong suốt thời hạn cam kết.</textarea>
+                                    </div>
+                                    <div class="mb-0">
+                                        <label class="form-label small text-secondary fw-bold">Từ chối bảo hành khi:</label>
+                                        <textarea class="form-control form-control small" id="form_ai_refuse" rows="3">Dùng chung tài khoản cho nhiều người (share public), spam prompt vi phạm ToS của OpenAI/Anthropic dẫn đến tài khoản bị cấm.</textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 3. CapCut Pro -->
+                            <div class="col-md-6">
+                                <div class="p-3 rounded border border-warning-subtle shadow-sm bg-light bg-opacity-25 h-100">
+                                    <h6 class="fw-bold text-warning mb-3">
+                                        <i class="fa-solid fa-video me-2"></i>3. Tài Khoản CapCut Pro
+                                    </h6>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-secondary fw-bold">Chính sách bảo hành:</label>
+                                        <textarea class="form-control form-control small" id="form_capcut_warranty" rows="2">Bảo hành toàn bộ thời hạn gói mua (1 tháng, 6 tháng, 1 năm). 1 đổi 1 nếu văng Pro hoặc lỗi kỹ thuật từ hệ thống.</textarea>
+                                    </div>
+                                    <div class="mb-0">
+                                        <label class="form-label small text-secondary fw-bold">Quy định số lượng thiết bị:</label>
+                                        <input type="text" class="form-control form-control small" id="form_capcut_devices" value="Tối đa 1-2 thiết bị theo quy định, nghiêm cấm share bên thứ ba">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 4. VPN -->
+                            <div class="col-md-6">
+                                <div class="p-3 rounded border border-success-subtle shadow-sm bg-light bg-opacity-25 h-100">
+                                    <h6 class="fw-bold text-success mb-3">
+                                        <i class="fa-solid fa-shield-halved me-2"></i>4. Tài Khoản VPN (NordVPN, ExpressVPN, Surfshark...)
+                                    </h6>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-secondary fw-bold">Chính sách bảo hành:</label>
+                                        <textarea class="form-control form-control small" id="form_vpn_warranty" rows="2">1 đổi 1 suốt thời hạn gói nếu tài khoản mất quyền truy cập hoặc bị thu hồi bản quyền.</textarea>
+                                    </div>
+                                    <div class="mb-0">
+                                        <label class="form-label small text-secondary fw-bold">Nghiêm cấm hành vi:</label>
+                                        <input type="text" class="form-control form-control small" id="form_vpn_refuse" value="Cấm dùng VPN để tấn công mạng, DDoS, hack, torrent vi phạm bản quyền">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 5. Phap ly & Admin -->
+                            <div class="col-12">
+                                <div class="p-3 rounded border border-danger-subtle shadow-sm bg-light bg-opacity-25">
+                                    <h6 class="fw-bold text-danger mb-3">
+                                        <i class="fa-solid fa-scale-balanced me-2"></i>5. Căn Cứ Pháp Lý Việt Nam & Kênh Hỗ Trợ
+                                    </h6>
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label small text-secondary fw-bold">Tuyên bố miễn trừ trách nhiệm (Luật An ninh mạng):</label>
+                                            <textarea class="form-control form-control small" id="form_disclaimer" rows="2">Bên mua chịu 100% trách nhiệm trước pháp luật Việt Nam. Shop là đơn vị trung gian kỹ thuật số và hoàn toàn miễn trừ mọi trách nhiệm pháp lý liên đới.</textarea>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small text-secondary fw-bold">Telegram Admin hỗ trợ:</label>
+                                            <div class="input-group mb-2">
+                                                <span class="input-group-text bg-secondary text-dark border"><i class="fa-brands fa-telegram"></i></span>
+                                                <input type="text" class="form-control form-control fw-bold text-info" id="form_admin_handle" value="@truongdvfb">
+                                            </div>
+                                            <small class="text-secondary">Thời gian xử lý bảo hành: <b>15 - 30 phút</b></small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="saveResultEasy" class="mt-4" style="display: none;"></div>
+
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-4 pt-3 border-top border">
+                            <button type="button" class="btn btn-outline-warning" onclick="resetEasyFormToDefaults()">
+                                <i class="fa-solid fa-rotate-left me-1"></i> Điền Lại Giá Trị Mặc Định
+                            </button>
+                            <button type="button" class="btn btn-success btn-lg px-4 fw-bold shadow" onclick="generateAndSaveFromEasyForm()">
+                                <i class="fa-solid fa-wand-magic-sparkles me-2"></i>✨ Tự Động Ghép & Lưu Vào Supabase
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- TAB 2: SOAN THAO TOAN VAN -->
+            <div class="tab-pane fade" id="tab-full" role="tabpanel">
+                <div class="row g-4">
+                    <div class="col-lg-8">
+                        <div class="card h-100">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0 fw-bold">
+                                    <i class="fa-solid fa-pen-to-square text-info me-2"></i>Soạn Thảo Toàn Văn Chính Sách
+                                </h5>
+                                <div class="small text-secondary" id="charCountFull">
+                                    Độ dài: <span class="fw-bold text-info" id="charNum">0</span> ký tự | <span class="fw-bold text-success" id="wordNum">0</span> từ
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+                                    <span class="small text-secondary me-1"><i class="fa-solid fa-wand-magic-sparkles me-1"></i>Chèn nhanh:</span>
+                                    <button type="button" class="btn btn-sm btn-outline-info" onclick="insertClause('fb')">
+                                        <i class="fa-brands fa-facebook me-1"></i> + Mục Facebook
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="insertClause('ai')">
+                                        <i class="fa-solid fa-robot me-1"></i> + Mục AI (ChatGPT)
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-warning" onclick="insertClause('capcut')">
+                                        <i class="fa-solid fa-video me-1"></i> + Mục CapCut
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-success" onclick="insertClause('vpn')">
+                                        <i class="fa-solid fa-shield-halved me-1"></i> + Mục VPN
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="insertClause('disclaimer')">
+                                        <i class="fa-solid fa-scale-balanced me-1"></i> + Miễn Trừ Pháp Lý
+                                    </button>
+                                </div>
+
+                                <textarea class="form-control editor-textarea w-100" id="policyContentInput" rows="18">{policy_escaped}</textarea>
+
+                                <div id="saveResultFull" class="mt-3" style="display: none;"></div>
+
+                                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-4 pt-3 border-top border">
+                                    <div class="d-flex gap-2">
+                                        <button type="button" class="btn btn-outline-warning" onclick="resetToDefaultPolicy()">
+                                            <i class="fa-solid fa-rotate-left me-1"></i> Khôi Phục Mẫu Chuẩn
+                                        </button>
+                                        <button type="button" class="btn btn-outline-info" onclick="switchToPreview()">
+                                            <i class="fa-solid fa-eye me-1"></i> Xem Trên Telegram
+                                        </button>
+                                    </div>
+                                    <button type="button" class="btn btn-primary px-4 fw-bold" onclick="savePolicyFull()">
+                                        <i class="fa-solid fa-floppy-disk me-1"></i> Lưu Toàn Văn Vào Supabase
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-4">
+                        <div class="card h-100">
+                            <div class="card-header">
+                                <h6 class="card-title mb-0 fw-bold">
+                                    <i class="fa-solid fa-book-bookmark text-warning me-2"></i>Cẩm Nang Điều Khoản Pháp Lý
+                                </h6>
+                            </div>
+                            <div class="card-body small text-secondary">
+                                <div class="mb-3">
+                                    <h6 class="text-info fw-bold mb-1"><i class="fa-solid fa-triangle-exclamation text-warning me-1"></i> Tại sao cần Điều khoản?</h6>
+                                    <p class="mb-0">Việt Nam có <b>Luật An ninh mạng 2018</b> và <b>Nghị định 15/2020/NĐ-CP</b>. Khi bạn bán clone FB hoặc account số, nếu không ghi rõ tuyên bố miễn trừ và mục đích sử dụng hợp pháp, shop có thể bị quy kết liên đới nếu người mua dùng account đi lừa đảo, chống phá hoặc vi phạm pháp luật.</p>
+                                </div>
+                                <hr class="border">
+                                <div class="mb-3">
+                                    <h6 class="text-success fw-bold mb-1"><i class="fa-solid fa-shield-heart me-1"></i> Thẻ HTML hỗ trợ bởi Telegram:</h6>
+                                    <ul class="ps-3 mb-0">
+                                        <li><code>&lt;b&gt;in đậm&lt;/b&gt;</code></li>
+                                        <li><code>&lt;i&gt;in nghiêng&lt;/i&gt;</code></li>
+                                        <li><code>&lt;u&gt;gạch chân&lt;/u&gt;</code></li>
+                                        <li><code>&lt;s&gt;gạch ngang&lt;/s&gt;</code></li>
+                                        <li><code>&lt;code&gt;mã lệnh / copy nhanh&lt;/code&gt;</code></li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: BAN TOM TAT NHANH -->
+            <div class="tab-pane fade" id="tab-summary" role="tabpanel">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0 fw-bold">
+                            <i class="fa-solid fa-list-check text-success me-2"></i>Bản Tóm Tắt Nhanh (Gõ /support & Gửi Kèm Khi Mua Hàng)
+                        </h5>
+                        <div class="small text-secondary" id="charCountSum">
+                            Độ dài: <span class="fw-bold text-info" id="charNumSum">0</span> ký tự
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-secondary py-2 small mb-3">
+                            <i class="fa-solid fa-circle-info me-1"></i> Bản tóm tắt này sẽ tự động hiển thị khi khách bấm lệnh <b>/support</b> hoặc được đính kèm vào hóa đơn ngay sau khi khách mua hàng thành công.
+                        </div>
+
+                        <textarea class="form-control editor-textarea w-100" id="summaryContentInput" rows="12">{summary_escaped}</textarea>
+
+                        <div id="saveResultSummary" class="mt-3" style="display: none;"></div>
+
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-4 pt-3 border-top border">
+                            <button type="button" class="btn btn-outline-warning" onclick="resetToDefaultSummary()">
+                                <i class="fa-solid fa-rotate-left me-1"></i> Khôi Phục Mẫu Tóm Tắt Mặc Định
+                            </button>
+                            <button type="button" class="btn btn-success px-4 fw-bold" onclick="saveSummary()">
+                                <i class="fa-solid fa-floppy-disk me-1"></i> Lưu Bản Tóm Tắt Vào Supabase
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: MO PHONG TELEGRAM -->
+            <div class="tab-pane fade" id="tab-preview" role="tabpanel">
+                <div class="row justify-content-center">
+                    <div class="col-lg-6">
+                        <div class="card">
+                            <div class="card-header text-center">
+                                <h6 class="card-title mb-0 fw-bold">
+                                    <i class="fa-brands fa-telegram text-info me-2"></i>Mô Phỏng Trực Tiếp Giao Diện Telegram Của Khách Hàng
+                                </h6>
+                            </div>
+                            <div class="card-body p-3">
+                                <div class="tg-mockup">
+                                    <div class="tg-header">
+                                        <div class="tg-avatar">🤖</div>
+                                        <div>
+                                            <div class="fw-bold text-dark" style="font-size: 15px;">Shop Clone FB & TK Số</div>
+                                            <div class="text-secondary" style="font-size: 12px;">bot • @shopcl_bot</div>
+                                        </div>
+                                    </div>
+                                    <div class="tg-body">
+                                        <div class="tg-bubble" id="tgBubbleContent">
+                                            <!-- Preview rendered live -->
+                                        </div>
+                                        <div class="tg-button mt-3">
+                                            <i class="fa-solid fa-arrow-left me-1"></i> Quay lại Menu Chính
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+            </div>
         </div>
     </div>
 
@@ -1139,7 +1538,257 @@ function saveBankSettings() {{
                 resBox.innerHTML = '<span class="text-danger">Lỗi kết nối: ' + err.message + '</span>';
             }}
         }}
+            const defaultPolicy = JSON.parse(document.getElementById('data-default-policy').textContent);
+        const defaultSummary = JSON.parse(document.getElementById('data-default-summary').textContent);
+        const initialPolicy = JSON.parse(document.getElementById('data-initial-policy').textContent);
+        const initialSummary = JSON.parse(document.getElementById('data-initial-summary').textContent);
+
+        const policyTextarea = document.getElementById('policyContentInput');
+        const summaryTextarea = document.getElementById('summaryContentInput');
+
+        if (!policyTextarea.value.trim()) {{
+            policyTextarea.value = initialPolicy || defaultPolicy;
+        }}
+        if (!summaryTextarea.value.trim()) {{
+            summaryTextarea.value = initialSummary || defaultSummary;
+        }}
+
+        function updateCounts() {{
+            const val = policyTextarea.value || '';
+            const charEl = document.getElementById('charNum');
+            const wordEl = document.getElementById('wordNum');
+            if (charEl) charEl.innerText = val.length.toLocaleString();
+            if (wordEl) {{
+                const words = val.trim() ? val.trim().split(/\\s+/).length : 0;
+                wordEl.innerText = words.toLocaleString();
+            }}
+
+            const sumVal = summaryTextarea.value || '';
+            const charSumEl = document.getElementById('charNumSum');
+            if (charSumEl) charSumEl.innerText = sumVal.length.toLocaleString();
+
+            updateTelegramPreview();
+        }}
+
+        function updateTelegramPreview() {{
+            const raw = policyTextarea.value || defaultPolicy;
+            const bubble = document.getElementById('tgBubbleContent');
+            if (bubble) bubble.innerHTML = raw;
+        }}
+
+        policyTextarea.addEventListener('input', updateCounts);
+        summaryTextarea.addEventListener('input', updateCounts);
+        updateCounts();
+
+        function switchToPreview() {{
+            const triggerEl = document.getElementById('tab-preview-btn');
+            if (triggerEl) {{
+                const tab = bootstrap.Tab.getInstance(triggerEl) || new bootstrap.Tab(triggerEl);
+                tab.show();
+            }}
+        }}
+
+        function insertClause(type) {{
+            let snippet = '';
+            if (type === 'fb') {{
+                snippet = '\n• <b>Tài khoản Facebook:</b> 1 đổi 1 trong 24h nếu sai pass, sai 2FA, die trước khi mua (Auto-check live UID). Từ chối nếu đã login thành công, IP bẩn hoặc vi phạm ToS Meta.\n';
+            }} else if (type === 'ai') {{
+                snippet = '\n• <b>Tài khoản AI (ChatGPT/Claude/Midjourney):</b> Bảo hành tụt gói Pro trong suốt thời hạn cam kết. Không bảo hành nếu share account công khai hoặc vi phạm ToS OpenAI.\n';
+            }} else if (type === 'capcut') {{
+                snippet = '\n• <b>Tài khoản CapCut Pro:</b> Bảo hành đúng thời hạn gói đã mua (1 đổi 1 nếu văng Pro). Từ chối nếu đăng nhập quá 2 thiết bị.\n';
+            }} else if (type === 'vpn') {{
+                snippet = '\n• <b>Tài khoản VPN:</b> Bảo hành kết nối và bản quyền suốt gói. Từ chối nếu dùng VPN để hack, DDoS, tấn công mạng.\n';
+            }} else if (type === 'disclaimer') {{
+                snippet = '\n⚖️ <b>TUYÊN BỐ MIỄN TRỪ TRÁCH NHIỆM:</b> Bên mua chịu 100% trách nhiệm trước pháp luật Việt Nam (Luật An ninh mạng & NĐ 15/2020/NĐ-CP). Shop là đơn vị trung gian kỹ thuật và hoàn toàn miễn trừ mọi trách nhiệm liên đới.\n';
+            }}
+            const curPos = policyTextarea.selectionStart || 0;
+            const text = policyTextarea.value;
+            policyTextarea.value = text.slice(0, curPos) + snippet + text.slice(curPos);
+            updateCounts();
+            policyTextarea.focus();
+        }}
+
+        function resetToDefaultPolicy() {{
+            if (confirm('Khôi phục toàn văn chính sách về mẫu chuẩn mặc định?')) {{
+                policyTextarea.value = defaultPolicy;
+                updateCounts();
+            }}
+        }}
+
+        function resetToDefaultSummary() {{
+            if (confirm('Khôi phục bản tóm tắt về mẫu mặc định?')) {{
+                summaryTextarea.value = defaultSummary;
+                updateCounts();
+            }}
+        }}
+
+        function resetEasyFormToDefaults() {{
+            document.getElementById('form_fb_hours').value = '24 giờ';
+            document.getElementById('form_fb_warranty').value = 'Sai mật khẩu ban đầu, sai mã 2FA, checkpoint/die TRƯỚC thời điểm mua (Hệ thống có Auto-check Live UID trước khi giao hàng).';
+            document.getElementById('form_fb_refuse').value = 'Đã login thành công; checkpoint do IP bẩn / proxy bẩn / thiết bị spam; spam vi phạm chính sách Meta; tự ý đổi mail/pass làm checkpoint; quá hạn bảo hành.';
+            document.getElementById('form_ai_warranty').value = '1 đổi 1 hoặc hoàn tiền/gia hạn lại gói nếu mất quyền lợi Pro/Plus trong suốt thời hạn cam kết.';
+            document.getElementById('form_ai_refuse').value = 'Dùng chung tài khoản cho nhiều người (share public), spam prompt vi phạm ToS của OpenAI/Anthropic dẫn đến tài khoản bị cấm.';
+            document.getElementById('form_capcut_warranty').value = 'Bảo hành toàn bộ thời hạn gói mua (1 tháng, 6 tháng, 1 năm). 1 đổi 1 nếu văng Pro hoặc lỗi kỹ thuật từ hệ thống.';
+            document.getElementById('form_capcut_devices').value = 'Tối đa 1-2 thiết bị theo quy định, nghiêm cấm share bên thứ ba';
+            document.getElementById('form_vpn_warranty').value = '1 đổi 1 suốt thời hạn gói nếu tài khoản mất quyền truy cập hoặc bị thu hồi bản quyền.';
+            document.getElementById('form_vpn_refuse').value = 'Cấm dùng VPN để tấn công mạng, DDoS, hack, torrent vi phạm bản quyền';
+            document.getElementById('form_disclaimer').value = 'Bên mua chịu 100% trách nhiệm trước pháp luật Việt Nam. Shop là đơn vị trung gian kỹ thuật số và hoàn toàn miễn trừ mọi trách nhiệm pháp lý liên đới.';
+            document.getElementById('form_admin_handle').value = '@truongdvfb';
+            alert('Đã đưa các ô về giá trị chuẩn mặc định!');
+        }}
+
+        function generateAndSaveFromEasyForm() {{
+            const fbH = document.getElementById('form_fb_hours').value.trim();
+            const fbW = document.getElementById('form_fb_warranty').value.trim();
+            const fbR = document.getElementById('form_fb_refuse').value.trim();
+            const aiW = document.getElementById('form_ai_warranty').value.trim();
+            const aiR = document.getElementById('form_ai_refuse').value.trim();
+            const ccW = document.getElementById('form_capcut_warranty').value.trim();
+            const ccD = document.getElementById('form_capcut_devices').value.trim();
+            const vpnW = document.getElementById('form_vpn_warranty').value.trim();
+            const vpnR = document.getElementById('form_vpn_refuse').value.trim();
+            const discl = document.getElementById('form_disclaimer').value.trim();
+            const adm = document.getElementById('form_admin_handle').value.trim() || '@truongdvfb';
+
+            const assembledFull = [
+                '🛡️ <b>CHÍNH SÁCH BẢO HÀNH & TUYÊN BỐ MIỄN TRỪ TRÁCH NHIỆM PHÁP LÝ</b>',
+                '<i>(Căn cứ Luật An ninh mạng số 24/2018/QH14 & Nghị định 15/2020/NĐ-CP)</i>',
+                '━━━━━━━━━━━━━━━━━━━━━━━━━',
+                '',
+                '<b>I. MỤC ĐÍCH CUNG CẤP & SỬ DỤNG HỢP PHÁP</b>',
+                '1. Mọi tài khoản số do hệ thống cung cấp (Facebook Clone/Via/BM, AI: ChatGPT/Claude, CapCut Pro, VPN...) được cung cấp <b>ĐỘC QUYỀN</b> cho học tập, nghiên cứu công nghệ, QA testing, marketing sạch tuân thủ pháp luật Việt Nam.',
+                '2. Khách hàng cam kết tuân thủ nghiêm ngặt mọi quy định pháp luật nước CHXHCN Việt Nam và ToS nền tảng gốc.',
+                '',
+                '<b>II. CÁC HÀNH VI BỊ NGHIÊM CẤM TUYỆT ĐỐI (PHÁP LUẬT VN)</b>',
+                '❌ Chống phá Nhà nước, kích động gây rối an ninh trật tự.',
+                '❌ Lừa đảo chiếm đoạt tài sản, giả mạo danh tính, rửa tiền.',
+                '❌ Phát tán tin giả, văn hóa phẩm đồi trụy, xuyên tạc vu khống.',
+                '❌ Cờ bạc, cá độ, giao dịch tài chính phi pháp.',
+                '❌ Tấn công mạng DDoS, phát tán mã độc, virus.',
+                '',
+                '<b>III. TUYÊN BỐ MIỄN TRỪ TRÁCH NHIỆM</b>',
+                '⚖️ <b>Trách nhiệm độc lập:</b> BÊN MUA CHỊU HOÀN TOÀN TRÁCH NHIỆM 100% TRƯỚC PHÁP LUẬT VIỆT NAM về mọi hoạt động sử dụng tài khoản.',
+                '⚖️ <b>Miễn trừ:</b> ' + discl,
+                '',
+                '<b>IV. CHÍNH SÁCH BẢO HÀNH THEO SẢN PHẨM</b>',
+                '<b>1. Tài khoản Facebook (Clone, Via, BM):</b>',
+                '• <b>Bảo hành 1 đổi 1 trong ' + fbH + ':</b> ' + fbW,
+                '• <b>Từ chối bảo hành:</b> ' + fbR,
+                '',
+                '<b>2. Tài khoản AI (ChatGPT Plus/Team, Claude Pro, Midjourney...):</b>',
+                '• <b>Bảo hành:</b> ' + aiW,
+                '• <b>Từ chối:</b> ' + aiR,
+                '',
+                '<b>3. Tài khoản CapCut Pro:</b>',
+                '• <b>Bảo hành:</b> ' + ccW,
+                '• <b>Quy định thiết bị:</b> ' + ccD,
+                '',
+                '<b>4. Tài khoản VPN (NordVPN, ExpressVPN...):</b>',
+                '• <b>Bảo hành:</b> ' + vpnW,
+                '• <b>Từ chối:</b> ' + vpnR,
+                '',
+                '<b>V. QUY TRÌNH TIẾP NHẬN BẢO HÀNH</b>',
+                '1. Chụp ảnh/video rõ ràng chứng minh lỗi.',
+                '2. Gửi kèm <b>Mã đơn hàng (Order ID)</b> và định dạng tài khoản lỗi.',
+                '3. Nhắn tin Admin Telegram: <b>' + adm + '</b> (Xử lý trong 15 - 30 phút).',
+                '━━━━━━━━━━━━━━━━━━━━━━━━━',
+                '<i>⚠️ Mua hàng đồng nghĩa với việc bạn đồng ý với toàn bộ điều khoản trên.</i>'
+            ].join('\n');
+
+            const assembledSummary = [
+                '🛡️ <b>CHÍNH SÁCH BẢO HÀNH & MIỄN TRỪ TRÁCH NHIỆM</b>',
+                '━━━━━━━━━━━━━━━━━━━━━━━━━',
+                '⚖️ <b>Tuân thủ Pháp luật VN:</b> Tài khoản chỉ phục vụ học tập, nghiên cứu & marketing hợp pháp (Luật An ninh mạng 2018). Người mua tự chịu 100% trách nhiệm trước pháp luật, Shop miễn trừ mọi trách nhiệm liên đới.',
+                '',
+                '🛡️ <b>Bảo hành 1 đổi 1 (' + fbH + '):</b>',
+                '• <b>Facebook:</b> Lỗi sai pass, sai 2FA, die trước khi mua (Auto-check live). Không bảo hành nếu đã login hoặc IP bẩn.',
+                '• <b>AI, CapCut & VPN:</b> ' + aiW,
+                '',
+                '👤 <b>Admin hỗ trợ:</b> ' + adm + ' (Kèm mã Order ID)',
+                '📜 Gõ /policy để đọc toàn văn chính sách.'
+            ].join('\n');
+
+            policyTextarea.value = assembledFull;
+            summaryTextarea.value = assembledSummary;
+            updateCounts();
+
+            savePolicyPayload({{
+                'WARRANTY_LEGAL_POLICY': assembledFull,
+                'WARRANTY_SHORT_SUMMARY': assembledSummary
+            }}, 'saveResultEasy');
+        }}
+
+        async function savePolicyPayload(payload, resultDivId) {{
+            return saveSettingsPayload(payload, resultDivId);
+        }}
+
+        function savePolicyFull() {{
+            const val = policyTextarea.value.trim();
+            if (!val) {{
+                alert('Vui lòng không để trống nội dung chính sách!');
+                return;
+            }}
+            savePolicyPayload({{ 'WARRANTY_LEGAL_POLICY': val }}, 'saveResultFull');
+        }}
+
+        function saveSummary() {{
+            const val = summaryTextarea.value.trim();
+            if (!val) {{
+                alert('Vui lòng không để trống nội dung tóm tắt!');
+                return;
+            }}
+            savePolicyPayload({{ 'WARRANTY_SHORT_SUMMARY': val }}, 'saveResultSummary');
+        }}
+
+        // Live update & URL hash sync for all 6 tabs
+        document.addEventListener('DOMContentLoaded', function() {{
+            if (typeof updateCounts === 'function') updateCounts();
+            const hash = window.location.hash;
+            if (hash) {{
+                const triggerEl = document.querySelector('#pills-tab button[data-bs-target="' + hash + '"]');
+                if (triggerEl) {{
+                    bootstrap.Tab.getOrCreateInstance(triggerEl).show();
+                }}
+            }}
+            const tabButtons = document.querySelectorAll('#pills-tab button[data-bs-toggle="pill"]');
+            tabButtons.forEach(btn => {{
+                btn.addEventListener('shown.bs.tab', function(e) {{
+                    const target = e.target.getAttribute('data-bs-target');
+                    if (target) {{
+                        history.replaceState(null, null, target);
+                    }}
+                }});
+            }});
+        }});
+
     </script>
 </body>
 </html>"""
         return HTMLResponse(content=html_content)
+
+
+class PaymentApiConfigView(BaseView):
+    name = "C?i ??t & Clone FB"
+    icon = "fa-solid fa-sliders"
+
+    def is_accessible(self, request: Request) -> bool:
+        try:
+            token = request.session.get("token")
+            return bool(token and decode_token(token))
+        except Exception:
+            return False
+
+    def is_visible(self, request: Request) -> bool:
+        try:
+            token = request.session.get("token")
+            return bool(token and decode_token(token))
+        except Exception:
+            return False
+
+    @expose("/settings", methods=["GET"])
+    async def settings_page(self, request: Request):
+        try:
+            tab = request.query_params.get("tab", "binance")
+        except Exception:
+            tab = "binance"
+        return await render_unified_settings_page(request, default_active_tab=tab or "binance")
