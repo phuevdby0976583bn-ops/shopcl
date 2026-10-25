@@ -52,6 +52,7 @@ async def test_fallback_menu_keywords_trigger_start():
     mock_state = AsyncMock()
     mock_state.get_state = AsyncMock(return_value=None)
     mock_session = AsyncMock()
+    mock_session.add = MagicMock()
 
     with patch("run.start", new_callable=AsyncMock) as mock_start:
         await fallback_any_text(mock_message, mock_session, mock_state, Language.VI)

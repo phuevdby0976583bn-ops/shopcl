@@ -115,7 +115,7 @@ class UserAdmin(ModelView, model=User):
         "id": "ID",
         "telegram_username": "Username Telegram",
         "telegram_id": "Telegram ID",
-        "web_username": "T?i kho?n Web",
+        "web_username": "Tài khoản Web",
         "top_up_amount": "Tổng nạp ($)",
         "consume_records": "Đã tiêu ($)",
         "registered_at": "Ngày đăng ký",

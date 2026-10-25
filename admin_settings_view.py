@@ -232,6 +232,9 @@ async def render_unified_settings_page(request: Request, default_active_tab: str
             cursor: pointer;
         }}
 
+    
+        /* An tab ngoai sidebar Chinh sach & Bao hanh */
+        .navbar-nav a.nav-link[href*="/policy"], .navbar-nav .nav-item:has(a[href*="/policy"]), .navbar-nav a.nav-link:has(.fa-shield-halved), .navbar-nav .nav-item:has(.fa-shield-halved) {{ display: none !important; }}
     </style>
 </head>
 <body class="p-3 p-md-4">
@@ -1853,3 +1856,7 @@ class PaymentApiConfigView(BaseView):
         except Exception:
             tab = "binance"
         return await render_unified_settings_page(request, default_active_tab=tab or "binance")
+
+    @expose("/policy", methods=["GET"])
+    async def policy_page(self, request: Request):
+        return await render_unified_settings_page(request, default_active_tab="policy")

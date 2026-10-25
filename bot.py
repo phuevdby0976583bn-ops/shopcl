@@ -236,6 +236,9 @@ async def _startup() -> None:
                 "ALTER TABLE binance_pay_orders ADD COLUMN IF NOT EXISTS message_id BIGINT",
                 "ALTER TABLE bank_deposit_orders ADD COLUMN IF NOT EXISTS chat_id BIGINT",
                 "ALTER TABLE bank_deposit_orders ADD COLUMN IF NOT EXISTS message_id BIGINT",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS web_username VARCHAR",
+                "ALTER TABLE users ALTER COLUMN telegram_id DROP NOT NULL",
                 "UPDATE items SET is_new = FALSE WHERE is_sold = TRUE",
                 """
                 UPDATE subcategories s
@@ -563,7 +566,6 @@ app.add_middleware(AntiDDoSMiddleware, max_requests_per_minute=120)
 
 
 
-@app.api_route("/", methods=["GET", "HEAD"])
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     return {"status": "ok", "message": "AiogramShopBot is running", "version": "v3_policy_wallet_fix"}
@@ -629,6 +631,8 @@ from processing.api_items import api_router
 app.include_router(processing_router)
 
 app.include_router(api_router)
+from web_shop import web_router
+app.include_router(web_router)
 
 
 

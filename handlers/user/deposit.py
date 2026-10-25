@@ -220,31 +220,31 @@ def check_deposit_rate_limit(user_id: int, action_type: str) -> tuple[bool, floa
 async def handle_check_invoice(callback: CallbackQuery, session: AsyncSession, language: Language = Language.VI):
     parts = callback.data.split(":", 1)
     if len(parts) < 2 or not parts[1].isdigit():
-        await callback.answer("Kh?ng t?m th?y m? ho? ??n!", show_alert=True)
+        await callback.answer("Không tìm thấy mã hoá đơn!", show_alert=True)
         return
 
     order_id = int(parts[1])
 
-    # Ch?ng spam click li?n t?c (L?p 1: Cooldown)
+    # Chống spam click liên tục (Lớp 1: Cooldown)
     allowed, remaining = check_deposit_rate_limit(callback.from_user.id, "binance")
     if not allowed:
         msg = (
-            f"? B?n thao t?c qu? nhanh! Vui l?ng ??i {remaining}s tr??c khi b?m l?i nh?.\n(H? th?ng v?n ?ang t? ??ng qu?t v? c?ng ti?n cho b?n trong 10-20 gi?y)"
+            f"⏳ Bạn thao tác quá nhanh! Vui lòng đợi {remaining}s trước khi bấm lại nhé.\n(Hệ thống vẫn đang tự động quét và cộng tiền cho bạn trong 10-20 giây)"
             if language == Language.VI
-            else f"? Please slow down! Wait {remaining}s before checking again.\n(Auto-checking every 10s)"
+            else f"⏳ Please slow down! Wait {remaining}s before checking again.\n(Auto-checking every 10s)"
         )
         await callback.answer(msg, show_alert=True)
         return
 
-    # Ch?ng ch?y ??ng th?i c?ng 1 ??n h?ng (L?p 2: In-Flight Lock)
+    # Chống chạy đồng thời cùng 1 đơn hàng (Lớp 2: In-Flight Lock)
     order_lock_key = f"binance_{order_id}"
     if order_lock_key in _in_flight_deposit_checks:
-        await callback.answer("?? H? th?ng ?ang ki?m tra giao d?ch c?a ho? ??n n?y, vui l?ng ??i...", show_alert=False)
+        await callback.answer("⏳ Hệ thống đang kiểm tra giao dịch của hoá đơn này, vui lòng đợi...", show_alert=False)
         return
 
     _in_flight_deposit_checks.add(order_lock_key)
     try:
-        await callback.answer("?? ?ang ki?m tra giao d?ch tr?n Binance...", show_alert=False)
+        await callback.answer("🔍 Đang kiểm tra giao dịch trên Binance...", show_alert=False)
         is_paid, order = await BinancePayService.check_order_status(
             order_id=order_id,
             session=session,
@@ -259,14 +259,14 @@ async def handle_check_invoice(callback: CallbackQuery, session: AsyncSession, l
                 new_bal = round((user.top_up_amount or 0.0) - (user.consume_records or 0.0), 2)
 
             success_text = (
-                f"? <b>?? THANH TO?N TH?NH C?NG!</b>\n"
-                f"??????????????????????\n"
-                f"?? <b>Ho? ??n:</b> #{order.id}\n"
-                f"?? <b>?? n?p:</b> <b>+{order.amount:.4f} USDT</b>\n"
-                f"?? <b>S? d? kh? d?ng hi?n t?i:</b> <b>{new_bal}$</b>\n"
-                f"?? <b>M? GD Binance:</b> <code>{order.transaction_id or ''}</code>\n"
-                f"??????????????????????\n"
-                f"?? C?m ?n b?n! H?y b?m <b>?? S?n ph?m</b> ?? mua nick ngay nh?! ??"
+                f"✅ <b>ĐÃ THANH TOÁN THÀNH CÔNG!</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🧾 <b>Hoá đơn:</b> #{order.id}\n"
+                f"💰 <b>Đã nạp:</b> <b>+{order.amount:.4f} USDT</b>\n"
+                f"💳 <b>Số dư khả dụng hiện tại:</b> <b>{new_bal}$</b>\n"
+                f"🆔 <b>Mã GD Binance:</b> <code>{order.transaction_id or ''}</code>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🎉 Cảm ơn bạn! Hãy bấm <b>🛒 Sản phẩm</b> để mua nick ngay nhé! 🚀"
             )
             try:
                 if callback.message.photo:
@@ -275,12 +275,12 @@ async def handle_check_invoice(callback: CallbackQuery, session: AsyncSession, l
                     await callback.message.edit_text(text=success_text, reply_markup=None, parse_mode="HTML")
             except Exception:
                 pass
-            await callback.answer(f"?? N?p ti?n th?nh c?ng! ?? c?ng +{order.amount:.4f} USDT.", show_alert=True)
+            await callback.answer(f"🎉 Nạp tiền thành công! Đã cộng +{order.amount:.4f} USDT.", show_alert=True)
         else:
             amt_str = f"{order.amount:.4f}" if order else ""
             await callback.answer(
-                f"? Ch?a nh?n ???c giao d?ch {amt_str} USDT.\n"
-                "Vui l?ng ??m b?o b?n ?? chuy?n ??ng s? ti?n qua Binance Pay r?i ki?m tra l?i (ho?c ch? h? th?ng t? ??ng c?ng sau 1-2 ph?t).",
+                f"⏳ Chưa nhận được giao dịch {amt_str} USDT.\n"
+                "Vui lòng đảm bảo bạn đã chuyển đúng số tiền qua Binance Pay rồi kiểm tra lại (hoặc chờ hệ thống tự động cộng sau 1-2 phút).",
                 show_alert=True
             )
     finally:
@@ -637,31 +637,31 @@ async def handle_bank_copy_buttons(callback: CallbackQuery):
 async def handle_bank_check_invoice(callback: CallbackQuery, session: AsyncSession, language: Language = Language.VI):
     parts = callback.data.split(":", 1)
     if len(parts) < 2 or not parts[1].isdigit():
-        await callback.answer("Ho? ??n kh?ng h?p l?!")
+        await callback.answer("Hoá đơn không hợp lệ!")
         return
 
     order_id = int(parts[1])
 
-    # Ch?ng spam click li?n t?c (L?p 1: Cooldown)
+    # Chống spam click liên tục (Lớp 1: Cooldown)
     allowed, remaining = check_deposit_rate_limit(callback.from_user.id, "bank")
     if not allowed:
         msg = (
-            f"? B?n thao t?c qu? nhanh! Vui l?ng ??i {remaining}s tr??c khi b?m ki?m tra l?i nh?.\n(H? th?ng v?n ?ang t? ??ng qu?t v? c?ng ti?n trong 10-30 gi?y)"
+            f"⏳ Bạn thao tác quá nhanh! Vui lòng đợi {remaining}s trước khi bấm kiểm tra lại nhé.\n(Hệ thống vẫn đang tự động quét và cộng tiền trong 10-30 giây)"
             if language == Language.VI
-            else f"? Please slow down! Wait {remaining}s before checking again.\n(Auto-checking every 15s)"
+            else f"⏳ Please slow down! Wait {remaining}s before checking again.\n(Auto-checking every 15s)"
         )
         await callback.answer(msg, show_alert=True)
         return
 
-    # Ch?ng ch?y ??ng th?i c?ng 1 ??n h?ng (L?p 2: In-Flight Lock)
+    # Chống chạy đồng thời cùng 1 đơn hàng (Lớp 2: In-Flight Lock)
     order_lock_key = f"bank_{order_id}"
     if order_lock_key in _in_flight_deposit_checks:
-        await callback.answer("?? H? th?ng ?ang ki?m tra giao d?ch n?y, vui l?ng ??i...", show_alert=False)
+        await callback.answer("⏳ Hệ thống đang kiểm tra giao dịch này, vui lòng đợi...", show_alert=False)
         return
 
     _in_flight_deposit_checks.add(order_lock_key)
     try:
-        checking_toast = "?? ?ang ki?m tra giao d?ch v?i ng?n h?ng BIDV..." if language == Language.VI else "?? Checking bank transfer with BIDV..."
+        checking_toast = "🔍 Đang kiểm tra giao dịch với ngân hàng BIDV..." if language == Language.VI else "🔍 Checking bank transfer with BIDV..."
         await callback.answer(checking_toast)
 
         is_paid, order = await BankDepositService.check_order_status(order_id, session, callback.bot)
@@ -671,25 +671,25 @@ async def handle_bank_check_invoice(callback: CallbackQuery, session: AsyncSessi
             user = user_dto.scalar_one_or_none()
             bal = round((user.top_up_amount or 0.0) - (user.consume_records or 0.0), 2) if user else order.amount_usd
             bonus_amt, bonus_pct = DepositBonusService.calculate_bonus(order.amount_usd)
-            bonus_line = f"?? Th??ng n?p (+{bonus_pct:g}%): <b>+{bonus_amt:.2f}$</b>\n" if bonus_amt > 0 else ""
+            bonus_line = f"🎁 Thưởng nạp (+{bonus_pct:g}%): <b>+{bonus_amt:.2f}$</b>\n" if bonus_amt > 0 else ""
             if language == Language.VI:
                 success_msg = (
-                    f"?? <b>N?P TI?N NG?N H?NG TH?NH C?NG!</b> ??\n"
-                    f"??????????????????????\n"
-                    f"? ?? nh?n: <b>+{order.amount_vnd:,.0f} ?</b> (~ <b>+{order.amount_usd}$ USDT</b>)\n"
+                    f"🎉 <b>NẠP TIỀN NGÂN HÀNG THÀNH CÔNG!</b> 🎉\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"💰 Đã nhận: <b>+{order.amount_vnd:,.0f} đ</b> (~ <b>+{order.amount_usd}$ USDT</b>)\n"
                     f"{bonus_line}"
-                    f"?? S? d? kh? d?ng hi?n t?i: <b>{bal}$</b>\n"
-                    f"?? M? GD ThueApi: <code>{order.transaction_id or 'Auto'}</code>\n"
-                    f"??????????????????????\n"
-                    f"?? C?m ?n b?n! H?y b?m n?t b?n d??i ?? ch?n mua t?i kho?n ngay nh?!"
+                    f"💳 Số dư khả dụng hiện tại: <b>{bal}$</b>\n"
+                    f"🆔 Mã GD ThueApi: <code>{order.transaction_id or 'Auto'}</code>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🎉 Cảm ơn bạn! Hãy bấm nút bên dưới để chọn mua tài khoản ngay nhé!"
                 )
             else:
                 success_msg = (
-                    f"?? <b>DEPOSIT SUCCESSFUL!</b> ??\n"
-                    f"??????????????????????\n"
-                    f"? Credited: <b>+{order.amount_vnd:,.0f} VND</b> (~ <b>+${order.amount_usd}</b>)\n"
-                    f"?? Current Balance: <b>${bal}</b>\n"
-                    f"??????????????????????\n"
+                    f"🎉 <b>DEPOSIT SUCCESSFUL!</b> 🎉\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"💰 Credited: <b>+{order.amount_vnd:,.0f} VND</b> (~ <b>+${order.amount_usd}</b>)\n"
+                    f"💳 Current Balance: <b>${bal}</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
                     f"Thank you for your purchase!"
                 )
             from callbacks import AllCategoriesCallback
@@ -705,15 +705,15 @@ async def handle_bank_check_invoice(callback: CallbackQuery, session: AsyncSessi
         else:
             if language == Language.VI:
                 toast = (
-                    "? Ch?a ph?t hi?n giao d?ch chuy?n kho?n m?i!\n\n"
-                    "N?u b?n v?a chuy?n tr?n App ng?n h?ng, vui l?ng ??i 15-30 gi?y ?? h? th?ng ng?n h?ng ??ng b? r?i b?m ki?m tra l?i nh?.\n\n"
-                    f"?? L?u ?: B?T BU?C ph?i ?i?n ??ng n?i dung chuy?n kho?n: NAP {callback.from_user.id}"
+                    "⏳ Chưa phát hiện giao dịch chuyển khoản mới!\n\n"
+                    "Nếu bạn vừa chuyển trên App ngân hàng, vui lòng đợi 15-30 giây để hệ thống ngân hàng đồng bộ rồi bấm kiểm tra lại nhé.\n\n"
+                    f"⚠️ Lưu ý: BẮT BUỘC phải điền đúng nội dung chuyển khoản: NAP {callback.from_user.id}"
                 )
             else:
                 toast = (
-                    "? No transfer detected yet!\n\n"
+                    "⏳ No transfer detected yet!\n\n"
                     "If you just transferred, please wait 15-30 seconds and check again.\n\n"
-                    f"?? Note: You MUST enter the exact remark: NAP {callback.from_user.id}"
+                    f"⚠️ Note: You MUST enter the exact remark: NAP {callback.from_user.id}"
                 )
             await callback.answer(toast, show_alert=True)
     finally:

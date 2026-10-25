@@ -84,14 +84,14 @@ BUTTON_WALLET = {
 }
 
 BUTTON_SUPPORT = {
-    Language.VI: "🛡️ Điều khoản & Bảo hành",
-    Language.EN: "🛡️ Terms & Warranty",
-    Language.HI: "🛡️ शर्तें और वारंटी",
-    Language.ZH: "🛡️ 服务条款与质保",
-    Language.FR: "🛡️ Conditions & Garantie",
-    Language.DE: "🛡️ AGB & Garantie",
-    Language.IT: "🛡️ Termini & Garanzia",
-    Language.ES: "🛡️ Términos y Garantía",
+    Language.VI: "💬 Hỗ trợ",
+    Language.EN: "💬 Support",
+    Language.HI: "💬 सहायता",
+    Language.ZH: "💬 客服支持",
+    Language.FR: "💬 Support",
+    Language.DE: "💬 Support",
+    Language.IT: "💬 Supporto",
+    Language.ES: "💬 Soporte",
 }
 
 BUTTON_WARRANTY = {
@@ -132,7 +132,7 @@ def get_start_keyboard(language: Language, telegram_id: int):
     prod_btn = types.KeyboardButton(text=BUTTON_PRODUCTS.get(language, "🛒 Products"))
     orders_btn = types.KeyboardButton(text=BUTTON_ORDERS.get(language, "📦 Orders"))
     wallet_btn = types.KeyboardButton(text=BUTTON_WALLET.get(language, "💳 Wallet"))
-    support_btn = types.KeyboardButton(text=BUTTON_SUPPORT.get(language, "🛡️ Terms & Warranty"))
+    support_btn = types.KeyboardButton(text=BUTTON_SUPPORT.get(language, "💬 Support"))
 
     lang_btn = types.KeyboardButton(text=BUTTON_LANGUAGE.get(language, "🌐 Language"))
 

@@ -1,4 +1,8 @@
 {% extends "sqladmin/layout.html" %}
+<style>
+/* An tab ngoai sidebar Chinh sach & Bao hanh */
+.navbar-nav a.nav-link[href*="/policy"], .navbar-nav .nav-item:has(a[href*="/policy"]), .navbar-nav a.nav-link:has(.fa-shield-halved), .navbar-nav .nav-item:has(.fa-shield-halved) { display: none !important; }
+</style>
 {% block content %}
 <div class="container-fluid">
   <div class="row">
