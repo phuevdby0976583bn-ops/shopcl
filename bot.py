@@ -12,7 +12,7 @@ from pathlib import Path
 
 from aiogram.fsm.storage.redis import RedisStorage
 
-from aiogram.types import BufferedInputFile, URLInputFile, Update, BotCommand
+from aiogram.types import BufferedInputFile, URLInputFile, Update, BotCommand, MenuButtonCommands
 
 from redis.asyncio import Redis
 
@@ -350,6 +350,7 @@ async def _startup() -> None:
 
 
     commands = [
+        BotCommand(command="menu", description="Mở Menu chính (Main Menu)"),
         BotCommand(command="start", description="Trang chủ (Home)"),
         BotCommand(command="products", description="Xem sản phẩm (Products)"),
         BotCommand(command="orders", description="Đơn hàng đã mua (Orders)"),
@@ -365,6 +366,12 @@ async def _startup() -> None:
     except Exception as e:
 
         logging.warning(f"Failed to set bot commands: {e}")
+
+    try:
+        await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+        logging.info("Set chat menu button to MenuButtonCommands successfully")
+    except Exception as e:
+        logging.warning(f"Failed to set chat menu button: {e}")
 
 
 

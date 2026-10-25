@@ -145,7 +145,24 @@ def get_start_keyboard(language: Language, telegram_id: int):
         admin_btn = types.KeyboardButton(text=BUTTON_ADMIN.get(language, "⚙️ Admin Menu"))
         keyboard.append([admin_btn])
 
-    return types.ReplyKeyboardMarkup(resize_keyboard=True, keyboard=keyboard)
+    placeholders = {
+        Language.VI: "⚡ Chọn menu bên dưới để mua hàng hoặc nạp tiền...",
+        Language.EN: "⚡ Choose an option below to buy or deposit...",
+        Language.HI: "⚡ नीचे दिए गए विकल्पों में से चुनें...",
+        Language.ZH: "⚡ 请在下方选择菜单进行购买或充值...",
+        Language.FR: "⚡ Choisissez une option ci-dessous...",
+        Language.DE: "⚡ Wählen Sie eine Option unten...",
+        Language.IT: "⚡ Seleziona un'opzione in basso...",
+        Language.ES: "⚡ Selecciona una opción abajo...",
+    }
+    placeholder = placeholders.get(language, placeholders[Language.EN])
+
+    return types.ReplyKeyboardMarkup(
+        keyboard=keyboard,
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder=placeholder
+    )
 
 
 def get_language_inline_keyboard():
@@ -163,6 +180,10 @@ def get_language_inline_keyboard():
 
 
 @main_router.message(CommandStart())
+@main_router.message(Command("menu"))
+@main_router.message(Command("shop"))
+@main_router.message(Command("home"))
+@main_router.message(Command("main"))
 async def start(message: Message, session: AsyncSession, language: Language, command: CommandObject = None):
     telegram_id = message.from_user.id
     command_args = command.args if command else None
@@ -720,6 +741,33 @@ async def fallback_any_text(message: Message, session: AsyncSession, state: FSMC
         return
     text = (message.text or "").strip()
     if not text:
+        return
+
+    telegram_id = message.from_user.id
+    try:
+        from models.user import UserDTO
+        from services.user import UserService
+        await UserService.create_if_not_exist(UserDTO(
+            telegram_username=message.from_user.username,
+            telegram_id=telegram_id,
+            language=language
+        ), None, session)
+        from utils.custom_filters import cache_user_exists
+        from middleware.language import set_cached_user_language
+        cache_user_exists(telegram_id)
+        set_cached_user_language(telegram_id, language)
+    except Exception as e:
+        logging.debug(f"User registration in fallback: {e}")
+
+    menu_keywords = {
+        "menu", "shop", "home", "main", "start", "bot",
+        "trang chủ", "trang chu", "bắt đầu", "bat dau", "mở menu", "mo menu",
+        "hi", "hello", "xin chào", "xin chao", "alo", "helo",
+        "trở về", "tro ve", "quay lại", "quay lai", "help",
+        "hỗ trợ", "ho tro"
+    }
+    if text.lower() in menu_keywords:
+        await start(message, session, language, None)
         return
 
     num_clean = text.replace(",", ".").replace("$", "").replace("USDT", "").replace("usdt", "").strip()
