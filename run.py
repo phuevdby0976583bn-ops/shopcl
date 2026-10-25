@@ -5,7 +5,9 @@ from aiogram.filters import Command, CommandStart, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ErrorEvent, Message, BufferedInputFile, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from callbacks import MyProfileCallback
 
 import config
 from config import SUPPORT_LINK
@@ -17,7 +19,7 @@ from handlers.common.review_management import review_management_router
 from middleware.database import DBSessionMiddleware
 from middleware.language import I18nMiddleware
 from middleware.throttling_middleware import ThrottlingMiddleware
-from models.user import UserDTO
+from models.user import UserDTO, User
 from multibot import main as main_multibot
 from handlers.user.cart import cart_router
 from handlers.user.deposit import deposit_router

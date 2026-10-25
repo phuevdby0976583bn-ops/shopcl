@@ -81,6 +81,18 @@ def test_admin_policy_view_metadata():
     assert "fa-shield-halved" in view.icon
 
 
+@pytest.mark.asyncio
+async def test_admin_policy_view_renders_200():
+    from admin_policy_view import WarrantyPolicyAdminView
+    from utils.utils import create_access_token
+    view = WarrantyPolicyAdminView()
+    req = MagicMock()
+    req.session = {"token": create_access_token({"sub": "admin"})}
+    resp = await view.policy_page(req)
+    assert resp.status_code == 200
+    assert len(resp.body) > 1000
+
+
 def test_bot_registered_warranty_policy_view():
     with open("bot.py", "r", encoding="utf-8") as f:
         content = f.read()
@@ -98,3 +110,32 @@ def test_run_py_has_warranty_and_policy_handlers():
     assert "view_full_policy" in content
     assert "handle_full_policy" in content
     assert "handle_unified_support" in content
+
+
+@pytest.mark.asyncio
+async def test_run_py_handle_wallet_executes_cleanly():
+    with patch("utils.telegram.create_bot", return_value=MagicMock()):
+        from run import handle_wallet
+    from models.user import User
+
+    msg = MagicMock()
+    msg.from_user.id = 123456
+    msg.from_user.username = "testuser"
+    msg.from_user.full_name = "Test User"
+    msg.answer = AsyncMock()
+
+    state = AsyncMock()
+    session = AsyncMock()
+
+    from types import SimpleNamespace
+    fake_user = SimpleNamespace(id=1, telegram_id=123456, top_up_amount=50.0, consume_records=10.0)
+    mock_res = MagicMock()
+    mock_res.scalar_one_or_none.return_value = fake_user
+    session.execute.return_value = mock_res
+
+    await handle_wallet(msg, session, state, Language.VI)
+    assert msg.answer.called
+    kwargs = msg.answer.call_args.kwargs
+    assert "Số dư khả dụng" in kwargs.get("text", "")
+    kb = kwargs.get("reply_markup")
+    assert kb is not None

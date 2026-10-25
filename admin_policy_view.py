@@ -1,3 +1,4 @@
+import json
 from sqladmin import BaseView, expose
 from fastapi import Request
 from starlette.responses import HTMLResponse, RedirectResponse
@@ -43,7 +44,7 @@ class WarrantyPolicyAdminView(BaseView):
         current_policy = cur_settings.get("WARRANTY_LEGAL_POLICY") or DEFAULT_WARRANTY_LEGAL_POLICY
         current_summary = cur_settings.get("WARRANTY_SHORT_SUMMARY") or DEFAULT_WARRANTY_SHORT_SUMMARY
 
-        api_key = config.SQLADMIN_RAW_PASSWORD or "MatKhauAdminCuaBan123"
+        api_key = getattr(config, "SQLADMIN_RAW_PASSWORD", "MatKhauAdminCuaBan123") or "MatKhauAdminCuaBan123"
         admin_token = token or ""
         api_settings_save = "/api/settings/save"
 

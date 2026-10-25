@@ -426,7 +426,7 @@ class PaymentApiConfigView(BaseView):
                                         <div class="input-group">
                                             <span class="input-group-text"><i class="fa-solid fa-key text-info"></i></span>
                                             <input type="password" class="form-control font-monospace" id="bank_token" value="{bank_token}" placeholder="Dán token BIDV từ thueapi.pro vào đây" required>
-                                            <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('bank_token', this)"><i class="fa-regular fa-eye"></i></button>
+                                            <button class="btn btn-outline-secondary" type="button" onclick="togglePass('bank_token', this)"><i class="fa-solid fa-eye"></i></button>
                                         </div>
                                         <div class="form-text small">Lấy trong mục API V2 tại <code>thueapi.pro/historyapibidvv2/:tokenbidv</code></div>
                                     </div>
@@ -676,14 +676,44 @@ class PaymentApiConfigView(BaseView):
     <script>
         function togglePass(id, btn) {{
             const input = document.getElementById(id);
-            const icon = btn.querySelector('i');
+            if (!input) return;
+            const icon = btn ? btn.querySelector('i') : null;
             if (input.type === 'password') {{
                 input.type = 'text';
-                icon.className = 'fa-solid fa-eye-slash';
+                if (icon) icon.className = 'fa-solid fa-eye-slash';
             }} else {{
                 input.type = 'password';
-                icon.className = 'fa-solid fa-eye';
+                if (icon) icon.className = 'fa-solid fa-eye';
             }}
+        }}
+
+        function togglePasswordVisibility(id, btn) {{
+            togglePass(id, btn);
+        }}
+
+        function showToast(msg, type) {{
+            let container = document.getElementById('toastContainer');
+            if (!container) {{
+                container = document.createElement('div');
+                container.id = 'toastContainer';
+                container.style = 'position: fixed; top: 20px; right: 20px; z-index: 99999;';
+                document.body.appendChild(container);
+            }}
+            const id = 'toast_' + Date.now();
+            const bgClass = type === 'success' ? 'bg-success' : (type === 'danger' ? 'bg-danger' : (type === 'warning' ? 'bg-warning text-dark' : 'bg-info text-dark'));
+            const toastHtml = `
+                <div id="${{id}}" class="toast align-items-center text-white ${{bgClass}} border-0 show shadow mb-2" role="alert" style="min-width: 280px;">
+                    <div class="d-flex">
+                        <div class="toast-body fw-bold">${{msg}}</div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="document.getElementById('${{id}}').remove()"></button>
+                    </div>
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', toastHtml);
+            setTimeout(() => {{
+                const el = document.getElementById(id);
+                if (el) el.remove();
+            }}, 4000);
         }}
 
         async function saveSettingsPayload(payload, resultDivId) {{
@@ -842,28 +872,42 @@ function saveBankSettings() {{
         }}
 
         async function checkBankTransactionsNow() {{
+            const resBox = document.getElementById('bankSaveResult');
+            if (resBox) {{
+                resBox.style.display = 'block';
+                resBox.innerHTML = '<span class="text-info"><i class="fa-solid fa-spinner fa-spin me-1"></i> Đang kết nối ThueApi.pro để quét giao dịch ngân hàng BIDV...</span>';
+            }}
+            showToast('Đang kết nối ThueApi.pro quét giao dịch...', 'info');
+
             try {{
-                showToast('Đang kết nối ThueApi.pro để quét giao dịch ngân hàng BIDV...', 'info');
                 const res = await fetch('/api/bank/check-now', {{
                     method: 'POST',
+                    credentials: 'same-origin',
                     headers: {{
                         'Content-Type': 'application/json',
-                        'x-api-key': '{api_key}',
+                        'X-API-KEY': '{api_key}',
                         'Authorization': 'Bearer {admin_token}'
                     }}
                 }});
                 const data = await res.json();
-                if (data.status === 'success') {{
+                if (res.ok && data.status === 'success') {{
                     if (data.credited_count > 0) {{
-                        showToast('Thành công! Đã phát hiện và cộng tiền cho ' + data.credited_count + ' giao dịch mới!', 'success');
+                        const msg = 'Thành công! Đã phát hiện và cộng tiền cho ' + data.credited_count + ' giao dịch mới!';
+                        if (resBox) resBox.innerHTML = '<div class="alert alert-success py-2 mb-0"><i class="fa-solid fa-circle-check me-1"></i> <b>' + msg + '</b></div>';
+                        showToast(msg, 'success');
                     }} else {{
-                        showToast('Kết nối ThueApi.pro thành công! Hiện chưa có giao dịch chuyển khoản mới.', 'info');
+                        const msg = 'Kết nối ThueApi.pro thành công! Hiện chưa có giao dịch chuyển khoản mới.';
+                        if (resBox) resBox.innerHTML = '<div class="alert alert-info py-2 mb-0"><i class="fa-solid fa-check me-1"></i> ' + msg + '</div>';
+                        showToast(msg, 'info');
                     }}
                 }} else {{
-                    showToast('Lỗi: ' + (data.detail || data.message || 'Không thể quét giao dịch'), 'danger');
+                    const errMsg = data.detail || data.message || 'Không thể quét giao dịch';
+                    if (resBox) resBox.innerHTML = '<div class="alert alert-danger py-2 mb-0"><i class="fa-solid fa-triangle-exclamation me-1"></i> <b>Lỗi:</b> ' + errMsg + '</div>';
+                    showToast('Lỗi: ' + errMsg, 'danger');
                 }}
             }} catch (err) {{
-                showToast('Lỗi mạng khi gọi API quét ngân hàng: ' + err, 'danger');
+                if (resBox) resBox.innerHTML = '<div class="alert alert-danger py-2 mb-0"><i class="fa-solid fa-triangle-exclamation me-1"></i> <b>Lỗi kết nối:</b> ' + err.message + '</div>';
+                showToast('Lỗi mạng: ' + err.message, 'danger');
             }}
         }}
 
