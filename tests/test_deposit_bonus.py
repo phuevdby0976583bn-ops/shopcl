@@ -91,3 +91,26 @@ async def test_admin_settings_view_tab_bonus_rendered(monkeypatch):
     assert "deposit_bonus_enabled" in html_body
     assert "deposit_bonus_tiers" in html_body
     assert "saveBonusSettings" in html_body
+
+    # Test MIN_DEPOSIT_USDT inputs rendered in HTML
+    assert "binance_min_deposit" in html_body
+    assert "krypto_min_deposit" in html_body
+    assert "bank_min_deposit" in html_body
+    assert "syncMinDepositInputs" in html_body
+    assert "Số Tiền Nạp Tối Thiểu" in html_body
+
+
+@pytest.mark.asyncio
+async def test_save_min_deposit_setting():
+    from services.settings import SettingsService
+    from unittest.mock import AsyncMock
+
+    session = AsyncMock()
+    res = await SettingsService.save_settings({"MIN_DEPOSIT_USDT": "2.5"}, session)
+    assert "MIN_DEPOSIT_USDT" in res["saved_keys"]
+    assert config.MIN_DEPOSIT_USDT == 2.5
+
+    # Reset back to default
+    await SettingsService.save_settings({"MIN_DEPOSIT_USDT": "1.0"}, session)
+    assert config.MIN_DEPOSIT_USDT == 1.0
+

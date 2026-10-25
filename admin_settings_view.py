@@ -108,13 +108,19 @@ class PaymentApiConfigView(BaseView):
         deposit_bonus_tiers = cur_settings.get("DEPOSIT_BONUS_TIERS") or "100:2,200:5,300:6,500:7,1000:8"
         bonus_badge = '<span class="badge bg-success"><i class="fa-solid fa-circle-check me-1"></i> Đang BẬT khuyến mãi</span>' if deposit_bonus_enabled else '<span class="badge bg-secondary"><i class="fa-solid fa-power-off me-1"></i> Đang TẮT</span>'
 
+        min_deposit_usdt = float(cur_settings.get("MIN_DEPOSIT_USDT") or getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0)
+        try:
+            min_deposit_vnd = min_deposit_usdt * float(bank_rate)
+        except Exception:
+            min_deposit_vnd = min_deposit_usdt * 26000.0
+
         from enums.language import Language
         from services.deposit_bonus import DepositBonusService
         preview_text = DepositBonusService.get_bonus_display_text(Language.VI)
         if not preview_text:
-            preview_bonus_html = "Nhập số USDT muốn nạp (tối thiểu 1):\n(Khuyến mãi đang TẮT - Bot chỉ hiện khung nhập tiền sạch, không có chữ thưởng)"
+            preview_bonus_html = f"Nhập số USDT muốn nạp (tối thiểu {min_deposit_usdt:g}):\n(Khuyến mãi đang TẮT - Bot chỉ hiện khung nhập tiền sạch, không có chữ thưởng)"
         else:
-            preview_bonus_html = f"Nhập số USDT muốn nạp (tối thiểu 1):\n\n{preview_text}"
+            preview_bonus_html = f"Nhập số USDT muốn nạp (tối thiểu {min_deposit_usdt:g}):\n\n{preview_text}"
 
         html_content = f"""<!DOCTYPE html>
 <html lang="vi">
@@ -221,6 +227,16 @@ class PaymentApiConfigView(BaseView):
                                         </div>
                                     </div>
 
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">4. Số Tiền Nạp Tối Thiểu (USDT):</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-solid fa-coins text-warning"></i></span>
+                                            <input type="number" class="form-control font-monospace fw-bold text-dark" id="binance_min_deposit" value="{min_deposit_usdt:g}" step="0.1" min="0.01" placeholder="VD: 1.0" oninput="syncMinDepositInputs(this.value)">
+                                            <span class="input-group-text bg-light fw-bold">USDT</span>
+                                        </div>
+                                        <div class="form-text small">Hạn mức nạp tối thiểu toàn hệ thống (áp dụng cho cả Binance Pay, Ngân hàng và On-chain). Mặc định: 1.0 USDT.</div>
+                                    </div>
+
                                     <div id="binanceSaveResult" class="mb-3" style="display:none;"></div>
 
                                     <div class="d-flex flex-wrap gap-2 pt-2 border-top">
@@ -315,6 +331,16 @@ class PaymentApiConfigView(BaseView):
                                     <div class="mb-3">
                                         <label class="form-label fw-bold small text-muted">3. API Base URL:</label>
                                         <input type="text" class="form-control font-monospace small" id="krypto_api_url" value="{krypto_api_url}" required>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">4. Số Tiền Nạp Tối Thiểu (USDT):</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-solid fa-coins text-success"></i></span>
+                                            <input type="number" class="form-control font-monospace fw-bold text-dark" id="krypto_min_deposit" value="{min_deposit_usdt:g}" step="0.1" min="0.01" placeholder="VD: 1.0" oninput="syncMinDepositInputs(this.value)">
+                                            <span class="input-group-text bg-light fw-bold">USDT</span>
+                                        </div>
+                                        <div class="form-text small">Hạn mức nạp tối thiểu cho khách khi nạp tiền On-chain.</div>
                                     </div>
 
                                     <div class="mb-3 p-2 bg-light rounded small">
@@ -479,6 +505,16 @@ class PaymentApiConfigView(BaseView):
                                                 <span class="input-group-text small">đ / 1$</span>
                                             </div>
                                         </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">6. Hạn Mức Nạp Tối Thiểu (USD / VNĐ):</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fa-solid fa-coins text-info"></i></span>
+                                            <input type="number" class="form-control font-monospace fw-bold text-dark" id="bank_min_deposit" value="{min_deposit_usdt:g}" step="0.1" min="0.01" placeholder="VD: 1.0" oninput="syncMinDepositInputs(this.value)">
+                                            <span class="input-group-text bg-light">USDT (~<span id="bank_min_vnd_preview">{min_deposit_vnd:,.0f}</span> đ)</span>
+                                        </div>
+                                        <div class="form-text small">Khách chuyển khoản ngân hàng tối thiểu bằng số tiền USD này quy đổi ra VNĐ theo tỷ giá.</div>
                                     </div>
 
                                     <div class="form-check form-switch mb-3 p-2 bg-light rounded border border-info">
@@ -959,13 +995,16 @@ class PaymentApiConfigView(BaseView):
         }}
 
 function saveBankSettings() {{
+            const minEl = document.getElementById('bank_min_deposit');
+            const minVal = minEl ? (parseFloat(minEl.value) || 1.0) : 1.0;
             const payload = {{
                 'BANK_BIDV_TOKEN': document.getElementById('bank_token').value.trim(),
                 'BANK_ACCOUNT_NUMBER': document.getElementById('bank_account_number').value.trim(),
                 'BANK_ACCOUNT_NAME': document.getElementById('bank_account_name').value.trim(),
                 'BANK_CODE': document.getElementById('bank_code').value.trim(),
                 'BANK_EXCHANGE_RATE': parseFloat(document.getElementById('bank_exchange_rate').value) || 26000,
-                'BANK_AUTO_CHECK': document.getElementById('bank_auto_check').checked
+                'BANK_AUTO_CHECK': document.getElementById('bank_auto_check').checked,
+                'MIN_DEPOSIT_USDT': minVal
             }};
             saveSettingsPayload(payload, 'bankSaveResult');
         }}
@@ -1010,20 +1049,42 @@ function saveBankSettings() {{
             }}
         }}
 
+        function syncMinDepositInputs(val) {{
+            const el1 = document.getElementById('binance_min_deposit');
+            const el2 = document.getElementById('krypto_min_deposit');
+            const el3 = document.getElementById('bank_min_deposit');
+            if (el1 && el1.value !== val) el1.value = val;
+            if (el2 && el2.value !== val) el2.value = val;
+            if (el3 && el3.value !== val) el3.value = val;
+            const rateEl = document.getElementById('bank_exchange_rate');
+            const vndEl = document.getElementById('bank_min_vnd_preview');
+            if (rateEl && vndEl) {{
+                const rate = parseFloat(rateEl.value) || 26000;
+                const num = parseFloat(val) || 1;
+                vndEl.innerText = Math.round(num * rate).toLocaleString();
+            }}
+        }}
+
         function saveBinanceSettings() {{
+            const minEl = document.getElementById('binance_min_deposit');
+            const minVal = minEl ? (parseFloat(minEl.value) || 1.0) : 1.0;
             const payload = {{
                 'BINANCE_UID': document.getElementById('binance_uid').value.trim(),
                 'BINANCE_API_KEY': document.getElementById('binance_api_key').value.trim(),
-                'BINANCE_API_SECRET': document.getElementById('binance_api_secret').value.trim()
+                'BINANCE_API_SECRET': document.getElementById('binance_api_secret').value.trim(),
+                'MIN_DEPOSIT_USDT': minVal
             }};
             saveSettingsPayload(payload, 'binanceSaveResult');
         }}
 
         function saveKryptoSettings() {{
+            const minEl = document.getElementById('krypto_min_deposit');
+            const minVal = minEl ? (parseFloat(minEl.value) || 1.0) : 1.0;
             const payload = {{
                 'KRYPTO_EXPRESS_API_KEY': document.getElementById('krypto_api_key').value.trim(),
                 'KRYPTO_EXPRESS_API_SECRET': document.getElementById('krypto_api_secret').value.trim(),
-                'KRYPTO_EXPRESS_API_URL': document.getElementById('krypto_api_url').value.trim()
+                'KRYPTO_EXPRESS_API_URL': document.getElementById('krypto_api_url').value.trim(),
+                'MIN_DEPOSIT_USDT': minVal
             }};
             saveSettingsPayload(payload, 'kryptoSaveResult');
         }}
