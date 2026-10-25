@@ -126,7 +126,10 @@ async def test_web_recharge_page(test_app):
             assert "805398854" in r.text
             assert "VietQR" in r.text
             assert "BIDV" in r.text
-
+            assert "setFieldVal" in r.text
+            assert "getFieldVal" in r.text
+            assert "NGUYEN XUAN TRUONG" in r.text
+            
 
 @pytest.mark.asyncio
 async def test_web_unauth_redirects(test_app):
@@ -275,6 +278,8 @@ async def test_web_recharge_authorized_flow(test_app):
                     d_bank = r_bank.json()
                     assert d_bank["status"] == "success"
                     assert d_bank["exact_vnd"] == 100000
+                    assert d_bank["account_number"] == "8880117869"
+                    assert d_bank["account_name"] == "NGUYEN XUAN TRUONG"
                     assert "vietqr.io" in d_bank["qr_url"]
 
                     # 3. On-chain Invoice

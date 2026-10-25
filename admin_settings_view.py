@@ -51,7 +51,7 @@ async def render_unified_settings_page(request: Request, default_active_tab: str
 
         bank_token = cur_settings.get("BANK_BIDV_TOKEN") or ""
         bank_acc_num = cur_settings.get("BANK_ACCOUNT_NUMBER") or "8880117869"
-        bank_acc_name = cur_settings.get("BANK_ACCOUNT_NAME") or "CHU TAI KHOAN"
+        bank_acc_name = cur_settings.get("BANK_ACCOUNT_NAME") or "NGUYEN XUAN TRUONG"
         bank_code = cur_settings.get("BANK_CODE") or "BIDV"
         bank_rate = cur_settings.get("BANK_EXCHANGE_RATE", 26000)
         bank_auto_check = cur_settings.get("BANK_AUTO_CHECK", True)
