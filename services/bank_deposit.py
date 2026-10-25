@@ -17,6 +17,7 @@ from enums.language import Language
 from models.bank_order import BankDepositOrder
 from models.deposit import Deposit
 from models.user import User
+from services.deposit_bonus import DepositBonusService
 
 logger = logging.getLogger(__name__)
 
@@ -289,8 +290,11 @@ class BankDepositService:
             if usd_amount <= 0:
                 usd_amount = 0.01
 
+            bonus_amt, bonus_pct = DepositBonusService.calculate_bonus(usd_amount)
+            total_credit = round(usd_amount + bonus_amt, 2)
+
             # Cộng số dư cho User
-            user.top_up_amount = round(float(user.top_up_amount or 0.0) + usd_amount, 2)
+            user.top_up_amount = round(float(user.top_up_amount or 0.0) + total_credit, 2)
 
             # Cập nhật hoặc tạo BankDepositOrder
             stmt_p = select(BankDepositOrder).where(
@@ -326,8 +330,8 @@ class BankDepositService:
             deposit = Deposit(
                 user_id=user.id,
                 network=Cryptocurrency.USDT_BEP20,
-                amount=int(usd_amount * (10 ** 18)),
-                fiat_amount=usd_amount,
+                amount=int(total_credit * (10 ** 18)),
+                fiat_amount=total_credit,
                 deposit_datetime=datetime.now(timezone.utc)
             )
             session.add(deposit)
@@ -338,10 +342,12 @@ class BankDepositService:
 
             # Gửi tin nhắn thông báo cho khách hàng
             try:
+                bonus_line = f"🎁 <b>Thưởng nạp (+{bonus_pct:g}%):</b> <b>+{bonus_amt:.2f}$</b>\n" if bonus_amt > 0 else ""
                 user_msg = (
                     f"🎉 <b>TING TING! NẠP TIỀN THÀNH CÔNG</b> 🎉\n"
                     f"━━━━━━━━━━━━━━━━━━━━━━\n"
                     f"✅ <b>Đã nhận:</b> <b>+{amount_vnd:,.0f} đ</b> (~ <b>+{usd_amount}$ USDT</b>)\n"
+                    f"{bonus_line}"
                     f"🏛️ <b>Cổng nạp:</b> Ngân hàng BIDV (STK <code>{getattr(config, 'BANK_ACCOUNT_NUMBER', '8880117869')}</code>)\n"
                     f"💳 <b>Số dư ví khả dụng hiện tại:</b> <b>{new_bal}$</b>\n"
                     f"🆔 <b>Mã giao dịch:</b> <code>{tx_id}</code>\n"

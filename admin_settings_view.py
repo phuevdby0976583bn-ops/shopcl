@@ -103,6 +103,19 @@ class PaymentApiConfigView(BaseView):
 
         fwd_checked_attr = "checked" if fwd_mode else ""
 
+        deposit_bonus_enabled = cur_settings.get("DEPOSIT_BONUS_ENABLED", False)
+        deposit_bonus_enabled_attr = "checked" if deposit_bonus_enabled else ""
+        deposit_bonus_tiers = cur_settings.get("DEPOSIT_BONUS_TIERS") or "100:2,200:5,300:6,500:7,1000:8"
+        bonus_badge = '<span class="badge bg-success"><i class="fa-solid fa-circle-check me-1"></i> Đang BẬT khuyến mãi</span>' if deposit_bonus_enabled else '<span class="badge bg-secondary"><i class="fa-solid fa-power-off me-1"></i> Đang TẮT</span>'
+
+        from enums.language import Language
+        from services.deposit_bonus import DepositBonusService
+        preview_text = DepositBonusService.get_bonus_display_text(Language.VI)
+        if not preview_text:
+            preview_bonus_html = "Nhập số USDT muốn nạp (tối thiểu 1):\n(Khuyến mãi đang TẮT - Bot chỉ hiện khung nhập tiền sạch, không có chữ thưởng)"
+        else:
+            preview_bonus_html = f"Nhập số USDT muốn nạp (tối thiểu 1):\n\n{preview_text}"
+
         html_content = f"""<!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -155,6 +168,11 @@ class PaymentApiConfigView(BaseView):
             <li class="nav-item">
                 <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-facebook">
                     <i class="fa-brands fa-facebook text-primary me-1"></i> 4. Cấu Hình Clone Facebook (Check Live & Tự Động Xóa DIE)
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-bonus">
+                    <i class="fa-solid fa-gift text-danger me-1"></i> 5. Khuyến Mãi Nạp Tiền (Deposit Bonus)
                 </button>
             </li>
         </ul>
@@ -669,6 +687,87 @@ class PaymentApiConfigView(BaseView):
                     </div>
                 </div>
             </div>
+
+            <!-- TAB 5: KHUYẾN MÃI NẠP TIỀN (DEPOSIT BONUS) -->
+            <div class="tab-pane fade" id="tab-bonus">
+                <div class="row g-4">
+                    <div class="col-lg-7">
+                        <div class="card border-danger h-100 shadow-sm">
+                            <div class="card-header bg-danger bg-opacity-10 py-3 d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0 fw-bold text-dark">
+                                    <i class="fa-solid fa-gift text-danger me-2"></i>Cấu Hình Khuyến Mãi Nạp Tiền (Deposit Bonus)
+                                </h5>
+                                {bonus_badge}
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info py-2 small mb-3">
+                                    <i class="fa-solid fa-circle-info me-1"></i>
+                                    <b>Cơ chế hoạt động:</b><br>
+                                    • Khi <b>TẮT</b>: Bot sẽ hoàn toàn ẩn thông tin thưởng nạp, chỉ hiển thị form nhập số tiền nạp bình thường và không cộng thêm tiền thưởng.<br>
+                                    • Khi <b>BẬT</b>: Bot sẽ hiển thị danh sách thưởng nạp theo các mốc cấu hình bên dưới. Khi khách nạp tiền (qua Binance Pay, BIDV Bank hoặc On-chain), hệ thống sẽ <b>tự động tính % và cộng thêm tiền thưởng vào tài khoản khách</b>, đồng thời báo rõ trong thông báo Ting Ting.
+                                </div>
+
+                                <form id="bonusForm" onsubmit="event.preventDefault(); saveBonusSettings();">
+                                    <div class="form-check form-switch mb-3 p-3 bg-light rounded border border-danger">
+                                        <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="deposit_bonus_enabled" {deposit_bonus_enabled_attr}>
+                                        <label class="form-check-label fw-bold text-dark" for="deposit_bonus_enabled">
+                                            <i class="fa-solid fa-power-off text-danger me-1"></i> Bật / Tắt Chương Trình Thưởng Nạp
+                                        </label>
+                                        <div class="small text-muted ms-4">Bật công tắc này nếu bạn muốn chạy chương trình khuyến mãi nạp tiền cho khách hàng.</div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small text-muted">Các Mốc Thưởng Nạp (Mức USDT : % Thưởng):</label>
+                                        <input type="text" class="form-control font-monospace fw-bold" id="deposit_bonus_tiers" value="{deposit_bonus_tiers}" placeholder="100:2,200:5,300:6,500:7,1000:8">
+                                        <div class="form-text small">
+                                            Định dạng: <code>SốTiền:PhầnTrăm</code> phân cách bởi dấu phẩy <code>,</code> hoặc xuống dòng.<br>
+                                            <i>Ví dụ: <code>100:2, 200:5, 300:6, 500:7, 1000:8</code> có nghĩa là:<br>
+                                            • Nạp từ 100 USDT trở lên: thưởng +2%<br>
+                                            • Nạp từ 200 USDT trở lên: thưởng +5%<br>
+                                            • Nạp từ 300 USDT trở lên: thưởng +6%<br>
+                                            • Nạp từ 500 USDT trở lên: thưởng +7%<br>
+                                            • Nạp từ 1.000 USDT trở lên: thưởng +8%</i>
+                                        </div>
+                                    </div>
+
+                                    <div class="d-grid mt-4">
+                                        <button type="submit" class="btn btn-danger py-2 fw-bold">
+                                            <i class="fa-solid fa-floppy-disk me-1"></i> Lưu Cấu Hình Khuyến Mãi
+                                        </button>
+                                    </div>
+                                    <div id="bonusSaveResult" class="mt-3" style="display:none;"></div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-5">
+                        <div class="card border-info shadow-sm mb-4">
+                            <div class="card-header bg-info bg-opacity-10 py-3">
+                                <h5 class="card-title mb-0 fw-bold text-dark"><i class="fa-solid fa-eye me-2 text-info"></i>Xem Trước Hiển Thị Trên Bot</h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="small text-muted mb-2">Giao diện khách nhìn thấy trên Telegram khi bấm Nạp tiền:</p>
+                                <div class="p-3 rounded bg-dark text-light font-monospace small" style="white-space: pre-wrap;">{preview_bonus_html}</div>
+                            </div>
+                        </div>
+
+                        <div class="card border-warning shadow-sm">
+                            <div class="card-header bg-warning bg-opacity-10 py-3">
+                                <h5 class="card-title mb-0 fw-bold text-dark"><i class="fa-solid fa-lightbulb me-2 text-warning"></i>Gợi Ý Cấu Hình</h5>
+                            </div>
+                            <div class="card-body small text-muted">
+                                <p class="mb-2"><b>Mẫu 1 (Khuyến mãi nhẹ):</b><br>
+                                <code>50:1, 100:2, 500:5</code></p>
+                                <p class="mb-2"><b>Mẫu 2 (Kích thích nạp số lượng lớn):</b><br>
+                                <code>100:2, 200:5, 300:6, 500:7, 1000:8</code></p>
+                                <p class="mb-0"><b>Mẫu 3 (Thưởng nạp lễ/tết):</b><br>
+                                <code>10:5, 50:10, 100:15</code></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -927,6 +1026,14 @@ function saveBankSettings() {{
                 'KRYPTO_EXPRESS_API_URL': document.getElementById('krypto_api_url').value.trim()
             }};
             saveSettingsPayload(payload, 'kryptoSaveResult');
+        }}
+
+        function saveBonusSettings() {{
+            const payload = {{
+                'DEPOSIT_BONUS_ENABLED': document.getElementById('deposit_bonus_enabled').checked ? 'true' : 'false',
+                'DEPOSIT_BONUS_TIERS': document.getElementById('deposit_bonus_tiers').value.trim()
+            }};
+            saveSettingsPayload(payload, 'bonusSaveResult');
         }}
 
         function saveForwardingSettings() {{

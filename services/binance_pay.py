@@ -17,6 +17,7 @@ from enums.language import Language
 from models.binance_pay import BinancePayOrder
 from models.deposit import Deposit
 from models.user import User
+from services.deposit_bonus import DepositBonusService
 
 logger = logging.getLogger(__name__)
 
@@ -134,12 +135,14 @@ class BinancePayService:
                 stmt_u = select(User).where(User.id == matched_order.user_id)
                 user = (await session.execute(stmt_u)).scalar_one_or_none()
                 if user:
-                    user.top_up_amount = round(float(user.top_up_amount or 0.0) + amount, 2)
+                    bonus_amt, bonus_pct = DepositBonusService.calculate_bonus(amount)
+                    total_credit = round(amount + bonus_amt, 2)
+                    user.top_up_amount = round(float(user.top_up_amount or 0.0) + total_credit, 2)
                     deposit = Deposit(
                         user_id=user.id,
                         network=Cryptocurrency.USDT_BEP20,
-                        amount=int(amount * (10 ** 18)),
-                        fiat_amount=amount,
+                        amount=int(total_credit * (10 ** 18)),
+                        fiat_amount=total_credit,
                         deposit_datetime=datetime.now(timezone.utc)
                     )
                     session.add(deposit)
@@ -149,10 +152,12 @@ class BinancePayService:
 
                     # Gui thong bao Ting Ting vao chat cho khach hang
                     try:
+                        bonus_line = f"🎁 Thưởng nạp (+{bonus_pct:g}%): <b>+{bonus_amt:.2f}$</b>\n" if bonus_amt > 0 else ""
                         user_msg = (
                             f"🎉 <b>TING TING! NẠP TIỀN THÀNH CÔNG</b> 🎉\n"
                             f"━━━━━━━━━━━━━━━━━━━━━━\n"
                             f"✅ Đã nạp thành công: <b>+{amount:.4f} USDT</b> qua <b>Binance Pay (0% phí)</b>!\n"
+                            f"{bonus_line}"
                             f"💳 Số dư khả dụng hiện tại: <b>{new_bal}$</b>\n"
                             f"🆔 Mã GD Binance: <code>{tx_id}</code>\n"
                             f"━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -165,11 +170,13 @@ class BinancePayService:
                     # Tu dong cap nhat noi dung tin nhan hoa don thanh Cong tien thanh cong
                     if matched_order.chat_id and matched_order.message_id:
                         try:
+                            bonus_inv_line = f"🎁 <b>Thưởng nạp (+{bonus_pct:g}%):</b> <b>+{bonus_amt:.2f}$</b>\n" if bonus_amt > 0 else ""
                             success_text = (
                                 f"✅ <b>ĐÃ THANH TOÁN THÀNH CÔNG!</b>\n"
                                 f"━━━━━━━━━━━━━━━━━━━━━━\n"
                                 f"🧾 <b>Hoá đơn:</b> #{matched_order.id}\n"
                                 f"💰 <b>Đã nạp:</b> <b>+{amount:.4f} USDT</b>\n"
+                                f"{bonus_inv_line}"
                                 f"💳 <b>Số dư hiện tại:</b> <b>{new_bal}$</b>\n"
                                 f"🆔 <b>Mã GD Binance:</b> <code>{tx_id}</code>\n"
                                 f"━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -227,7 +234,9 @@ class BinancePayService:
                     stmt_u = select(User).where(User.telegram_id == matched_tg_id)
                     user = (await session.execute(stmt_u)).scalar_one_or_none()
                     if user:
-                        user.top_up_amount = round(float(user.top_up_amount or 0.0) + amount, 2)
+                        bonus_amt, bonus_pct = DepositBonusService.calculate_bonus(amount)
+                        total_credit = round(amount + bonus_amt, 2)
+                        user.top_up_amount = round(float(user.top_up_amount or 0.0) + total_credit, 2)
                         new_order = BinancePayOrder(
                             user_id=user.id,
                             telegram_id=matched_tg_id,
@@ -240,18 +249,20 @@ class BinancePayService:
                         deposit = Deposit(
                             user_id=user.id,
                             network=Cryptocurrency.USDT_BEP20,
-                            amount=int(amount * (10 ** 18)),
-                            fiat_amount=amount,
+                            amount=int(total_credit * (10 ** 18)),
+                            fiat_amount=total_credit,
                             deposit_datetime=datetime.now(timezone.utc)
                         )
                         session.add(deposit)
                         await session.commit()
                         new_bal = round((user.top_up_amount or 0.0) - (user.consume_records or 0.0), 2)
                         try:
+                            bonus_line = f"🎁 Thưởng nạp (+{bonus_pct:g}%): <b>+{bonus_amt:.2f}$</b>\n" if bonus_amt > 0 else ""
                             user_msg = (
                                 f"🎉 <b>TING TING! NẠP TIỀN THÀNH CÔNG</b> 🎉\n"
                                 f"━━━━━━━━━━━━━━━━━━━━━━\n"
                                 f"✅ Đã nhận: <b>+{amount:.4f} USDT</b> qua <b>Binance Pay</b>!\n"
+                                f"{bonus_line}"
                                 f"💳 Số dư hiện tại: <b>{new_bal}$</b>\n"
                                 f"🆔 Mã GD: <code>{tx_id}</code>"
                             )

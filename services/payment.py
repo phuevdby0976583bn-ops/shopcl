@@ -21,6 +21,7 @@ from models.payment import ProcessingPaymentDTO
 from repositories.payment import PaymentRepository
 from repositories.user import UserRepository
 from utils.utils import get_text, get_bot_photo_id
+from services.deposit_bonus import DepositBonusService
 
 
 class PaymentService:
@@ -56,23 +57,9 @@ class PaymentService:
             callback_data=MyProfileCallback.create(level=1)
         )
         bot_photo_id = get_bot_photo_id()
-        request_caption = (
-            "Nhập số USDT muốn nạp (tối thiểu 1):\n\n"
-            "🎁 <b>Thưởng nạp qua bot:</b>\n"
-            "• 100 USDT: +2%\n"
-            "• 200 USDT: +5%\n"
-            "• 300 USDT: +6%\n"
-            "• 500 USDT: +7%\n"
-            "• 1.000 USDT trở lên: +8%"
-        ) if language == Language.VI else (
-            "Enter USDT amount to deposit (min 1):\n\n"
-            "🎁 <b>Deposit bonus:</b>\n"
-            "• 100 USDT: +2%\n"
-            "• 200 USDT: +5%\n"
-            "• 300 USDT: +6%\n"
-            "• 500 USDT: +7%\n"
-            "• 1,000+ USDT: +8%"
-        )
+        base_prompt = "Nhập số USDT muốn nạp (tối thiểu 1):" if language == Language.VI else "Enter USDT amount to deposit (min 1):"
+        bonus_text = DepositBonusService.get_bonus_display_text(language)
+        request_caption = f"{base_prompt}\n\n{bonus_text}".strip() if bonus_text else base_prompt
         caption = request_caption if error_text is None else f"{error_text}\n\n{request_caption}"
         return InputMediaPhoto(media=bot_photo_id, caption=caption), kb_builder
 

@@ -16,6 +16,7 @@ from repositories.deposit import DepositRepository
 from repositories.referral import ReferralRepository
 from repositories.user import UserRepository
 from utils.utils import get_text
+from services.deposit_bonus import DepositBonusService
 
 
 class ReferralService:
@@ -40,7 +41,8 @@ class ReferralService:
                 config.REFERRAL_BONUS_CAP_PERCENT / 100)
         if referral_bonus > referral_bonus_cap:
             referral_bonus = referral_bonus_cap
-        user_dto.top_up_amount += payment_dto.fiatAmount + referral_bonus
+        dep_bonus, _ = DepositBonusService.calculate_bonus(float(payment_dto.fiatAmount or 0.0))
+        user_dto.top_up_amount += payment_dto.fiatAmount + referral_bonus + dep_bonus
 
     @staticmethod
     async def process_referrer_bonus(payment_dto: ProcessingPaymentDTO,
@@ -94,7 +96,8 @@ class ReferralService:
                 referrer_user_dto.top_up_amount += referrer_bonus
                 await UserRepository.update(referrer_user_dto, session)
 
-        user_dto.top_up_amount += payment_dto.fiatAmount + referral_bonus
+        dep_bonus, _ = DepositBonusService.calculate_bonus(float(payment_dto.fiatAmount or 0.0))
+        user_dto.top_up_amount += payment_dto.fiatAmount + referral_bonus + dep_bonus
         await UserRepository.update(user_dto, session)
         referral_bonus_dto = ReferralBonusDTO(
             referral_user_id=user_dto.id,

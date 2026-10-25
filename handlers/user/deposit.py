@@ -16,6 +16,7 @@ from models.binance_pay import BinancePayOrder
 from models.user import User
 from services.binance_pay import BinancePayService
 from services.deposit_flow import DepositFlowService
+from services.deposit_bonus import DepositBonusService
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ async def prompt_binance_pay_amount(callback: CallbackQuery, state: FSMContext, 
     except Exception:
         pass
     await state.set_state(UserStates.binance_pay_amount)
+    bonus_text = DepositBonusService.get_bonus_display_text(language)
     if language == Language.VI:
         msg = (
             "🟡 <b>NẠP TIỀN QUA BINANCE PAY (0% PHÍ)</b>\n"
@@ -70,6 +72,8 @@ async def prompt_binance_pay_amount(callback: CallbackQuery, state: FSMContext, 
             "👉 <b>Vui lòng nhập số USDT bạn muốn nạp:</b>\n"
             "<i>(Ví dụ: <code>1</code>, <code>5</code>, <code>10.5</code> - Tối thiểu 1 USDT)</i>"
         )
+        if bonus_text:
+            msg += f"\n\n{bonus_text}"
         btn_cancel = "‹ Huỷ / Quay lại"
     else:
         msg = (
@@ -78,6 +82,8 @@ async def prompt_binance_pay_amount(callback: CallbackQuery, state: FSMContext, 
             "👉 <b>Please enter the USDT amount to deposit:</b>\n"
             "<i>(e.g., <code>1</code>, <code>5</code>, <code>10.5</code> - Minimum 1 USDT)</i>"
         )
+        if bonus_text:
+            msg += f"\n\n{bonus_text}"
         btn_cancel = "‹ Cancel / Back"
 
     kb = InlineKeyboardBuilder()
@@ -269,23 +275,9 @@ async def choose_network(callback: CallbackQuery, state: FSMContext, language: L
     await state.update_data(deposit_network=net_code)
     await state.set_state(UserStates.onchain_amount)
 
-    msg = (
-        f"Nhập số USDT muốn nạp (tối thiểu 1):\n\n"
-        "🎁 <b>Thưởng nạp qua bot:</b>\n"
-        "• 100 USDT: +2%\n"
-        "• 200 USDT: +5%\n"
-        "• 300 USDT: +6%\n"
-        "• 500 USDT: +7%\n"
-        "• 1.000 USDT trở lên: +8%"
-    ) if language == Language.VI else (
-        f"Enter USDT amount to deposit (min 1):\n\n"
-        "🎁 <b>Deposit bonus:</b>\n"
-        "• 100 USDT: +2%\n"
-        "• 200 USDT: +5%\n"
-        "• 300 USDT: +6%\n"
-        "• 500 USDT: +7%\n"
-        "• 1,000+ USDT: +8%"
-    )
+    base_prompt = "Nhập số USDT muốn nạp (tối thiểu 1):" if language == Language.VI else "Enter USDT amount to deposit (min 1):"
+    bonus_text = DepositBonusService.get_bonus_display_text(language)
+    msg = f"{base_prompt}\n\n{bonus_text}".strip() if bonus_text else base_prompt
     kb = InlineKeyboardBuilder()
     kb.button(text="‹ Huỷ / Quay lại", callback_data="dep_cancel_prompt")
 
@@ -405,6 +397,7 @@ async def prompt_bank_amount(callback: CallbackQuery, state: FSMContext, languag
     await state.set_state(UserStates.bank_deposit_amount)
     rate = float(getattr(config, "BANK_EXCHANGE_RATE", 26000) or 26000)
     stk = getattr(config, "BANK_ACCOUNT_NUMBER", "8880117869")
+    bonus_text = DepositBonusService.get_bonus_display_text(language)
     if language == Language.VI:
         msg = (
             f"🏦 <b>NẠP TIỀN QUA NGÂN HÀNG (VIETQR / BIDV)</b>\n"
@@ -418,6 +411,8 @@ async def prompt_bank_amount(callback: CallbackQuery, state: FSMContext, languag
             f"• Hoặc nhập theo VNĐ (ví dụ: <code>26000</code>, <code>50000</code>, <code>100k</code>)\n"
             f"<i>(Hạn mức tối thiểu: <b>1$ (~{rate:,.0f}đ)</b>)</i>"
         )
+        if bonus_text:
+            msg += f"\n\n{bonus_text}"
         btn_cancel = "‹ Huỷ / Quay lại"
     else:
         msg = (
@@ -432,6 +427,8 @@ async def prompt_bank_amount(callback: CallbackQuery, state: FSMContext, languag
             f"• Or in VND (e.g., <code>50000</code>, <code>100000</code>)\n"
             f"<i>(Minimum: <b>$1 (~{rate:,.0f} VND)</b>)</i>"
         )
+        if bonus_text:
+            msg += f"\n\n{bonus_text}"
         btn_cancel = "‹ Cancel / Back"
 
     kb = InlineKeyboardBuilder()
@@ -558,11 +555,14 @@ async def handle_bank_check_invoice(callback: CallbackQuery, session: AsyncSessi
         user_dto = await session.execute(select(User).where(User.id == order.user_id))
         user = user_dto.scalar_one_or_none()
         bal = round((user.top_up_amount or 0.0) - (user.consume_records or 0.0), 2) if user else order.amount_usd
+        bonus_amt, bonus_pct = DepositBonusService.calculate_bonus(order.amount_usd)
+        bonus_line = f"🎁 Thưởng nạp (+{bonus_pct:g}%): <b>+{bonus_amt:.2f}$</b>\n" if bonus_amt > 0 else ""
         if language == Language.VI:
             success_msg = (
                 f"🎉 <b>NẠP TIỀN NGÂN HÀNG THÀNH CÔNG!</b> 🎉\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"✅ Đã nhận: <b>+{order.amount_vnd:,.0f} đ</b> (~ <b>+{order.amount_usd}$ USDT</b>)\n"
+                f"{bonus_line}"
                 f"💳 Số dư khả dụng hiện tại: <b>{bal}$</b>\n"
                 f"🆔 Mã GD ThueApi: <code>{order.transaction_id or 'Auto'}</code>\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━\n"

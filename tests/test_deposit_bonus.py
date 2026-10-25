@@ -1,8 +1,11 @@
 ﻿import os
 import pytest
+from unittest.mock import AsyncMock, MagicMock
+from types import SimpleNamespace
 
 from services.deposit_bonus import DepositBonusService
 import config
+
 
 def test_deposit_bonus_disabled_by_default():
     setattr(config, "DEPOSIT_BONUS_ENABLED", False)
@@ -11,11 +14,12 @@ def test_deposit_bonus_disabled_by_default():
     assert DepositBonusService.get_bonus_rate(100.0) == 0.0
     assert DepositBonusService.calculate_bonus(100.0) == (0.0, 0.0)
 
+
 def test_deposit_bonus_enabled_tiers():
     setattr(config, "DEPOSIT_BONUS_ENABLED", True)
     setattr(config, "DEPOSIT_BONUS_TIERS", "100:2, 200:5, 300:6, 500:7, 1000:8")
     assert DepositBonusService.is_enabled() is True
-    
+
     # 50 -> 0%
     assert DepositBonusService.get_bonus_rate(50.0) == 0.0
     # 100 -> 2%
@@ -33,3 +37,57 @@ def test_deposit_bonus_enabled_tiers():
     assert "Thưởng nạp qua bot" in text
     assert "+2%" in text
     assert "+8%" in text
+
+
+def test_deposit_bonus_disabled_returns_empty_prompt():
+    setattr(config, "DEPOSIT_BONUS_ENABLED", False)
+    text = DepositBonusService.get_bonus_display_text()
+    assert text == ""
+
+
+def test_deposit_bonus_custom_tiers_and_delimiters():
+    setattr(config, "DEPOSIT_BONUS_ENABLED", True)
+    setattr(config, "DEPOSIT_BONUS_TIERS", "50:1\n100:3;500:10")
+    tiers = DepositBonusService.parse_tiers()
+    assert tiers == [(50.0, 1.0), (100.0, 3.0), (500.0, 10.0)]
+    assert DepositBonusService.get_bonus_rate(40.0) == 0.0
+    assert DepositBonusService.get_bonus_rate(50.0) == 1.0
+    assert DepositBonusService.get_bonus_rate(200.0) == 3.0
+    assert DepositBonusService.get_bonus_rate(1000.0) == 10.0
+
+
+@pytest.mark.asyncio
+async def test_admin_settings_view_tab_bonus_rendered(monkeypatch):
+    from admin_settings_view import PaymentApiConfigView
+    from utils.utils import create_access_token
+    from starlette.requests import Request
+
+    view = PaymentApiConfigView()
+    token = create_access_token({"sub": "admin"})
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/settings",
+        "headers": [],
+        "session": {"token": token}
+    }
+    req = Request(scope)
+
+    # Mock DB settings
+    async def fake_get_all_settings(session):
+        return {
+            "DEPOSIT_BONUS_ENABLED": True,
+            "DEPOSIT_BONUS_TIERS": "100:2,200:5,500:10"
+        }
+
+    monkeypatch.setattr("services.settings.SettingsService.get_all_settings", fake_get_all_settings)
+
+    resp = await view.settings_page(req)
+    assert resp.status_code == 200
+    html_body = resp.body.decode("utf-8")
+    assert "tab-bonus" in html_body
+    assert "Khuyến Mãi Nạp Tiền" in html_body
+    assert "deposit_bonus_enabled" in html_body
+    assert "deposit_bonus_tiers" in html_body
+    assert "saveBonusSettings" in html_body
