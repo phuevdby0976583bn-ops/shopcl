@@ -1,3 +1,4 @@
+import config
 from models.bank_order import BankDepositOrder
 from services.bank_deposit import BankDepositService
 import logging
@@ -93,7 +94,6 @@ async def prompt_binance_pay_amount(callback: CallbackQuery, state: FSMContext, 
             await callback.message.edit_text(text=msg, reply_markup=kb.as_markup(), parse_mode="HTML")
         except Exception:
             await callback.message.answer(text=msg, reply_markup=kb.as_markup(), parse_mode="HTML")
-    await callback.answer()
 
 
 @deposit_router.callback_query(F.data == "dep_cancel_prompt")
@@ -300,7 +300,6 @@ async def choose_network(callback: CallbackQuery, state: FSMContext, language: L
             await callback.message.edit_text(text=msg, reply_markup=kb.as_markup(), parse_mode="HTML")
         except Exception:
             await callback.message.answer(text=msg, reply_markup=kb.as_markup(), parse_mode="HTML")
-    await callback.answer()
 
 
 @deposit_router.message(StateFilter(UserStates.onchain_amount))
@@ -449,7 +448,6 @@ async def prompt_bank_amount(callback: CallbackQuery, state: FSMContext, languag
             await callback.message.edit_text(text=msg, reply_markup=kb.as_markup(), parse_mode="HTML")
         except Exception:
             await callback.message.answer(text=msg, reply_markup=kb.as_markup(), parse_mode="HTML")
-    await callback.answer()
 
 
 @deposit_router.message(StateFilter(UserStates.bank_deposit_amount))
@@ -492,12 +490,20 @@ async def receive_bank_amount(message: Message, state: FSMContext, session: Asyn
             session=session,
             language=language
         )
-        sent = await message.answer_photo(
-            photo=qr_file,
-            caption=caption,
-            parse_mode="HTML",
-            reply_markup=kb.as_markup()
-        )
+        try:
+            sent = await message.answer_photo(
+                photo=qr_file,
+                caption=caption,
+                parse_mode="HTML",
+                reply_markup=kb.as_markup()
+            )
+        except Exception as pe:
+            logger.warning(f"Failed to send VietQR photo, falling back to text: {pe}")
+            sent = await message.answer(
+                text=caption,
+                parse_mode="HTML",
+                reply_markup=kb.as_markup()
+            )
         try:
             order.chat_id = sent.chat.id
             order.message_id = sent.message_id
