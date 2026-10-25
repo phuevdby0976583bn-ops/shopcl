@@ -23,7 +23,7 @@ def rate_limit(limit: int, key=None):
 
 
 class ThrottlingMiddleware(BaseMiddleware):
-    def __init__(self, redis: redis.asyncio.client.Redis = None, limit=0.5, key_prefix='antiflood_'):
+    def __init__(self, redis: redis.asyncio.client.Redis = None, limit=0.15, key_prefix='antiflood_'):
         self.rate_limit = limit
         self.prefix = key_prefix
         self.throttle_manager = ThrottleManager(redis=redis)

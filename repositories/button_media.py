@@ -1,4 +1,4 @@
-from sqlalchemy import select, update, distinct, union_all
+﻿from sqlalchemy import select, update, distinct, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db_session, session_execute, session_commit
@@ -8,6 +8,13 @@ from models.category import Category
 from models.review import Review
 from models.subcategory import Subcategory
 from utils.utils import get_bot_photo_id
+
+# Cache trong RAM loai bo hoan toan truy van DB moi khi render menu
+_button_media_cache: dict[KeyboardButton, ButtonMediaDTO] = {}
+
+
+def clear_button_media_cache():
+    _button_media_cache.clear()
 
 
 class ButtonMediaRepository:
@@ -27,6 +34,9 @@ class ButtonMediaRepository:
 
     @staticmethod
     async def get_by_button(button: KeyboardButton, session: AsyncSession) -> ButtonMediaDTO:
+        if button in _button_media_cache:
+            return _button_media_cache[button]
+
         bot_media_id = get_bot_photo_id()
         try:
             stmt = (select(ButtonMedia)
@@ -41,9 +51,13 @@ class ButtonMediaRepository:
                     await session.refresh(bm)
                 except Exception:
                     pass
-            return ButtonMediaDTO.model_validate(bm, from_attributes=True)
+            dto = ButtonMediaDTO.model_validate(bm, from_attributes=True)
+            _button_media_cache[button] = dto
+            return dto
         except Exception:
-            return ButtonMediaDTO(media_id=f"0{bot_media_id}", button=button)
+            dto = ButtonMediaDTO(media_id=f"0{bot_media_id}", button=button)
+            _button_media_cache[button] = dto
+            return dto
 
     @staticmethod
     async def update(button_media_dto: ButtonMediaDTO, session: AsyncSession):
@@ -51,6 +65,7 @@ class ButtonMediaRepository:
                 .where(ButtonMedia.button == button_media_dto.button)
                 .values(**button_media_dto.model_dump()))
         await session_execute(stmt, session)
+        _button_media_cache[button_media_dto.button] = button_media_dto
 
     @staticmethod
     async def get_all_file_ids(session: AsyncSession) -> list[str]:
@@ -96,4 +111,4 @@ class ButtonMediaRepository:
         await session_execute(stmt_subcategory, session)
         await session_execute(stmt_buttonmedia, session)
         await session_execute(stmt_review, session)
-
+        _button_media_cache.clear()

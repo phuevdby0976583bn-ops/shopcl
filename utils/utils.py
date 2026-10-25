@@ -25,12 +25,22 @@ def get_sslipio_external_url():
     return sslip_url
 
 
+_bot_photo_id_cached = None
+
+
 def get_bot_photo_id() -> str:
+    global _bot_photo_id_cached
+    if _bot_photo_id_cached is not None:
+        return _bot_photo_id_cached
     try:
-        with open("static/no_image.jpeg", "r") as f:
-            return f.read()
+        if os.path.exists("static/no_image.jpeg"):
+            with open("static/no_image.jpeg", "r", encoding="utf-8") as f:
+                _bot_photo_id_cached = f.read().strip()
+        else:
+            _bot_photo_id_cached = ""
     except Exception:
-        return ""
+        _bot_photo_id_cached = ""
+    return _bot_photo_id_cached
 
 
 def start_ngrok():

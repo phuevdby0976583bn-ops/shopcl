@@ -9,6 +9,7 @@ from enums.language import Language
 class Localizator:
     _i18n_dir = Path("./i18n")
     _cache: dict[Language, dict] = {}
+    _all_texts_cache: dict[tuple[BotEntity, str], set[str]] = {}
 
     @classmethod
     def _normalize_language(cls, language: Any) -> Language:
@@ -46,6 +47,10 @@ class Localizator:
 
     @classmethod
     def get_all_texts(cls, entity: BotEntity, key: str) -> set[str]:
+        cache_key = (entity, key)
+        if cache_key in cls._all_texts_cache:
+            return cls._all_texts_cache[cache_key]
+
         localized_texts = set()
         for locale_file in cls._i18n_dir.glob("*.json"):
             try:
@@ -53,8 +58,10 @@ class Localizator:
             except ValueError:
                 continue
             localized_texts.add(cls.get_text(language, entity, key))
+        cls._all_texts_cache[cache_key] = localized_texts
         return localized_texts
 
     @classmethod
     def clear_cache(cls) -> None:
         cls._cache.clear()
+        cls._all_texts_cache.clear()

@@ -1,4 +1,5 @@
 import math
+import time
 
 from sqlalchemy import select, func, update, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,13 @@ from models.category import Category
 from models.item import Item, ItemDTO
 from models.subcategory import Subcategory, SubcategoryDTO
 from utils.utils import get_bot_photo_id, calculate_max_page
+
+
+_subcategory_by_id_cache: dict[int, tuple[SubcategoryDTO, float]] = {}
+
+
+def clear_subcategory_cache():
+    _subcategory_by_id_cache.clear()
 
 
 class SubcategoryRepository:
@@ -105,9 +113,15 @@ class SubcategoryRepository:
 
     @staticmethod
     async def get_by_id(subcategory_id: int, session: Session | AsyncSession) -> SubcategoryDTO:
+        now = time.time()
+        cached = _subcategory_by_id_cache.get(subcategory_id)
+        if cached and cached[1] > now:
+            return cached[0]
         stmt = select(Subcategory).where(Subcategory.id == subcategory_id)
         subcategory = await session_execute(stmt, session)
-        return SubcategoryDTO.model_validate(subcategory.scalar(), from_attributes=True)
+        dto = SubcategoryDTO.model_validate(subcategory.scalar(), from_attributes=True)
+        _subcategory_by_id_cache[subcategory_id] = (dto, now + 300)
+        return dto
 
     @staticmethod
     async def get_to_delete(sort_pairs: dict[str, int],
@@ -167,6 +181,7 @@ class SubcategoryRepository:
                 .where(Subcategory.id == subcategory_dto.id)
                 .values(**subcategory_dto.model_dump()))
         await session_execute(stmt, session)
+        _subcategory_by_id_cache.pop(subcategory_dto.id, None)
 
     @staticmethod
     async def get_by_ids(subcategory_ids: list[int], session: Session | AsyncSession) -> list[SubcategoryDTO]:

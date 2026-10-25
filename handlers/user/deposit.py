@@ -99,6 +99,10 @@ async def prompt_binance_pay_amount(callback: CallbackQuery, state: FSMContext, 
 
 @deposit_router.callback_query(F.data == "dep_cancel_prompt")
 async def cancel_deposit_prompt(callback: CallbackQuery, state: FSMContext, language: Language = Language.VI):
+    try:
+        await callback.answer()
+    except Exception:
+        pass
     await state.clear()
     msg = "❌ <b>Đã huỷ thao tác nạp tiền.</b>" if language == Language.VI else "❌ <b>Deposit operation cancelled.</b>"
     try:
@@ -271,6 +275,10 @@ async def choose_onchain(callback: CallbackQuery, state: FSMContext, language: L
 
 @deposit_router.callback_query(F.data.startswith("dep_net:"))
 async def choose_network(callback: CallbackQuery, state: FSMContext, language: Language = Language.VI):
+    try:
+        await callback.answer()
+    except Exception:
+        pass
     net_code = callback.data.split(":", 1)[1]
     await state.update_data(deposit_network=net_code)
     await state.set_state(UserStates.onchain_amount)
@@ -366,6 +374,10 @@ async def handle_copy_buttons(callback: CallbackQuery):
 
 @deposit_router.callback_query(F.data.startswith("dep_cancel"))
 async def handle_cancel_invoice(callback: CallbackQuery, state: FSMContext, session: AsyncSession, language: Language = Language.VI):
+    try:
+        await callback.answer()
+    except Exception:
+        pass
     await state.clear()
     parts = callback.data.split(":", 1)
     if len(parts) > 1 and parts[1].isdigit():
@@ -617,6 +629,10 @@ async def handle_bank_check_invoice(callback: CallbackQuery, session: AsyncSessi
 
 @deposit_router.callback_query(F.data.startswith("bank_cancel:"))
 async def handle_bank_cancel_invoice(callback: CallbackQuery, state: FSMContext, session: AsyncSession, language: Language = Language.VI):
+    try:
+        await callback.answer()
+    except Exception:
+        pass
     await state.clear()
     parts = callback.data.split(":", 1)
     if len(parts) > 1 and parts[1].isdigit():

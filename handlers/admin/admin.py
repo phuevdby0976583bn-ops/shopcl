@@ -90,6 +90,10 @@ async def admin_menu_navigation(callback: CallbackQuery,
                                 state: FSMContext,
                                 callback_data: AdminMenuCallback,
                                 language: Language):
+    try:
+        await callback.answer()
+    except Exception:
+        pass
     current_level = callback_data.level
 
     levels = {

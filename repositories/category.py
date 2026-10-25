@@ -1,4 +1,5 @@
 import math
+import time
 
 from sqlalchemy import select, func, update, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,13 @@ from enums.sort_property import SortProperty
 from models.category import Category, CategoryDTO
 from models.item import Item
 from utils.utils import get_bot_photo_id, calculate_max_page
+
+
+_category_by_id_cache: dict[int, tuple[CategoryDTO, float]] = {}
+
+
+def clear_category_cache():
+    _category_by_id_cache.clear()
 
 
 class CategoryRepository:
@@ -79,9 +87,15 @@ class CategoryRepository:
 
     @staticmethod
     async def get_by_id(category_id: int, session: Session | AsyncSession) -> CategoryDTO:
+        now = time.time()
+        cached = _category_by_id_cache.get(category_id)
+        if cached and cached[1] > now:
+            return cached[0]
         stmt = select(Category).where(Category.id == category_id)
         category = await session_execute(stmt, session)
-        return CategoryDTO.model_validate(category.scalar(), from_attributes=True)
+        dto = CategoryDTO.model_validate(category.scalar(), from_attributes=True)
+        _category_by_id_cache[category_id] = (dto, now + 300)
+        return dto
 
     @staticmethod
     async def get_to_delete(sort_pairs: dict[str, int],
@@ -138,3 +152,4 @@ class CategoryRepository:
                 .where(Category.id == category_dto.id)
                 .values(**category_dto.model_dump()))
         await session_execute(stmt, session)
+        _category_by_id_cache.pop(category_dto.id, None)

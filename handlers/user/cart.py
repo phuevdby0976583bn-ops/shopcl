@@ -50,6 +50,10 @@ async def navigate_cart_process(callback: CallbackQuery,
                                 session: AsyncSession | Session,
                                 state: FSMContext,
                                 language: Language):
+    try:
+        await callback.answer()
+    except Exception:
+        pass
     kb_builder = InlineKeyboardBuilder()
     kb_builder.button(
         text='🛒 Xem danh mục sản phẩm',

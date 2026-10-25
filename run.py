@@ -679,7 +679,7 @@ async def error_handler(event: ErrorEvent, message: Message):
     await NotificationService.send_to_admins(admin_notification, None)
 
 
-throttling_middleware = ThrottlingMiddleware(redis)
+throttling_middleware = ThrottlingMiddleware(redis, limit=0.15)
 users_routers = Router()
 users_routers.include_routers(
     all_categories_router,

@@ -5,6 +5,7 @@ from aiogram.types import TelegramObject
 from db import get_db_session
 from enums.language import Language
 from repositories.user import UserRepository
+from utils.custom_filters import cache_user_exists, cache_user_banned
 
 # Cache ngon ngu trong RAM (0.001ms), tranh truy van DB vao Supabase moi lan bam nut
 _user_language_cache: dict[int, Language] = {}
@@ -16,15 +17,16 @@ def set_cached_user_language(telegram_id: int, language: Language) -> None:
 
 class I18nMiddleware(BaseMiddleware):
     async def __call__(
-            self,
-            handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
-            event: TelegramObject,
-            data: Dict[str, Any]
+          self,
+          handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+          event: TelegramObject,
+          data: Dict[str, Any]
     ) -> Awaitable[Any]:
         user = getattr(event, "from_user", None)
         if not user:
             data["language"] = Language.VI
             return await handler(event, data)
+
 
         # 1. Kiem tra cache sieu toc trong RAM
         cached_lang = _user_language_cache.get(user.id)
@@ -36,14 +38,20 @@ class I18nMiddleware(BaseMiddleware):
         existing_session = data.get("session")
         if existing_session:
             user_dto = await UserRepository.get_by_tgid(user.id, existing_session)
+            if user_dto:
+                cache_user_exists(user.id, ttl=1800)
+                cache_user_banned(user.id, bool(user_dto.is_banned and not getattr(user_dto, "is_admin", False)), ttl=1800)
             lang = (user_dto.language if user_dto else None) or Language.from_locale(user.language_code) or Language.VI
             _user_language_cache[user.id] = lang
             data["language"] = lang
             return await handler(event, data)
 
-        # 3. Fallback phong truong hop khong co session
+        # 3. Fallback phong truong hkp khong co session
         async with get_db_session() as session:
             user_dto = await UserRepository.get_by_tgid(user.id, session)
+            if user_dto:
+                cache_user_exists(user.id, ttl=1800)
+                cache_user_banned(user.id, bool(user_dto.is_banned and not getattr(user_dto, "is_admin", False)), ttl=1800)
             lang = (user_dto.language if user_dto else None) or Language.from_locale(user.language_code) or Language.VI
             _user_language_cache[user.id] = lang
             data["language"] = lang
