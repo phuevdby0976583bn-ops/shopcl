@@ -481,17 +481,100 @@ async def execute_instant_buy(**kwargs):
             pass
 
 
+def parse_entity_type(raw) -> EntityType:
+    if isinstance(raw, EntityType):
+        return raw
+    if isinstance(raw, int):
+        try:
+            return EntityType(raw)
+        except Exception:
+            pass
+    if isinstance(raw, str):
+        if raw.isdigit():
+            try:
+                return EntityType(int(raw))
+            except Exception:
+                pass
+        name = raw.upper()
+        if hasattr(EntityType, name):
+            return EntityType[name]
+    return EntityType.CATEGORY
+
+
+async def execute_global_search(target: Message | CallbackQuery, query: str, session: AsyncSession, language: Language = Language.VI):
+    from sqlalchemy import select, func
+    from aiogram.types import InlineKeyboardButton
+    from models.category import Category
+    from models.subcategory import Subcategory
+    from models.item import Item
+
+    clean_query = query.strip()
+    stmt_cat = select(Category).where(Category.name.ilike(f"%{clean_query}%"))
+    categories = (await session.execute(stmt_cat)).scalars().all()
+
+    stmt_sub = select(Subcategory).where(Subcategory.name.ilike(f"%{clean_query}%"))
+    subcategories = (await session.execute(stmt_sub)).scalars().all()
+
+    kb_builder = InlineKeyboardBuilder()
+
+    if subcategories or categories:
+        for sub in subcategories[:10]:
+            stmt_cat_id = select(Item.category_id).where(Item.subcategory_id == sub.id).limit(1)
+            cat_id = (await session.execute(stmt_cat_id)).scalar_one_or_none() or 1
+
+            stmt_cnt = select(func.count(Item.id)).where(Item.subcategory_id == sub.id, Item.is_sold == False)
+            avail_cnt = (await session.execute(stmt_cnt)).scalar() or 0
+
+            btn_text = f"🛒 {sub.name} - ${sub.price or 0.02:g} ({avail_cnt} nick)"
+            cb = AllCategoriesCallback.create(level=3, category_id=cat_id, subcategory_id=sub.id, item_type=ItemType.DIGITAL)
+            kb_builder.button(text=btn_text, callback_data=cb.pack())
+
+        for cat in categories[:4]:
+            cb = AllCategoriesCallback.create(level=2, category_id=cat.id, item_type=ItemType.DIGITAL)
+            kb_builder.button(text=f"📁 {cat.name}", callback_data=cb.pack())
+
+        kb_builder.adjust(1)
+        btn_all = "📦 Xem tất cả sản phẩm" if language == Language.VI else "📦 All Products"
+        cb_all = AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL)
+        kb_builder.row(InlineKeyboardButton(text=btn_all, callback_data=cb_all.pack()))
+
+        msg_text = (
+            f'🔎 <b>KẾT QUẢ TÌM KIẾM CHO:</b> "<code>{clean_query}</code>"\n'
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👇 <i>Vui lòng chọn sản phẩm bạn muốn mua bên dưới:</i>"
+        ) if language == Language.VI else (
+            f'🔎 <b>SEARCH RESULTS FOR:</b> "<code>{clean_query}</code>"\n'
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👇 <i>Please choose a product below:</i>"
+        )
+    else:
+        btn_all = "📦 Xem tất cả sản phẩm" if language == Language.VI else "📦 All Products"
+        cb_all = AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL)
+        kb_builder.button(text=btn_all, callback_data=cb_all.pack())
+        kb_builder.adjust(1)
+
+        msg_text = (
+            f'🔎 Không tìm thấy sản phẩm nào phù hợp với từ khoá "<b>{clean_query}</b>".\n'
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👇 Bạn có thể bấm <b>{btn_all}</b> để xem toàn bộ danh mục tài khoản:"
+        ) if language == Language.VI else (
+            f'🔎 No products found matching "<b>{clean_query}</b>".\n'
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👇 Click below to view all available products:"
+        )
+
+    await _send_or_edit_text(target, msg_text, kb_builder.as_markup())
+
+
 @all_categories_router.message(IsUserExistFilter(), F.text, StateFilter(UserStates.filter_items))
 async def receive_filter_message(message: Message, state: FSMContext, session: AsyncSession, language: Language):
-    await state.update_data(filter=message.html_text)
-    state_data = await state.get_data()
-    entity_type = EntityType(state_data['entity_type'])
-    if entity_type == EntityType.CATEGORY:
-        media, kb_builder = await CategoryService.get_buttons(None, state, session, language)
-    else:
-        media, kb_builder = await SubcategoryService.get_buttons(None, state, session, language)
-    caption = getattr(media, 'caption', '') or '...'
-    await _send_or_edit_text(message, caption, kb_builder.as_markup())
+    filter_val = (message.text or "").strip()
+    if filter_val.startswith("/") or any(k in filter_val for k in ["Sản phẩm", "Đơn hàng", "Ví", "Hỗ trợ", "Products", "Orders", "Wallet"]):
+        await state.clear()
+        return
+
+    await state.clear()
+    await execute_global_search(message, filter_val, session, language)
 
 
 @all_categories_router.callback_query(AllCategoriesCallback.filter(), IsUserExistFilter())
@@ -500,6 +583,11 @@ async def navigate_categories(callback: CallbackQuery,
                               session: AsyncSession,
                               state: FSMContext,
                               language: Language):
+    try:
+        await callback.answer()
+    except Exception:
+        pass
+
     current_level = callback_data.level
 
     levels = {

@@ -289,55 +289,66 @@ async def handle_orders(message: Message, session: AsyncSession, state: FSMConte
 @main_router.message(Command("wallet"))
 async def handle_wallet(message: Message, session: AsyncSession, state: FSMContext, language: Language):
     await state.clear()
-    stmt_u = select(User).where(User.telegram_id == message.from_user.id)
-    user = (await session.execute(stmt_u)).scalar_one_or_none()
-    balance = 0.0
-    top_up = 0.0
-    consume = 0.0
-    if user:
-        top_up = float(user.top_up_amount or 0.0)
-        consume = float(user.consume_records or 0.0)
-        balance = round(max(0.0, top_up - consume), 2)
+    try:
+        stmt_u = select(User).where(User.telegram_id == message.from_user.id)
+        user = (await session.execute(stmt_u)).scalar_one_or_none()
+        balance = 0.0
+        top_up = 0.0
+        consume = 0.0
+        if user:
+            top_up = float(user.top_up_amount or 0.0)
+            consume = float(user.consume_records or 0.0)
+            balance = round(max(0.0, top_up - consume), 2)
 
-    user_name = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
+        user_name = f"@{message.from_user.username}" if message.from_user.username else (message.from_user.full_name or "Khách")
 
-    if language == Language.VI:
-        text = (
-            "💳 <b>VÍ & TÀI KHOẢN CỦA BẠN</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👤 <b>Tài khoản:</b> {user_name} (ID: <code>{message.from_user.id}</code>)\n"
-            f"💰 <b>Số dư khả dụng:</b> <b>{balance}$</b> (USDT)\n"
-            f"📥 <b>Đã nạp:</b> {top_up:.2f}$ | 📤 <b>Đã tiêu:</b> {consume:.2f}$\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "⚡ <i>Khuyên dùng <b>Binance Pay</b>: Miễn phí 100%, nạp tự động nhận ngay sau 1-5 giây.</i>\n"
-            "👇 <b>Bấm nút bên dưới để nạp tiền tự động:</b>"
+        if language == Language.VI:
+            text = (
+                "💳 <b>VÍ & TÀI KHOẢN CỦA BẠN</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 <b>Tài khoản:</b> {user_name} (ID: <code>{message.from_user.id}</code>)\n"
+                f"💰 <b>Số dư khả dụng:</b> <b>{balance}$</b> (USDT)\n"
+                f"📥 <b>Đã nạp:</b> {top_up:.2f}$ | 📤 <b>Đã tiêu:</b> {consume:.2f}$\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                "⚡ <i>Khuyên dùng <b>Binance Pay</b>: Miễn phí 100%, nạp tự động nhận ngay sau 1-5 giây.</i>\n"
+                "👇 <b>Bấm nút bên dưới để nạp tiền tự động:</b>"
+            )
+            btn_binance = "🟡 Binance Pay (0% Phí - Nhận 1s)"
+            btn_onchain = "🌐 Nạp On-chain (BSC, TRX, TON...)"
+            btn_history = "📜 Lịch sử mua hàng"
+        else:
+            text = (
+                "💳 <b>YOUR WALLET & ACCOUNT</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 <b>Account:</b> {user_name} (ID: <code>{message.from_user.id}</code>)\n"
+                f"💰 <b>Available Balance:</b> <b>{balance}$</b> (USDT)\n"
+                f"📥 <b>Deposited:</b> {top_up:.2f}$ | 📤 <b>Spent:</b> {consume:.2f}$\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                "⚡ <i>Recommended: <b>Binance Pay</b> (0% fee, instant credit in 1-5s).</i>\n"
+                "👇 <b>Tap a button below to deposit:</b>"
+            )
+            btn_binance = "🟡 Binance Pay (0% Fee - Instant 1s)"
+            btn_onchain = "🌐 Other Wallets / Exchanges"
+            btn_history = "📜 Purchase History"
+
+        btn_bank = "🏦 Chuyển khoản Ngân hàng (VietQR / BIDV)" if language == Language.VI else "🏦 Vietnam Bank Transfer (VietQR / BIDV)"
+        kb = InlineKeyboardBuilder()
+        kb.button(text=btn_bank, callback_data="dep_method:bank")
+        kb.button(text=btn_binance, callback_data="dep_method:binance")
+        kb.button(text=btn_onchain, callback_data="dep_method:onchain")
+        kb.button(text=btn_history, callback_data=MyProfileCallback.create(level=3))
+        kb.adjust(1)
+        await message.answer(text=text, reply_markup=kb.as_markup(), parse_mode="HTML")
+    except Exception as e:
+        logging.error(f"Error in handle_wallet: {e}", exc_info=True)
+        from services.deposit_flow import DepositFlowService
+        text_method, kb_method = DepositFlowService.get_method_selection_keyboard(language)
+        await message.answer(
+            "💳 <b>VÍ & TÀI KHOẢN</b>\n━━━━━━━━━━━━━━━━━━━━━━\n"
+            "Vui lòng chọn phương thức nạp tiền bên dưới:",
+            reply_markup=kb_method.as_markup(),
+            parse_mode="HTML"
         )
-        btn_binance = "🟡 Binance Pay (0% Phí - Nhận 1s)"
-        btn_onchain = "🌐 Nạp On-chain (BSC, TRX, TON...)"
-        btn_history = "📜 Lịch sử mua hàng"
-    else:
-        text = (
-            "💳 <b>YOUR WALLET & ACCOUNT</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👤 <b>Account:</b> {user_name} (ID: <code>{message.from_user.id}</code>)\n"
-            f"💰 <b>Available Balance:</b> <b>{balance}$</b> (USDT)\n"
-            f"📥 <b>Deposited:</b> {top_up:.2f}$ | 📤 <b>Spent:</b> {consume:.2f}$\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "⚡ <i>Recommended: <b>Binance Pay</b> (0% fee, instant credit in 1-5s).</i>\n"
-            "👇 <b>Tap a button below to deposit:</b>"
-        )
-        btn_binance = "🟡 Binance Pay (0% Fee - Instant 1s)"
-        btn_onchain = "🌐 Other Wallets / Exchanges"
-        btn_history = "📜 Purchase History"
-
-    btn_bank = "🏦 Chuyển khoản Ngân hàng (VietQR / BIDV)" if language == Language.VI else "🏦 Vietnam Bank Transfer (VietQR / BIDV)"
-    kb = InlineKeyboardBuilder()
-    kb.button(text=btn_bank, callback_data="dep_method:bank")
-    kb.button(text=btn_binance, callback_data="dep_method:binance")
-    kb.button(text=btn_onchain, callback_data="dep_method:onchain")
-    kb.button(text=btn_history, callback_data=MyProfileCallback.create(level=3))
-    kb.adjust(1)
-    await message.answer(text=text, reply_markup=kb.as_markup(), parse_mode="HTML")
 
 
 @main_router.message(F.text.in_(set(BUTTON_LANGUAGE.values())))
@@ -584,6 +595,9 @@ async def banned_callback(callback: CallbackQuery, language: Language):
 @main_router.message(F.text)
 async def fallback_any_text(message: Message, session: AsyncSession, language: Language):
     text = (message.text or "").strip()
+    if not text:
+        return
+
     num_clean = text.replace(",", ".").replace("$", "").replace("USDT", "").replace("usdt", "").strip()
     try:
         val = float(num_clean)
@@ -599,6 +613,12 @@ async def fallback_any_text(message: Message, session: AsyncSession, language: L
             return
     except ValueError:
         pass
+
+    # Nếu người dùng gõ từ khoá tìm kiếm (như clone, via, fb, facebook...), tự động tìm kiếm ngay!
+    if not text.startswith("/"):
+        from handlers.user.all_categories import execute_global_search
+        await execute_global_search(message, text, session, language)
+        return
 
     await start(message, session, language, None)
 

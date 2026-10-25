@@ -35,7 +35,7 @@ class SubcategoryService:
                                                        InputMediaAnimation |
                                                        InputMediaVideo, InlineKeyboardBuilder]:
         state_data = await state.get_data()
-        callback_data = callback_data or AllCategoriesCallback.create(2, **state_data.get('entity_id_dict'))
+        callback_data = callback_data or AllCategoriesCallback.create(2, **(state_data.get('entity_id_dict') or {}))
         sort_pairs, filters = await get_filters_settings(state, callback_data)
         kb_builder = InlineKeyboardBuilder()
         items = await SubcategoryRepository.get_paginated_by_category_id(sort_pairs, filters,
@@ -93,10 +93,20 @@ class SubcategoryService:
                                           language: Language) -> tuple[InputMediaPhoto |
                                                                        InputMediaAnimation |
                                                                        InputMediaVideo, InlineKeyboardBuilder]:
+        if not getattr(callback_data, "category_id", None) and getattr(callback_data, "subcategory_id", None):
+            from models.item import Item
+            from sqlalchemy import select
+            stmt_item = select(Item.category_id).where(Item.subcategory_id == callback_data.subcategory_id).limit(1)
+            found_cat_id = (await session.execute(stmt_item)).scalar_one_or_none()
+            callback_data.category_id = found_cat_id or 1
+
         item_dto = await ItemRepository.get_single(callback_data.item_type, callback_data.category_id,
                                                    callback_data.subcategory_id, session)
         subcategory_dto = await SubcategoryRepository.get_by_id(callback_data.subcategory_id, session)
         category_dto = await CategoryRepository.get_by_id(callback_data.category_id, session)
+        if not category_dto:
+            from models.category import CategoryDTO
+            category_dto = CategoryDTO(id=1, name="Sản phẩm")
         available_qty = await ItemRepository.get_available_qty(item_type=callback_data.item_type,
                                                                category_id=callback_data.category_id,
                                                                subcategory_id=callback_data.subcategory_id,

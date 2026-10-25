@@ -28,7 +28,7 @@ class CategoryService:
                InputMediaAnimation |
                InputMediaVideo, InlineKeyboardBuilder]:
         state_data = await state.get_data()
-        callback_data = callback_data or AllCategoriesCallback.create(1, **state_data.get("entity_id_dict"))
+        callback_data = callback_data or AllCategoriesCallback.create(1, **(state_data.get("entity_id_dict") or {}))
         sort_pairs, filters = await get_filters_settings(state, callback_data)
         categories = await CategoryRepository.get(
             sort_pairs, filters, callback_data.item_type, callback_data.page, session
