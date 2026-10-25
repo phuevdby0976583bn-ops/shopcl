@@ -74,27 +74,25 @@
                   </div>
                   {% endif %}
                 </div>
-
-                <!-- B? l?c nhanh tr?ng th?i Kho h?ng -->
+                <!-- Bộ lọc nhanh trạng thái Kho hàng -->
                 {% if model_view.identity == 'item' %}
                 {% set cur_status = request.query_params.get('status', 'all') %}
-                <div class="btn-group" role="group" aria-label="L?c tr?ng th?i kho">
+                <div class="btn-group ms-2" role="group" aria-label="Bộ lọc trạng thái kho">
                   <a href="{{ url_for('admin:list', identity='item') }}" 
                      class="btn btn-sm {% if not request.query_params.get('status') or cur_status == 'all' %}btn-primary active text-white fw-bold{% else %}btn-outline-secondary{% endif %}">
-                    <i class="fa-solid fa-boxes-stacked me-1"></i> T?t c?
+                    <i class="fa-solid fa-boxes-stacked me-1"></i> Tất cả kho
                   </a>
                   <a href="{{ url_for('admin:list', identity='item') }}?status=new" 
                      class="btn btn-sm {% if cur_status in ['new', 'available'] %}btn-success active text-white fw-bold{% else %}btn-outline-success{% endif %}">
-                    <i class="fa-solid fa-sparkles me-1"></i> H?ng m?i (Ch?a b?n)
+                    <i class="fa-solid fa-sparkles me-1"></i> Hàng mới (Chưa bán)
                   </a>
                   <a href="{{ url_for('admin:list', identity='item') }}?status=sold" 
                      class="btn btn-sm {% if cur_status == 'sold' %}btn-danger active text-white fw-bold{% else %}btn-outline-danger{% endif %}">
-                    <i class="fa-solid fa-check-double me-1"></i> T?i kho?n ?? b?n
+                    <i class="fa-solid fa-check-double me-1"></i> Tài khoản đã bán
                   </a>
                 </div>
                 {% endif %}
                 </div>
-
                 {% if model_view.column_searchable_list %}
                 <div class="col-md-4 text-muted">
                   <div class="input-group">

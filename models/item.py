@@ -150,7 +150,7 @@ class ItemAdmin(ModelView, model=Item):
 
     def count_query(self, request) -> Any:
         from sqlalchemy import func, select
-        query = select(func.count(self.pk_columns[0]))
+        query = select(func.count(Item.id)).select_from(Item)
         status = request.query_params.get("status", "").lower() if hasattr(request, "query_params") else ""
         if status == "sold":
             query = query.where(Item.is_sold == True)
