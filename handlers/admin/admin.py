@@ -63,8 +63,6 @@ async def admin(**kwargs):
                       callback_data=MediaManagementCallback.create(level=0))
     kb_builder.button(text=get_text(language, BotEntity.ADMIN, "coupons_management"),
                       callback_data=CouponManagementCallback.create(level=0))
-    kb_builder.button(text=get_text(language, BotEntity.ADMIN, "shipping_management"),
-                      callback_data=ShippingManagementCallback.create(level=0))
     kb_builder.button(text=get_text(language, BotEntity.ADMIN, "buys_management"),
                       callback_data=MyProfileCallback.create(level=3,
                                                              user_role=UserRole.ADMIN))

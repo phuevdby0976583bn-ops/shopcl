@@ -28,6 +28,12 @@ class ShippingOptionDTO(BaseModel):
 
 
 class ShippingOptionAdmin(ModelView, model=ShippingOption):
+    def is_visible(self, request) -> bool:
+        return False
+
+    def is_accessible(self, request) -> bool:
+        return False
+
     name = "Vận chuyển"
     name_plural = "Vận chuyển"
     icon = "fa-solid fa-truck"

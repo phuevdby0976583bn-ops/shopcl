@@ -548,7 +548,6 @@ admin.add_model_view(UserAdmin)
 
 admin.add_model_view(BuyAdmin)
 
-admin.add_model_view(ShippingOptionAdmin)
 
 admin.add_model_view(CouponAdmin)
 

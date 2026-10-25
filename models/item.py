@@ -84,17 +84,16 @@ class ItemAdmin(ModelView, model=Item):
         ),
         Item.description: lambda m, a: f"{m.description[:25]}..." if m.description else "",
         Item.is_sold: lambda m, a: Markup(
-            '<span class="badge bg-danger text-white"><i class="fa-solid fa-check me-1"></i> ?? b?n</span>'
+            '<span class="badge bg-danger text-white"><i class="fa-solid fa-check me-1"></i> Đã bán</span>'
             if m.is_sold
-            else '<span class="badge bg-success text-white"><i class="fa-solid fa-box-open me-1"></i> Ch?a b?n</span>'
+            else '<span class="badge bg-success text-white"><i class="fa-solid fa-box-open me-1"></i> Chưa bán</span>'
         ),
         Item.is_new: lambda m, a: Markup(
-            '<span class="badge bg-secondary text-white"><i class="fa-solid fa-minus me-1"></i> ?? xu?t kho</span>'
+            '<span class="badge bg-secondary text-white"><i class="fa-solid fa-minus me-1"></i> Đã xuất kho</span>'
             if m.is_sold
-            else '<span class="badge bg-primary text-white"><i class="fa-solid fa-sparkles me-1"></i> H?ng m?i</span>'
+            else '<span class="badge bg-primary text-white"><i class="fa-solid fa-sparkles me-1"></i> Hàng mới</span>'
         )
     }
-    column_filters = [Item.is_sold, Item.is_new, Item.subcategory]
     column_searchable_list = [Item.private_data]
     column_sortable_list = [
         Item.id,
@@ -168,8 +167,8 @@ class ItemAdmin(ModelView, model=Item):
 
     @action(
         name="mark_sold",
-        label="?? ??nh d?u ?? B?N",
-        confirmation_message="B?n c? ch?c mu?n chuy?n c?c nick ?? ch?n th?nh tr?ng th?i ?? B?N?",
+        label="🏷️ Đánh dấu ĐÃ BÁN",
+        confirmation_message="Bạn có chắc muốn chuyển các nick đã chọn thành trạng thái ĐÃ BÁN?",
         add_in_detail=True,
         add_in_list=True,
     )
@@ -189,8 +188,8 @@ class ItemAdmin(ModelView, model=Item):
 
     @action(
         name="mark_new",
-        label="?? ??nh d?u H?NG M?I (Ch?a b?n)",
-        confirmation_message="B?n c? ch?c mu?n chuy?n c?c nick ?? ch?n th?nh H?NG M?I (Ch?a b?n)?",
+        label="✨ Đánh dấu HÀNG MỚI (Chưa bán)",
+        confirmation_message="Bạn có chắc muốn chuyển các nick đã chọn thành HÀNG MỚI (Chưa bán)?",
         add_in_detail=True,
         add_in_list=True,
     )
