@@ -308,10 +308,12 @@ async def receive_onchain_amount(message: Message, state: FSMContext, session: A
         amount = float(text_val)
         min_usdt = float(getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0)
         if amount < min_usdt:
-            await message.answer(f"⚠️ Số tiền nạp tối thiểu là {min_usdt:g} USDT. Vui lòng nhập lại:")
+            msg_min = f"⚠️ Số tiền nạp tối thiểu là {min_usdt:g} USDT. Vui lòng nhập lại:" if language == Language.VI else f"⚠️ Minimum deposit is {min_usdt:g} USDT. Please try again:"
+            await message.answer(msg_min)
             return
     except ValueError:
-        await message.answer("⚠️ Vui lòng nhập số tiền hợp lệ (ví dụ: <code>10</code> hoặc <code>50</code>):", parse_mode="HTML")
+        msg_inv = "⚠️ Vui lòng nhập số tiền hợp lệ (ví dụ: <code>10</code> hoặc <code>50</code>):" if language == Language.VI else "⚠️ Please enter a valid amount (e.g., <code>10</code> or <code>50</code>):"
+        await message.answer(msg_inv, parse_mode="HTML")
         return
 
     data = await state.get_data()
@@ -363,7 +365,7 @@ async def handle_copy_buttons(callback: CallbackQuery):
 
 
 @deposit_router.callback_query(F.data.startswith("dep_cancel"))
-async def handle_cancel_invoice(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+async def handle_cancel_invoice(callback: CallbackQuery, state: FSMContext, session: AsyncSession, language: Language = Language.VI):
     await state.clear()
     parts = callback.data.split(":", 1)
     if len(parts) > 1 and parts[1].isdigit():
@@ -375,7 +377,8 @@ async def handle_cancel_invoice(callback: CallbackQuery, state: FSMContext, sess
         await session.execute(stmt)
         await session.commit()
 
-    cancel_text = "❌ <b>Hoá đơn nạp tiền đã được huỷ.</b>"
+    cancel_text = "❌ <b>Hoá đơn nạp tiền đã được huỷ.</b>" if language == Language.VI else "❌ <b>Deposit invoice has been cancelled.</b>"
+    toast_text = "Đã huỷ hoá đơn thành công!" if language == Language.VI else "Invoice cancelled successfully!"
     try:
         if callback.message.photo:
             await callback.message.edit_caption(caption=cancel_text, reply_markup=None, parse_mode="HTML")
@@ -387,7 +390,7 @@ async def handle_cancel_invoice(callback: CallbackQuery, state: FSMContext, sess
         except Exception:
             pass
         await callback.message.answer(text=cancel_text, parse_mode="HTML")
-    await callback.answer("Đã huỷ hoá đơn thành công!")
+    await callback.answer(toast_text)
 
 
 @deposit_router.callback_query(F.data == "dep_method:bank")

@@ -68,11 +68,19 @@ class PaymentService:
     def _parse_fiat_amount(raw_amount: str | None) -> Decimal | None:
         if raw_amount is None:
             return None
-        normalized_amount = raw_amount.strip()
-        if not PaymentService.AMOUNT_RE.fullmatch(normalized_amount):
+        cleaned = (
+            raw_amount.replace("$", "")
+            .replace("USDT", "")
+            .replace("usdt", "")
+            .replace("usd", "")
+            .replace("USD", "")
+            .replace(",", ".")
+            .strip()
+        )
+        if not PaymentService.AMOUNT_RE.fullmatch(cleaned):
             return None
         try:
-            parsed_amount = Decimal(normalized_amount)
+            parsed_amount = Decimal(cleaned)
         except InvalidOperation:
             return None
         min_deposit = Decimal(str(getattr(config, "MIN_DEPOSIT_USDT", 1.0) or 1.0))
