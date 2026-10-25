@@ -11,6 +11,22 @@ from models.item import Item, ItemDTO, ItemAvailabilityDTO
 class ItemRepository:
 
     @staticmethod
+    async def get_available_qty_map(subcategory_ids: list[int], session: AsyncSession) -> dict[int, int]:
+        if not subcategory_ids:
+            return {}
+        try:
+            stmt = (
+                select(Item.subcategory_id, func.count(Item.id))
+                .where(Item.subcategory_id.in_(subcategory_ids), Item.is_sold == False)
+                .group_by(Item.subcategory_id)
+            )
+            res = await session_execute(stmt, session)
+            counts = {row[0]: int(row[1]) for row in res.all()}
+            return {sid: counts.get(sid, 0) for sid in subcategory_ids}
+        except Exception:
+            return {}
+
+    @staticmethod
     async def get_available_qty(item_type: ItemType | None, category_id: int | None, subcategory_id: int,
                                 session: AsyncSession) -> int:
         conditions = [

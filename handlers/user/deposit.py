@@ -35,6 +35,10 @@ async def cmd_start_deposit(message: Message, state: FSMContext, language: Langu
 
 @deposit_router.callback_query(F.data.in_({"deposit:start", "dep_back:methods"}))
 async def callback_start_deposit(callback: CallbackQuery, state: FSMContext, language: Language = Language.VI):
+    try:
+        await callback.answer()
+    except Exception:
+        pass
     await state.clear()
     text, kb = DepositFlowService.get_method_selection_keyboard(language)
     if callback.message.caption:
@@ -53,6 +57,10 @@ async def callback_start_deposit(callback: CallbackQuery, state: FSMContext, lan
 
 @deposit_router.callback_query(F.data.in_({"dep_method:binance", "binance_pay:view"}))
 async def prompt_binance_pay_amount(callback: CallbackQuery, state: FSMContext, language: Language = Language.VI):
+    try:
+        await callback.answer()
+    except Exception:
+        pass
     await state.set_state(UserStates.binance_pay_amount)
     if language == Language.VI:
         msg = (
@@ -228,6 +236,10 @@ async def handle_legacy_check(callback: CallbackQuery, session: AsyncSession):
 
 @deposit_router.callback_query(F.data == "dep_method:onchain")
 async def choose_onchain(callback: CallbackQuery, state: FSMContext, language: Language = Language.VI):
+    try:
+        await callback.answer()
+    except Exception:
+        pass
     await state.clear()
     text, kb = DepositFlowService.get_network_selection_keyboard(language)
     if callback.message.caption:
@@ -380,6 +392,10 @@ async def handle_cancel_invoice(callback: CallbackQuery, state: FSMContext, sess
 
 @deposit_router.callback_query(F.data == "dep_method:bank")
 async def prompt_bank_amount(callback: CallbackQuery, state: FSMContext, language: Language = Language.VI):
+    try:
+        await callback.answer()
+    except Exception:
+        pass
     await state.set_state(UserStates.bank_deposit_amount)
     rate = float(getattr(config, "BANK_EXCHANGE_RATE", 26000) or 26000)
     stk = getattr(config, "BANK_ACCOUNT_NUMBER", "8880117869")

@@ -249,6 +249,10 @@ async def navigate(callback: CallbackQuery,
                    session: AsyncSession,
                    state: FSMContext,
                    language: Language):
+    try:
+        await callback.answer()
+    except Exception:
+        pass
     current_level = callback_data.level
 
     levels = {

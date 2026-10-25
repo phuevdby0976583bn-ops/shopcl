@@ -42,11 +42,16 @@ class SubcategoryService:
                                                                          callback_data.item_type,
                                                                          callback_data.category_id,
                                                                          callback_data.page, session)
+        sub_ids = [item.subcategory_id for item in items]
+        qty_map = await ItemRepository.get_available_qty_map(sub_ids, session)
         for item in items:
-            available_qty = await ItemRepository.get_available_qty(item_type=item.item_type,
-                                                                   category_id=item.category_id,
-                                                                   subcategory_id=item.subcategory_id,
-                                                                   session=session)
+            if item.subcategory_id in qty_map:
+                available_qty = qty_map[item.subcategory_id]
+            else:
+                available_qty = await ItemRepository.get_available_qty(item_type=item.item_type,
+                                                                       category_id=item.category_id,
+                                                                       subcategory_id=item.subcategory_id,
+                                                                       session=session)
             kb_builder.button(text=get_text(language, BotEntity.USER, 'subcategory_button').format(
                 subcategory_name=item.subcategory_name,
                 subcategory_price=item.price,
