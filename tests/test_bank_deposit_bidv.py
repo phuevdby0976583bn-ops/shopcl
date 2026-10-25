@@ -141,3 +141,21 @@ async def test_process_and_credit_transactions_logic():
         assert credited[0]["amount_vnd"] == 52000.0
         assert credited[0]["amount_usd"] == 2.0
         assert mock_user.top_up_amount == 7.0
+
+def test_anti_spam_deposit_check_rate_limit():
+    from handlers.user.deposit import check_deposit_rate_limit, _check_deposit_cooldowns
+    _check_deposit_cooldowns.clear()
+
+    # Lan 1: Cho phep
+    allowed, remaining = check_deposit_rate_limit(user_id=99999, action_type="bank")
+    assert allowed is True
+    assert remaining == 0.0
+
+    # Lan 2 (ngay lap tuc): Bi chan (Rate limited)
+    allowed, remaining = check_deposit_rate_limit(user_id=99999, action_type="bank")
+    assert allowed is False
+    assert remaining > 0.0
+
+    # User khac: Khong bi anh huong
+    allowed, remaining = check_deposit_rate_limit(user_id=88888, action_type="bank")
+    assert allowed is True
