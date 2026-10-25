@@ -27,10 +27,23 @@ class ButtonMediaRepository:
 
     @staticmethod
     async def get_by_button(button: KeyboardButton, session: AsyncSession) -> ButtonMediaDTO:
-        stmt = (select(ButtonMedia)
-                .where(ButtonMedia.button == button))
-        button_media = await session_execute(stmt, session)
-        return ButtonMediaDTO.model_validate(button_media.scalar_one(), from_attributes=True)
+        bot_media_id = get_bot_photo_id()
+        try:
+            stmt = (select(ButtonMedia)
+                    .where(ButtonMedia.button == button))
+            button_media = await session_execute(stmt, session)
+            bm = button_media.scalar_one_or_none()
+            if bm is None:
+                bm = ButtonMedia(media_id=f"0{bot_media_id}", button=button)
+                session.add(bm)
+                try:
+                    await session_commit(session)
+                    await session.refresh(bm)
+                except Exception:
+                    pass
+            return ButtonMediaDTO.model_validate(bm, from_attributes=True)
+        except Exception:
+            return ButtonMediaDTO(media_id=f"0{bot_media_id}", button=button)
 
     @staticmethod
     async def update(button_media_dto: ButtonMediaDTO, session: AsyncSession):

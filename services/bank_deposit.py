@@ -111,7 +111,10 @@ class BankDepositService:
         stmt_u = select(User).where(User.telegram_id == telegram_id)
         user = (await session.execute(stmt_u)).scalar_one_or_none()
         if not user:
-            raise ValueError("Không tìm thấy thông tin người dùng trong hệ thống!")
+            from models.user import UserDTO
+            from services.user import UserService
+            await UserService.create_if_not_exist(UserDTO(telegram_id=telegram_id), session)
+            user = (await session.execute(stmt_u)).scalar_one_or_none()
 
         account_number = getattr(config, "BANK_ACCOUNT_NUMBER", "8880117869") or "8880117869"
         account_name = getattr(config, "BANK_ACCOUNT_NAME", "") or ""

@@ -142,9 +142,14 @@ class MediaService:
         ), kb_builder
 
     @staticmethod
-    def convert_to_media(media_id: str, caption: str) -> InputMediaPhoto | InputMediaVideo | InputMediaAnimation:
-        category_media_type = media_id[0]
-        category_media_id = media_id[1:]
+    def convert_to_media(media_id: str | None, caption: str) -> InputMediaPhoto | InputMediaVideo | InputMediaAnimation:
+        bot_photo_id = get_bot_photo_id()
+        if not media_id or len(str(media_id)) < 2:
+            return InputMediaPhoto(media=bot_photo_id, caption=caption)
+        category_media_type = str(media_id)[0]
+        category_media_id = str(media_id)[1:]
+        if not category_media_id:
+            category_media_id = bot_photo_id
         if category_media_type == "0":
             media = InputMediaPhoto(media=category_media_id, caption=caption)
         elif category_media_type == "1":

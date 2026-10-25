@@ -78,12 +78,22 @@ class SubcategoryService:
         else:
             item_type = get_text(language, BotEntity.COMMON, 'all')
         if callback_data.category_id:
-            category_dto = await CategoryRepository.get_by_id(callback_data.category_id, session)
-            caption = caption.format(
-                category_name=category_dto.name,
-                item_type=item_type
-            )
-            media = MediaService.convert_to_media(category_dto.media_id, caption)
+            try:
+                category_dto = await CategoryRepository.get_by_id(callback_data.category_id, session)
+            except Exception:
+                category_dto = None
+            if category_dto:
+                caption = caption.format(
+                    category_name=category_dto.name,
+                    item_type=item_type
+                )
+                media = MediaService.convert_to_media(category_dto.media_id, caption)
+            else:
+                caption = caption.format(
+                    category_name=get_text(language, BotEntity.COMMON, 'all'),
+                    item_type=item_type
+                )
+                media = InputMediaPhoto(media=get_bot_photo_id(), caption=caption)
         else:
             caption = caption.format(
                 category_name=get_text(language, BotEntity.COMMON, 'all'),

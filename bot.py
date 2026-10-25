@@ -234,6 +234,8 @@ async def _startup() -> None:
                 "ALTER TABLE items ALTER COLUMN description DROP NOT NULL",
                 "ALTER TABLE binance_pay_orders ADD COLUMN IF NOT EXISTS chat_id BIGINT",
                 "ALTER TABLE binance_pay_orders ADD COLUMN IF NOT EXISTS message_id BIGINT",
+                "ALTER TABLE bank_deposit_orders ADD COLUMN IF NOT EXISTS chat_id BIGINT",
+                "ALTER TABLE bank_deposit_orders ADD COLUMN IF NOT EXISTS message_id BIGINT",
                 """
                 UPDATE subcategories s
                 SET price = sub.item_price

@@ -1,7 +1,7 @@
 import traceback
 import logging
 from aiogram import types, F, Router
-from aiogram.filters import Command, CommandStart, CommandObject
+from aiogram.filters import Command, CommandStart, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ErrorEvent, Message, BufferedInputFile, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -84,14 +84,14 @@ BUTTON_WALLET = {
 }
 
 BUTTON_SUPPORT = {
-    Language.VI: "💬 Hỗ trợ & Bảo hành",
-    Language.EN: "💬 Support & Warranty",
-    Language.HI: "💬 समर्थन और वारंटी",
-    Language.ZH: "💬 客服与售后",
-    Language.FR: "💬 Support & Garantie",
-    Language.DE: "💬 Support & Garantie",
-    Language.IT: "💬 Supporto e Garanzia",
-    Language.ES: "💬 Soporte y Garantía",
+    Language.VI: "🛡️ Điều khoản & Bảo hành",
+    Language.EN: "🛡️ Terms & Warranty",
+    Language.HI: "🛡️ शर्तें और वारंटी",
+    Language.ZH: "🛡️ 服务条款与质保",
+    Language.FR: "🛡️ Conditions & Garantie",
+    Language.DE: "🛡️ AGB & Garantie",
+    Language.IT: "🛡️ Termini & Garanzia",
+    Language.ES: "🛡️ Términos y Garantía",
 }
 
 BUTTON_WARRANTY = {
@@ -132,7 +132,7 @@ def get_start_keyboard(language: Language, telegram_id: int):
     prod_btn = types.KeyboardButton(text=BUTTON_PRODUCTS.get(language, "🛒 Products"))
     orders_btn = types.KeyboardButton(text=BUTTON_ORDERS.get(language, "📦 Orders"))
     wallet_btn = types.KeyboardButton(text=BUTTON_WALLET.get(language, "💳 Wallet"))
-    support_btn = types.KeyboardButton(text=BUTTON_SUPPORT.get(language, "💬 Support & Warranty"))
+    support_btn = types.KeyboardButton(text=BUTTON_SUPPORT.get(language, "🛡️ Terms & Warranty"))
 
     lang_btn = types.KeyboardButton(text=BUTTON_LANGUAGE.get(language, "🌐 Language"))
 
@@ -273,7 +273,13 @@ async def on_language_selected(callback: CallbackQuery, session: AsyncSession):
 @main_router.message(F.text.in_(set(BUTTON_PRODUCTS.values())))
 @main_router.message(Command("products"))
 async def handle_products(message: Message, session: AsyncSession, state: FSMContext, language: Language):
-    await all_types(callback=message, session=session, state=state, language=language)
+    await state.clear()
+    try:
+        await all_types(callback=message, session=session, state=state, language=language)
+    except Exception as e:
+        logging.error(f"Error in handle_products: {e}", exc_info=True)
+        from handlers.user.all_categories import execute_global_search
+        await execute_global_search(message, "", session, language)
 
 
 @main_router.message(F.text.in_(set(BUTTON_ORDERS.values())))
@@ -434,10 +440,18 @@ async def handle_full_policy(event: Message | CallbackQuery, language: Language 
 
 
 @main_router.message(F.text.in_(set(BUTTON_SUPPORT.values())))
+@main_router.message(F.text.in_(set(BUTTON_WARRANTY.values())))
+@main_router.message(F.text.in_({"💬 Hỗ trợ & Bảo hành", "🛡️ Bảo hành", "🛡️ Điều khoản", "Điều khoản", "Bảo hành", "Chính sách", "Terms", "Policy", "Warranty"}))
 @main_router.message(Command("support"))
+@main_router.message(Command("warranty"))
+@main_router.message(Command("policy"))
+@main_router.message(Command("dieukhoan"))
+@main_router.message(Command("baohanh"))
+@main_router.message(Command("terms"))
 @main_router.message(Command("api"))
 @main_router.message(Command("help"))
 @main_router.message(Command("contact"))
+@main_router.message(F.text.lower().in_({"điều khoản", "dieukhoan", "dieu khoan", "bảo hành", "baohanh", "chính sách", "chinhsach", "terms", "policy", "warranty", "help", "support"}))
 @main_router.message(F.text.in_(KeyboardButton.get_localized_set(KeyboardButton.HELP)))
 @main_router.message(F.text.in_(KeyboardButton.get_localized_set(KeyboardButton.FAQ)))
 @main_router.callback_query(F.data == "back_to_support_menu")
@@ -592,8 +606,11 @@ async def banned_callback(callback: CallbackQuery, language: Language):
         await callback.message.answer(banned_text)
 
 
-@main_router.message(F.text)
-async def fallback_any_text(message: Message, session: AsyncSession, language: Language):
+@main_router.message(F.text, StateFilter(None))
+async def fallback_any_text(message: Message, session: AsyncSession, state: FSMContext, language: Language):
+    current_state = await state.get_state()
+    if current_state is not None:
+        return
     text = (message.text or "").strip()
     if not text:
         return

@@ -81,3 +81,28 @@ async def test_select_quantity_auto_resolve_category_id():
         
         media, kb = await SubcategoryService.get_select_quantity_buttons(cb, session, Language.VI)
         assert cb.category_id == 5
+
+@pytest.mark.asyncio
+async def test_button_media_safe_fallback():
+    from repositories.button_media import ButtonMediaRepository
+    from enums.keyboard_button import KeyboardButton
+    session = AsyncMock()
+    mock_res = MagicMock()
+    mock_res.scalar_one_or_none.return_value = None
+    session.execute.return_value = mock_res
+    
+    dto = await ButtonMediaRepository.get_by_button(KeyboardButton.ALL_CATEGORIES, session)
+    assert dto is not None
+    assert dto.button == KeyboardButton.ALL_CATEGORIES
+
+@pytest.mark.asyncio
+async def test_fallback_any_text_skips_when_state_active():
+    from run import fallback_any_text
+    msg = AsyncMock(spec=Message)
+    msg.text = "5"
+    state = AsyncMock()
+    state.get_state.return_value = "UserStates:binance_pay_amount"
+    session = AsyncMock()
+    
+    await fallback_any_text(msg, session, state, Language.VI)
+    assert not msg.answer.called

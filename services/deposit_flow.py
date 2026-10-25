@@ -163,7 +163,10 @@ class DepositFlowService:
         stmt_u = select(User).where(User.telegram_id == telegram_id)
         user = (await session.execute(stmt_u)).scalar_one_or_none()
         if not user:
-            raise ValueError("Không tìm thấy thông tin người dùng trong hệ thống!")
+            from models.user import UserDTO
+            from services.user import UserService
+            await UserService.create_if_not_exist(UserDTO(telegram_id=telegram_id), session)
+            user = (await session.execute(stmt_u)).scalar_one_or_none()
 
         binance_uid = (
             getattr(config, "BINANCE_UID", "805398854")
@@ -254,7 +257,10 @@ class DepositFlowService:
         stmt_u = select(User).where(User.telegram_id == telegram_id)
         user = (await session.execute(stmt_u)).scalar_one_or_none()
         if not user:
-            raise ValueError("Không tìm thấy thông tin người dùng trong hệ thống!")
+            from models.user import UserDTO
+            from services.user import UserService
+            await UserService.create_if_not_exist(UserDTO(telegram_id=telegram_id), session)
+            user = (await session.execute(stmt_u)).scalar_one_or_none()
 
         network_name = NETWORK_DISPLAY_NAMES.get(network_code, network_code)
         wallet_address = DepositFlowService.get_wallet_address_for_network(network_code)

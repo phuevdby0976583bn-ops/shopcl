@@ -71,8 +71,12 @@ class CategoryService:
             kb_builder, callback_data, CategoryRepository.get_maximum_page(filters, session),
             back_btn, language
         )
-        button_media = await ButtonMediaRepository.get_by_button(
-            KeyboardButton.ALL_CATEGORIES, session
-        )
-        media = MediaService.convert_to_media(button_media.media_id, caption=caption)
+        try:
+            button_media = await ButtonMediaRepository.get_by_button(
+                KeyboardButton.ALL_CATEGORIES, session
+            )
+            media = MediaService.convert_to_media(button_media.media_id, caption=caption)
+        except Exception:
+            from utils.utils import get_bot_photo_id
+            media = InputMediaPhoto(media=get_bot_photo_id(), caption=caption)
         return media, kb_builder

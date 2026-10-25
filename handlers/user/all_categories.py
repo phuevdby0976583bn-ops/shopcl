@@ -48,7 +48,10 @@ def _sym() -> str:
 async def _send_or_edit_text(target: Message | CallbackQuery, text: str, reply_markup=None):
     text_content = text or '...'
     if isinstance(target, Message):
-        return await target.answer(text=text_content, reply_markup=reply_markup, parse_mode='HTML')
+        try:
+            return await target.answer(text=text_content, reply_markup=reply_markup, parse_mode='HTML')
+        except Exception:
+            return await target.answer(text=text_content, reply_markup=reply_markup)
     else:
         callback = target
         if callback.message.caption:
@@ -56,12 +59,18 @@ async def _send_or_edit_text(target: Message | CallbackQuery, text: str, reply_m
                 await callback.message.delete()
             except Exception:
                 pass
-            return await callback.message.answer(text=text_content, reply_markup=reply_markup, parse_mode='HTML')
+            try:
+                return await callback.message.answer(text=text_content, reply_markup=reply_markup, parse_mode='HTML')
+            except Exception:
+                return await callback.message.answer(text=text_content, reply_markup=reply_markup)
         else:
             try:
                 return await callback.message.edit_text(text=text_content, reply_markup=reply_markup, parse_mode='HTML')
             except Exception:
-                return await callback.message.answer(text=text_content, reply_markup=reply_markup, parse_mode='HTML')
+                try:
+                    return await callback.message.answer(text=text_content, reply_markup=reply_markup, parse_mode='HTML')
+                except Exception:
+                    return await callback.message.answer(text=text_content, reply_markup=reply_markup)
 
 
 @all_categories_router.message(F.text.in_(KB.get_localized_set(KB.ALL_CATEGORIES)), IsUserExistFilter())

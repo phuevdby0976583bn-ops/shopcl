@@ -160,9 +160,16 @@ async def receive_binance_amount(message: Message, state: FSMContext, session: A
                 parse_mode="HTML"
             )
         # Luu message_id va chat_id de background worker tu dong cap nhat khi co giao dich
-        order.chat_id = sent_msg.chat.id
-        order.message_id = sent_msg.message_id
-        await session.commit()
+        try:
+            order.chat_id = sent_msg.chat.id
+            order.message_id = sent_msg.message_id
+            await session.commit()
+        except Exception as e_save:
+            logger.warning(f"Could not save chat_id/message_id to BinancePayOrder: {e_save}")
+            try:
+                await session.rollback()
+            except Exception:
+                pass
         await state.clear()
     except Exception as e:
         logger.error(f"Error creating Binance invoice: {e}", exc_info=True)
@@ -491,9 +498,16 @@ async def receive_bank_amount(message: Message, state: FSMContext, session: Asyn
             parse_mode="HTML",
             reply_markup=kb.as_markup()
         )
-        order.chat_id = sent.chat.id
-        order.message_id = sent.message_id
-        await session.commit()
+        try:
+            order.chat_id = sent.chat.id
+            order.message_id = sent.message_id
+            await session.commit()
+        except Exception as e_save:
+            logger.warning(f"Could not save chat_id/message_id to BankDepositOrder: {e_save}")
+            try:
+                await session.rollback()
+            except Exception:
+                pass
         await state.clear()
     except Exception as e:
         logger.error(f"Error creating Bank invoice: {e}", exc_info=True)
