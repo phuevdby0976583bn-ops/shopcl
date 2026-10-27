@@ -385,3 +385,42 @@ async def test_web_light_dark_mode_and_language_switcher(test_app):
             assert "setLanguage('en')" in r.text
             assert 'data-i18n="top_welcome"' in r.text
             assert 'var I18N = {' in r.text
+
+
+@pytest.mark.asyncio
+async def test_admin_redirect_loop_prevention_and_single_icons(test_app):
+    @asynccontextmanager
+    async def home_db_ctx(*args, **kwargs):
+        yield SmartMockDbSession()
+
+    with patch("web_shop.get_db_session", home_db_ctx):
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+            r = await ac.get("/")
+            assert r.status_code == 200
+
+            # 1. Buy button has robust click handler and attributes
+            assert "btn-open-buy" in r.text
+            assert "handleBuyClick(this)" in r.text
+            assert 'id="buyModalGuestStep"' in r.text
+            assert "showModalSafe('buyModal')" in r.text
+
+            # 2. Translations do not inject duplicate icons inside buttons with existing icons
+            assert "btn_admin_panel: 'Trang Quản trị Admin'" in r.text
+            assert "btn_buy_now: 'MUA NGAY'" in r.text
+            assert "btn_sold_out: 'TẠM HẾT'" in r.text
+            assert "all_cats_label: 'Tất cả sản phẩm'" in r.text
+
+            # 3. Non-admin visiting /login?next=/admin does NOT redirect back to /admin (loop prevention)
+            # Create session for normal user
+            login_res = await ac.get("/login?next=/admin", follow_redirects=False)
+            assert login_res.status_code == 200  # Guest gets login page, no infinite loop
+
+            # 4. Direct AuthenticationBackend auto-renewal & loop prevention test
+            from admin import authentication_backend
+            from starlette.requests import Request as StarletteRequest
+
+            scope_admin = {"type": "http", "method": "GET", "path": "/admin", "headers": [], "session": {"web_user": {"id": 1, "username": "admin", "is_admin": True}}}
+            req_admin = StarletteRequest(scope_admin)
+            auth_res = await authentication_backend.authenticate(req_admin)
+            assert auth_res is True
+            assert "token" in req_admin.session

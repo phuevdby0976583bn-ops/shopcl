@@ -160,6 +160,9 @@ async def get_current_user_info(request: Request, session: AsyncSession) -> tupl
     # Xác định lại cờ is_admin
     if user.telegram_id in config.ADMIN_ID_LIST or user.web_username == "admin" or user.telegram_username == "admin" or web_session.get("is_admin"):
         is_admin = True
+        # Đảm bảo session luôn có token admin JWT còn hiệu lực
+        if not request.session.get("token") or not decode_token(request.session.get("token")):
+            request.session["token"] = create_access_token({"sub": UserRole.ADMIN.name})
 
     balance = max(0.0, float(user.top_up_amount or 0.0) - float(user.consume_records or 0.0))
     return user, balance, is_admin
@@ -255,7 +258,7 @@ def render_base_layout(
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-﻿        :root {{
+        :root {{
             --primary-purple: #6f42c1;
             --primary-purple-dark: #59359a;
             --primary-purple-light: #f3e8ff;
@@ -649,7 +652,7 @@ def render_base_layout(
             color: #64748b;
             transition: background-color 0.2s ease, border-color 0.2s ease;
         }}
-﻿        /* ================= DARK MODE STYLING ================= */
+        /* ================= DARK MODE STYLING ================= */
         [data-bs-theme="dark"] {{
             --bg-light: #0b0f19;
             --text-dark: #f1f5f9;
@@ -931,7 +934,7 @@ def render_base_layout(
 </head>
 <body>
 
-﻿    <!-- 1. Top Announcement Bar -->
+    <!-- 1. Top Announcement Bar -->
     <div class="top-bar">
         <div class="container d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div class="d-flex align-items-center gap-2">
@@ -1008,7 +1011,7 @@ def render_base_layout(
     </div>
 
 
-﻿    <!-- 2. Main Brand Navbar -->
+    <!-- 2. Main Brand Navbar -->
     <header class="brand-navbar">
         <div class="container d-flex justify-content-between align-items-center flex-wrap gap-3">
             <a href="/" class="brand-logo">
@@ -1098,8 +1101,15 @@ def render_base_layout(
     </footer>
 
 
-﻿    <!-- Bootstrap 5.3 JS -->
+    <!-- Bootstrap 5.3 JS with CDN Fallback -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        if (typeof bootstrap === 'undefined') {{
+            var bScript = document.createElement('script');
+            bScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js';
+            document.head.appendChild(bScript);
+        }}
+    </script>
     <script>
         var currentCurrency = localStorage.getItem('shop_currency') || 'VND';
         var usdRate = {rate};
@@ -1112,7 +1122,7 @@ def render_base_layout(
                 faq_nav: '<i class="fa-solid fa-circle-question me-1"></i> FAQ',
                 contact_admin: '<i class="fa-brands fa-telegram me-1"></i> Liên hệ Admin',
                 search_placeholder: 'Tìm kiếm sản phẩm (clone, via, hotmail, no2fa...)...',
-                btn_admin_panel: '<i class="fa-solid fa-gauge-high me-1"></i> Trang Quản trị Admin',
+                btn_admin_panel: 'Trang Quản trị Admin',
                 btn_login: '<i class="fa-solid fa-right-to-bracket me-1"></i> Đăng nhập',
                 btn_register_now: '<i class="fa-solid fa-user-plus me-1"></i> ✨ Đăng ký ngay',
                 available_balance: 'Số dư khả dụng:',
@@ -1140,12 +1150,12 @@ def render_base_layout(
                 footer_copyright: '© 2026 <strong>Bubba Gump FB Clone Shop</strong>. Tự động kiểm tra LIVE UID Facebook qua Graph API ngay khi bàn giao.',
                 footer_legal: 'Căn cứ Luật An ninh mạng số 24/2018/QH14 & Nghị định 15/2020/NĐ-CP: Mọi tài khoản chỉ phục vụ nghiên cứu & marketing hợp pháp. Nghiêm cấm mọi hành vi vi phạm pháp luật.',
                 notice_title: '<i class="fa-solid fa-triangle-exclamation me-2"></i>Lưu ý & Tuyên bố miễn trừ trách nhiệm:',
-                all_cats_label: '<i class="fa-solid fa-list me-1"></i> Tất cả danh mục',
-                btn_buy_now: '<i class="fa-solid fa-cart-shopping me-1"></i> <span data-i18n="btn_buy_now">MUA NGAY</span>',
-                btn_sold_out: '<i class="fa-solid fa-ban me-1"></i> <span data-i18n="btn_sold_out">TẠM HẾT</span>',
+                all_cats_label: 'Tất cả sản phẩm',
+                btn_buy_now: 'MUA NGAY',
+                btn_sold_out: 'TẠM HẾT',
                 unit_price_label: 'Đơn giá:',
                 side_bal_title: '<i class="fa-solid fa-wallet text-purple me-1"></i> Số dư khả dụng',
-                side_btn_recharge: '<span data-i18n="side_btn_recharge"><i class="fa-solid fa-bolt me-1"></i> NẠP TIỀN TỰ ĐỘNG (1s)</span>',
+                side_btn_recharge: '<i class="fa-solid fa-bolt me-1"></i> NẠP TIỀN TỰ ĐỘNG (1s)',
                 side_stats_title: '<i class="fa-solid fa-chart-pie text-primary me-1"></i> Thống kê tài khoản',
                 side_stat_deposit: 'Tổng tiền đã nạp:',
                 side_stat_spent: 'Tổng tiền đã mua:',
@@ -1159,10 +1169,10 @@ def render_base_layout(
                 th_order_qty: 'Số lượng',
                 th_order_total: 'Tổng thanh toán',
                 th_order_action: 'Thao tác',
-                btn_view_details: '<span data-i18n="btn_view_details"><i class="fa-solid fa-eye me-1"></i> Xem chi tiết</span>',
+                btn_view_details: '<i class="fa-solid fa-eye me-1"></i> Xem chi tiết',
                 modal_order_title: '<i class="fa-solid fa-box text-purple me-2"></i> Chi tiết đơn hàng',
-                btn_copy_all_acc: '<span data-i18n="btn_copy_all_acc"><i class="fa-regular fa-copy me-1"></i> Sao chép tất cả</span>',
-                btn_download_acc: '<span data-i18n="btn_download_acc"><i class="fa-solid fa-download me-1"></i> Tải file .txt</span>',
+                btn_copy_all_acc: '<i class="fa-regular fa-copy me-1"></i> Sao chép tất cả',
+                btn_download_acc: '<i class="fa-solid fa-download me-1"></i> Tải file .txt',
                 modal_close: 'Đóng',
                 bal_hist_title: '<i class="fa-solid fa-list-check text-purple me-2"></i> Lịch sử biến động số dư',
                 th_bh_time: 'Thời gian',
@@ -1174,7 +1184,7 @@ def render_base_layout(
                 th_bh_desc: 'Nội dung chi tiết',
                 policy_page_title: '<i class="fa-solid fa-shield-halved text-purple me-2"></i> Chính sách bảo hành & Điều khoản sử dụng',
                 faq_page_title: '<i class="fa-solid fa-circle-question text-purple me-2"></i> Câu hỏi thường gặp (FAQ)',
-                                modal_buy_title: '<i class="fa-solid fa-cart-arrow-down me-2"></i> Mua tài khoản trực tiếp',
+                modal_buy_title: '<i class="fa-solid fa-cart-arrow-down me-2"></i> Mua tài khoản trực tiếp',
                 modal_selected_product: 'SẢN PHẨM ĐÃ CHỌN:',
                 modal_qty_label: 'Số lượng cần mua:',
                 modal_btn_all: 'Mua tất cả',
@@ -1184,7 +1194,7 @@ def render_base_layout(
                 btn_recharge_now: '<i class="fa-solid fa-wallet me-1"></i> NẠP TIỀN NGAY',
                 th_order_status: 'Trạng thái',
                 th_bh_status: 'Trạng thái',
-recharge_main_title: '<i class="fa-solid fa-wallet text-purple me-2"></i> Cổng nạp tiền tự động 24/7'
+                recharge_main_title: '<i class="fa-solid fa-wallet text-purple me-2"></i> Cổng nạp tiền tự động 24/7'
             }},
             en: {{
                 top_welcome: 'Welcome to <strong>Bubba Gump FB Clone Shop</strong> - 24/7 Automated Facebook Clone System!',
@@ -1193,7 +1203,7 @@ recharge_main_title: '<i class="fa-solid fa-wallet text-purple me-2"></i> Cổng
                 faq_nav: '<i class="fa-solid fa-circle-question me-1"></i> FAQ',
                 contact_admin: '<i class="fa-brands fa-telegram me-1"></i> Contact Admin',
                 search_placeholder: 'Search products (clone, via, hotmail, no2fa...)...',
-                btn_admin_panel: '<i class="fa-solid fa-gauge-high me-1"></i> Switch to Admin Panel',
+                btn_admin_panel: 'Admin Panel',
                 btn_login: '<i class="fa-solid fa-right-to-bracket me-1"></i> Login',
                 btn_register_now: '<i class="fa-solid fa-user-plus me-1"></i> ✨ Register Now',
                 available_balance: 'Available Balance:',
@@ -1221,9 +1231,9 @@ recharge_main_title: '<i class="fa-solid fa-wallet text-purple me-2"></i> Cổng
                 footer_copyright: '© 2026 <strong>Bubba Gump FB Clone Shop</strong>. Automatically verify Facebook UID LIVE via Graph API upon delivery.',
                 footer_legal: 'Cybersecurity Notice: All accounts are strictly for legal research & marketing. Any illegal activities are strictly prohibited.',
                 notice_title: '<i class="fa-solid fa-triangle-exclamation me-2"></i>Important Purchase Rules & Disclaimer:',
-                all_cats_label: '<i class="fa-solid fa-list me-1"></i> All Categories',
-                btn_buy_now: '<i class="fa-solid fa-cart-shopping me-1"></i> BUY NOW',
-                btn_sold_out: '<i class="fa-solid fa-ban me-1"></i> SOLD OUT',
+                all_cats_label: 'All Products',
+                btn_buy_now: 'BUY NOW',
+                btn_sold_out: 'SOLD OUT',
                 unit_price_label: 'Unit Price:',
                 side_bal_title: '<i class="fa-solid fa-wallet text-purple me-1"></i> Available Balance',
                 side_btn_recharge: '<i class="fa-solid fa-bolt me-1"></i> AUTO DEPOSIT (1s)',
@@ -1255,7 +1265,7 @@ recharge_main_title: '<i class="fa-solid fa-wallet text-purple me-2"></i> Cổng
                 th_bh_desc: 'Details',
                 policy_page_title: '<i class="fa-solid fa-shield-halved text-purple me-2"></i> Warranty Policy & Terms of Service',
                 faq_page_title: '<i class="fa-solid fa-circle-question text-purple me-2"></i> Frequently Asked Questions (FAQ)',
-                                modal_buy_title: '<i class="fa-solid fa-cart-arrow-down me-2"></i> Direct Account Purchase',
+                modal_buy_title: '<i class="fa-solid fa-cart-arrow-down me-2"></i> Direct Account Purchase',
                 modal_selected_product: 'SELECTED PRODUCT:',
                 modal_qty_label: 'Quantity to buy:',
                 modal_btn_all: 'Buy all',
@@ -1265,7 +1275,7 @@ recharge_main_title: '<i class="fa-solid fa-wallet text-purple me-2"></i> Cổng
                 btn_recharge_now: '<i class="fa-solid fa-wallet me-1"></i> TOP UP NOW',
                 th_order_status: 'Status',
                 th_bh_status: 'Status',
-recharge_main_title: '<i class="fa-solid fa-wallet text-purple me-2"></i> Automated 24/7 Deposit Portal'
+                recharge_main_title: '<i class="fa-solid fa-wallet text-purple me-2"></i> Automated 24/7 Deposit Portal'
             }}
         }};
 
@@ -1502,7 +1512,12 @@ async def web_home(request: Request):
             desc_text = html.escape(sub.description or "Clone chất lượng cao, bảo hành 1 đổi 1 trong 24 giờ.")
 
             buy_btn_html = f"""
-            <button class="btn btn-buy" onclick="openBuyModal({sub.id}, '{html.escape(sub.name)}', {unit_price}, {stock_qty})">
+            <button class="btn btn-buy btn-open-buy" 
+                    data-sub-id="{sub.id}" 
+                    data-sub-name="{html.escape(sub.name)}" 
+                    data-unit-price="{unit_price}" 
+                    data-stock-qty="{stock_qty}"
+                    onclick="handleBuyClick(this)">
                 <i class="fa-solid fa-cart-shopping me-1"></i> <span data-i18n="btn_buy_now">MUA NGAY</span>
             </button>
             """ if has_stock else """
@@ -1651,6 +1666,21 @@ async def web_home(request: Request):
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body p-4">
+                    <!-- Guest Step (Chưa đăng nhập) -->
+                    <div id="buyModalGuestStep" class="text-center py-4 d-none">
+                        <div class="mb-3 text-warning fs-1"><i class="fa-solid fa-circle-exclamation"></i></div>
+                        <h5 class="fw-bold mb-2">Bạn cần đăng nhập để mua tài khoản</h5>
+                        <p class="text-muted small mb-4">Vui lòng đăng nhập hoặc đăng ký tài khoản (chỉ mất 10 giây) để hệ thống tự động kiểm tra clone LIVE và trừ tiền vào số dư ví của bạn.</p>
+                        <div class="d-flex gap-2 justify-content-center flex-wrap">
+                            <a href="/login?next=/" class="btn btn-purple fw-bold px-4 py-2">
+                                <i class="fa-solid fa-right-to-bracket me-1"></i> Đăng nhập ngay
+                            </a>
+                            <a href="/register?next=/" class="btn btn-warning text-dark fw-bold px-4 py-2 shadow-sm">
+                                <i class="fa-solid fa-user-plus me-1"></i> ✨ Đăng ký mới
+                            </a>
+                        </div>
+                    </div>
+
                     <!-- Form Step -->
                     <div id="buyModalFormStep">
                         <div class="mb-3">
@@ -1757,15 +1787,38 @@ async def web_home(request: Request):
             }});
         }}
 
+        function handleBuyClick(btn) {{
+            var subId = parseInt(btn.getAttribute('data-sub-id'));
+            var subName = btn.getAttribute('data-sub-name') || '';
+            var unitPrice = parseFloat(btn.getAttribute('data-unit-price')) || 0.02;
+            var stockQty = parseInt(btn.getAttribute('data-stock-qty')) || 0;
+            openBuyModal(subId, subName, unitPrice, stockQty);
+        }}
+
         function openBuyModal(subId, subName, unitPrice, stockQty) {{
             if (!isUserLoggedIn) {{
-                window.location.href = '/login?next=/';
+                var guestStep = document.getElementById('buyModalGuestStep');
+                if (guestStep) guestStep.classList.remove('d-none');
+                var formStep = document.getElementById('buyModalFormStep');
+                if (formStep) formStep.classList.add('d-none');
+                var loadingStep = document.getElementById('buyModalLoadingStep');
+                if (loadingStep) loadingStep.classList.add('d-none');
+                var successStep = document.getElementById('buyModalSuccessStep');
+                if (successStep) successStep.classList.add('d-none');
+                var footer = document.getElementById('buyModalFooter');
+                if (footer) footer.classList.add('d-none');
+                showModalSafe('buyModal');
                 return;
             }}
+
+            var guestStep = document.getElementById('buyModalGuestStep');
+            if (guestStep) guestStep.classList.add('d-none');
+
             document.getElementById('modalSubId').value = subId;
             document.getElementById('modalSubName').innerText = subName;
             document.getElementById('modalRawUnitPrice').value = unitPrice;
-            document.getElementById('modalUnitPrice').innerText = (unitPrice * usdRate).toLocaleString('vi-VN') + ' đ ($' + unitPrice.toFixed(2) + ')';
+            var rate = (typeof usdRate !== 'undefined') ? usdRate : 26000;
+            document.getElementById('modalUnitPrice').innerText = Math.round(unitPrice * rate).toLocaleString('vi-VN') + ' đ ($' + unitPrice.toFixed(2) + ')';
             document.getElementById('modalStockQty').innerText = stockQty;
             activeSubMaxStock = stockQty;
 
@@ -1778,9 +1831,57 @@ async def web_home(request: Request):
             document.getElementById('buyModalFooter').classList.remove('d-none');
 
             recalcModalTotal();
-            var modal = new bootstrap.Modal(document.getElementById('buyModal'));
-            modal.show();
+            showModalSafe('buyModal');
         }}
+
+        function showModalSafe(modalId) {{
+            var modalEl = document.getElementById(modalId);
+            if (!modalEl) return;
+            if (window.bootstrap && window.bootstrap.Modal) {{
+                try {{
+                    var inst = window.bootstrap.Modal.getOrCreateInstance(modalEl);
+                    inst.show();
+                    return;
+                }} catch(e) {{
+                    console.warn("Bootstrap Modal show error:", e);
+                }}
+            }}
+            modalEl.classList.add('show');
+            modalEl.style.display = 'block';
+            modalEl.removeAttribute('aria-hidden');
+            modalEl.setAttribute('aria-modal', 'true');
+            var bd = document.getElementById('manual-modal-backdrop');
+            if (!bd) {{
+                bd = document.createElement('div');
+                bd.id = 'manual-modal-backdrop';
+                bd.className = 'modal-backdrop fade show';
+                document.body.appendChild(bd);
+            }}
+            document.body.classList.add('modal-open');
+        }}
+
+        function closeModalSafe(modalId) {{
+            var modalEl = document.getElementById(modalId);
+            if (!modalEl) return;
+            if (window.bootstrap && window.bootstrap.Modal) {{
+                try {{
+                    var inst = window.bootstrap.Modal.getInstance(modalEl);
+                    if (inst) inst.hide();
+                }} catch(e) {{}}
+            }}
+            modalEl.classList.remove('show');
+            modalEl.style.display = 'none';
+            modalEl.setAttribute('aria-hidden', 'true');
+            var bd = document.getElementById('manual-modal-backdrop');
+            if (bd) bd.remove();
+            document.body.classList.remove('modal-open');
+        }}
+
+        document.addEventListener('click', function(e) {{
+            if (e.target.closest('[data-bs-dismiss="modal"]')) {{
+                closeModalSafe('buyModal');
+            }}
+        }});
 
         function adjustQty(delta) {{
             var input = document.getElementById('buyQtyInput');
@@ -3510,7 +3611,14 @@ async def web_login_page(request: Request, next: str = Query("/"), error: Option
     async with get_db_session() as session:
         user, balance, is_admin = await get_current_user_info(request, session)
         if user:
-            return RedirectResponse(url=next if next and next.startswith("/") else "/", status_code=302)
+            target_next = next if next and next.startswith("/") else "/"
+            if target_next.startswith("/admin"):
+                if is_admin:
+                    request.session["token"] = create_access_token({"sub": UserRole.ADMIN.name})
+                    return RedirectResponse(url=target_next, status_code=302)
+                else:
+                    return RedirectResponse(url="/?error=B%E1%BA%A1n%20kh%C3%B4ng%20c%C3%B3%20quy%E1%BB%81n%20truy%20c%E1%BA%ADp%20trang%20qu%E1%BA%A3n%20tr%E1%BB%8B%20Admin!", status_code=302)
+            return RedirectResponse(url=target_next, status_code=302)
 
         stmt_cats = select(Category).order_by(Category.id)
         categories = (await session.execute(stmt_cats)).scalars().all()
