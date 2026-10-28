@@ -1,4 +1,4 @@
-{
+﻿{
   "mode": "web",
   "reg_mode": "legacy_nv",
   "legacy_verify_mode": "none",
@@ -12,5 +12,10 @@
   "bot_auto_upload": true,
   "bot_media_id": "0AgACAgUAAxUAAWrdTEFel8nwqyfqdm-JW5tDEZQ-AAJmE2sbA8fhVvptkVWyk7XSAQADAgADYwADPQQ",
   "bot_api_url": "https://shopcl.onrender.com",
-  "bot_api_key": "MatKhauAdminCuaBan123"
+  "bot_api_key": "MatKhauAdminCuaBan123",
+  "verry_auto_continuous": true,
+  "enable_verry_pipeline": true,
+  "verry_pipeline_delay": "2 phút (Khuyến nghị)",
+  "verry_pipeline_threads": 50,
+  "verry_pipeline_dir": "C:\\Users\\truon\\Downloads\\verry"
 }

@@ -655,8 +655,15 @@ class StandaloneVerryEngine:
                 return
 
             uid = str(getattr(result, "uid", "")).strip()
-            pwd = str(getattr(result, "password", "")).strip()
+            pwd = str(getattr(result, "password", "")).strip() or str(acc.get("password", "")).strip() or str(verry_cfg.get("default_password", "")).strip() or "FacebookPassword123"
             cookie = str(getattr(result, "cookie_string", "")).strip()
+            if not cookie and hasattr(result, "cookies") and result.cookies:
+                if isinstance(result.cookies, dict):
+                    cookie = "; ".join([f"{k}={v}" for k, v in result.cookies.items()])
+                elif isinstance(result.cookies, str):
+                    cookie = str(result.cookies)
+            if uid and cookie and "c_user=" not in cookie:
+                cookie = f"c_user={uid}; {cookie}"
             if not uid or not pwd or not cookie:
                 return
 

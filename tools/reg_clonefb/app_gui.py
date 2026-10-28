@@ -1347,6 +1347,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         self._row_full_lines = {}
         self._file_save_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="AsyncFileSaver")
         self.var_bot_auto_upload = tk.BooleanVar(value=bool(self.config.get("bot_auto_upload", False)))
+        self.var_verry_auto_continuous = tk.BooleanVar(value=bool(self.config.get("verry_auto_continuous", True)))
         self.var_enable_verry_pipeline = tk.BooleanVar(value=bool(self.config.get("enable_verry_pipeline", True)))
         self.var_verry_pipeline_delay = tk.StringVar(value=str(self.config.get("verry_pipeline_delay", "2 phút (Khuyến nghị)")))
         self.var_verry_pipeline_threads = tk.StringVar(value=str(self.config.get("verry_pipeline_threads", 50)))
@@ -1354,7 +1355,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         self.stat_bot_uploaded = 0
         self._cached_subcat_info = None
         self._bot_uploaded_uids = set()
-        self._bot_upload_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="BotUploader")
+        self._bot_upload_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="BotUploader")
         self._log_line_count = 0
 
         self.setup_styles()
@@ -1417,6 +1418,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             "bot_media_id": "0AgACAgUAAxUAAWrdTEFel8nwqyfqdm-JW5tDEZQ-AAJmE2sbA8fhVvptkVWyk7XSAQADAgADYwADPQQ",
             "bot_api_url": "https://shopcl.onrender.com",
             "bot_api_key": "MatKhauAdminCuaBan123",
+            "verry_auto_continuous": True,
             "enable_verry_pipeline": True,
             "verry_pipeline_delay": "2 phút (Khuyến nghị)",
             "verry_pipeline_threads": 50,
@@ -2657,8 +2659,12 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
         if hasattr(self, "var_bot_auto_upload"):
             self.config["bot_auto_upload"] = bool(self.var_bot_auto_upload.get())
-        if hasattr(self, "entry_bot_media_id"):
+        if hasattr(self, "entry_dash_bot_media_id") and self.entry_dash_bot_media_id.get().strip():
+            self.config["bot_media_id"] = str(self.entry_dash_bot_media_id.get()).strip()
+        elif hasattr(self, "entry_bot_media_id"):
             self.config["bot_media_id"] = str(self.entry_bot_media_id.get()).strip()
+        if hasattr(self, "var_verry_auto_continuous"):
+            self.config["verry_auto_continuous"] = bool(self.var_verry_auto_continuous.get())
         if hasattr(self, "entry_bot_api_url"):
             self.config["bot_api_url"] = str(self.entry_bot_api_url.get()).strip()
         if hasattr(self, "entry_bot_api_key"):
@@ -5599,6 +5605,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         saved_mid = self.config.get("bot_media_id", "0AgACAgUAAxUAAWrdTEFel8nwqyfqdm-JW5tDEZQ-AAJmE2sbA8fhVvptkVWyk7XSAQADAgADYwADPQQ")
         self.entry_bot_media_id.insert(0, saved_mid)
         self.entry_bot_media_id.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 4))
+        self.entry_bot_media_id.bind("<KeyRelease>", self._on_settings_bot_media_id_changed)
+        self.entry_bot_media_id.bind("<FocusOut>", self._on_settings_bot_media_id_changed)
 
         btn_paste_mid = tk.Button(
             row_media_id,
@@ -5800,6 +5808,21 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             command=self._on_verry_pipeline_toggled
         )
         self.chk_verry_pipeline.pack(side=tk.LEFT)
+
+        is_cont_on = bool(self.config.get("verry_auto_continuous", True))
+        self.chk_verry_continuous = tk.Checkbutton(
+            row_verry_toggle,
+            text="🔄 Chạy liên tục (Tự nhận acc mới từ Tool Reg)",
+            variable=self.var_verry_auto_continuous,
+            font=AppTheme.FONT_BODY_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.SUCCESS if is_cont_on else AppTheme.TEXT_MUTED,
+            selectcolor=AppTheme.BG_INPUT,
+            activebackground=AppTheme.BG_CARD,
+            activeforeground=AppTheme.SUCCESS,
+            command=self._on_verry_continuous_toggled
+        )
+        self.chk_verry_continuous.pack(side=tk.LEFT, padx=(12, 0))
 
         # 2. Hàng Thời gian chờ & Số luồng Verry
         row_verry_opts = tk.Frame(card_verry, bg=AppTheme.BG_CARD)
@@ -6216,10 +6239,13 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         )
         self.chk_dash_mode_shared.pack(side=tk.LEFT, padx=(0, 2))
 
-        # Checkbox Auto Up Bot ngay tren Dashboard
+        # Nhóm Tự Động Up Bot ngay trên Dashboard (Có ô nhập Media ID + Bật/Tắt)
+        bot_box_dash = tk.Frame(quick_bar, bg=AppTheme.BG_CARD)
+        bot_box_dash.pack(side=tk.LEFT, padx=(6, 4))
+
         self.chk_dash_bot_upload = tk.Checkbutton(
-            quick_bar,
-            text="🤖 Auto Up Bot",
+            bot_box_dash,
+            text="🤖 Tự Up Bot",
             variable=self.var_bot_auto_upload,
             font=AppTheme.FONT_SMALL_BOLD,
             bg=AppTheme.BG_CARD,
@@ -6229,7 +6255,71 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             activeforeground=AppTheme.SUCCESS,
             command=self._on_bot_auto_upload_toggled
         )
-        self.chk_dash_bot_upload.pack(side=tk.LEFT, padx=(6, 2))
+        self.chk_dash_bot_upload.pack(side=tk.LEFT, padx=(0, 2))
+
+        tk.Label(
+            bot_box_dash,
+            text="Media ID:",
+            font=AppTheme.FONT_SMALL_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.WARNING
+        ).pack(side=tk.LEFT, padx=(2, 2))
+
+        self.entry_dash_bot_media_id = tk.Entry(
+            bot_box_dash,
+            width=18,
+            bg=AppTheme.BG_INPUT,
+            fg=AppTheme.TEXT_MAIN,
+            bd=1,
+            relief="solid",
+            font=AppTheme.FONT_CODE
+        )
+        saved_mid = self.config.get("bot_media_id", "0AgACAgUAAxUAAWrdTEFel8nwqyfqdm-JW5tDEZQ-AAJmE2sbA8fhVvptkVWyk7XSAQADAgADYwADPQQ")
+        self.entry_dash_bot_media_id.insert(0, saved_mid)
+        self.entry_dash_bot_media_id.pack(side=tk.LEFT, padx=(0, 2))
+        self.entry_dash_bot_media_id.bind("<KeyRelease>", self._on_dash_bot_media_id_changed)
+        self.entry_dash_bot_media_id.bind("<FocusOut>", self._on_dash_bot_media_id_changed)
+
+        btn_dash_paste_mid = tk.Button(
+            bot_box_dash,
+            cursor="hand2",
+            text="📋",
+            font=AppTheme.FONT_SMALL,
+            bg=AppTheme.BG_INPUT,
+            fg=AppTheme.TEXT_MAIN,
+            activebackground=AppTheme.BORDER,
+            bd=1,
+            relief="solid",
+            padx=4,
+            pady=0,
+            command=self._paste_dash_bot_media_id
+        )
+        btn_dash_paste_mid.pack(side=tk.LEFT, padx=(0, 2))
+
+        btn_dash_test_mid = tk.Button(
+            bot_box_dash,
+            cursor="hand2",
+            text="🔍",
+            font=AppTheme.FONT_SMALL,
+            bg=AppTheme.BG_INPUT,
+            fg=AppTheme.ACCENT,
+            activebackground=AppTheme.BORDER,
+            bd=1,
+            relief="solid",
+            padx=4,
+            pady=0,
+            command=self.test_bot_media_id_connection
+        )
+        btn_dash_test_mid.pack(side=tk.LEFT, padx=(0, 2))
+
+        self.lbl_dash_bot_status = tk.Label(
+            bot_box_dash,
+            text="",
+            font=AppTheme.FONT_SMALL,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.TEXT_MUTED
+        )
+        self.lbl_dash_bot_status.pack(side=tk.LEFT, padx=(0, 4))
 
         # Checkbox Auto Pipeline Verry ngay tren Dashboard
         self.chk_dash_verry_pipeline = tk.Checkbutton(
@@ -6245,6 +6335,21 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             command=self._on_verry_pipeline_toggled
         )
         self.chk_dash_verry_pipeline.pack(side=tk.LEFT, padx=(2, 4))
+
+        # Checkbox Chạy liên tục (Tự nhận acc mới) trên Tool Verry
+        self.chk_dash_verry_continuous = tk.Checkbutton(
+            quick_bar,
+            text="🔄 Chạy liên tục",
+            variable=self.var_verry_auto_continuous,
+            font=AppTheme.FONT_SMALL_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.SUCCESS if self.var_verry_auto_continuous.get() else AppTheme.TEXT_MUTED,
+            selectcolor=AppTheme.BG_INPUT,
+            activebackground=AppTheme.BG_CARD,
+            activeforeground=AppTheme.SUCCESS,
+            command=self._on_verry_continuous_toggled
+        )
+        self.chk_dash_verry_continuous.pack(side=tk.LEFT, padx=(2, 4))
 
         # Phía Phải: Nút Mở Cài Đặt
         right_box = tk.Frame(quick_bar, bg=AppTheme.BG_CARD)
@@ -8479,15 +8584,21 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             is_live_confirmed = False
             is_nvr = bool(not is_checkpoint and uid_to_check and uid_to_check.isdigit() and len(uid_to_check) >= 8)
 
-        has_uid_and_cookie = bool(uid_to_check and uid_to_check.isdigit() and len(uid_to_check) >= 8 and (has_valid_cookie or getattr(result, "cookie_string", "")))
-        # Tự động up lên Bot Shop nếu tính năng được bật (Hỗ trợ cả LIVE và NVR hợp lệ)
+        has_uid_and_cookie = bool(uid_to_check and uid_to_check.isdigit() and len(uid_to_check) >= 8 and (has_valid_cookie or getattr(result, "cookie_string", "") or getattr(result, "cookies", None)))
+        is_reg_success = bool(
+            (result.success and not is_checkpoint)
+            or is_live_confirmed
+            or (is_nvr and has_uid_and_cookie)
+            or (uid_to_check and uid_to_check.isdigit() and len(uid_to_check) >= 8 and not is_checkpoint and (getattr(result, "cookie_string", "") or getattr(result, "cookies", None)))
+        )
+        # Tự động up lên Bot Shop nếu tính năng được bật (Hỗ trợ UID|PASS|COOKIE tự động nạp theo Media ID)
         should_upload_to_bot = bool(
             hasattr(self, "var_bot_auto_upload")
             and self.var_bot_auto_upload.get()
             and uid_to_check
             and uid_to_check != "N/A"
             and not is_checkpoint
-            and (is_live_confirmed or (result.success and has_valid_cookie) or (is_nvr and has_uid_and_cookie))
+            and is_reg_success
         )
         if should_upload_to_bot:
             if not hasattr(self, "_bot_uploaded_uids"):
@@ -10499,6 +10610,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         curr_metaking_country_id = self.config.get("metaking_country_id", 154)
         curr_metaking_price = self.config.get("metaking_price", "low")
         nvr_list_to_run = []
+        is_continuous = bool(getattr(self, "var_verry_auto_continuous", None) and self.var_verry_auto_continuous.get()) and (curr_reg_mode == "verify_nvr")
         if curr_reg_mode == "verify_nvr":
             checked_items = self.get_checked_items()
             acc_map = getattr(self, "_row_acc_data", {})
@@ -10506,10 +10618,18 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 for citm in checked_items:
                     if citm in acc_map:
                         nvr_list_to_run.append(acc_map[citm])
-            if not nvr_list_to_run:
-                nvr_list_to_run = list(getattr(self, "nvr_accounts_queue", []))
-            if not nvr_list_to_run and hasattr(self, "_row_acc_data") and self._row_acc_data:
-                nvr_list_to_run = list(self._row_acc_data.values())
+            else:
+                existing_uids = set()
+                for a in getattr(self, "nvr_accounts_queue", []):
+                    u = str(a.get("uid", "")).strip()
+                    if u:
+                        existing_uids.add(u)
+                        nvr_list_to_run.append(a)
+                for itm, a in acc_map.items():
+                    u = str(a.get("uid", "")).strip()
+                    if u and u not in existing_uids:
+                        existing_uids.add(u)
+                        nvr_list_to_run.append(a)
 
         try:
             num_threads = max(1, int(str(self.spn_threads.get()).strip()))
@@ -10935,7 +11055,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             pipeline_active = bool(getattr(self, "var_enable_verry_pipeline", None) and self.var_enable_verry_pipeline.get())
             pipeline_stop_event = threading.Event()
 
-            if curr_reg_mode == "verify_nvr" and pipeline_active:
+            if curr_reg_mode == "verify_nvr" and (pipeline_active or is_continuous):
                 def _pipeline_feeder():
                     from core.nvr_pipeline_bridge import claim_ready_accounts
                     v_dir = self.var_verry_pipeline_dir.get().strip() if hasattr(self, "var_verry_pipeline_dir") else os.getcwd()
@@ -11885,6 +12005,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
                     curr_acc_data = None
                     if curr_reg_mode == "verify_nvr":
+                        last_wait_log_ts = 0.0
                         while not self.stop_event.is_set():
                             with nvr_lock:
                                 if nvr_idx < len(nvr_list):
@@ -11907,10 +12028,18 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                         nvr_idx += 1
                                         current_num = nvr_idx
                                         break
-                            if not pipeline_active:
+                            if not pipeline_active and not is_continuous:
                                 break
                             if max_accs > 0 and successful_accs >= max_accs:
                                 break
+                            now_wait = time.time()
+                            if worker_id == 1 and (now_wait - last_wait_log_ts > 20.0):
+                                last_wait_log_ts = now_wait
+                                waiting_cnt = max(0, len(nvr_list) - nvr_idx)
+                                self.event_queue.put(("log", {
+                                    "message": f"⏳ [Verry Chạy Liên Tục] Đang chờ tài khoản NVR mới từ Tool Reg hoặc chờ {waiting_cnt} nick ngấu xong...",
+                                    "tag": "info"
+                                }))
                             if self.stop_event.wait(timeout=1.0):
                                 break
                         if not curr_acc_data:
@@ -12303,7 +12432,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     has_more_accs = False
                     if curr_reg_mode == "verify_nvr":
                         with nvr_lock:
-                            has_more_accs = (nvr_idx < len(nvr_list) and (max_accs <= 0 or nvr_idx < max_accs)) or pipeline_active
+                            has_more_accs = (nvr_idx < len(nvr_list) and (max_accs <= 0 or nvr_idx < max_accs)) or pipeline_active or is_continuous
                     else:
                         with success_lock:
                             has_more_accs = (max_accs <= 0 or successful_accs < max_accs)
@@ -13065,19 +13194,21 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             self.stop_event.set()
                             break
 
+                    all_done = False
                     if curr_reg_mode == "verify_nvr":
-                        with nvr_lock:
-                            if nvr_idx >= len(nvr_list) or (max_accs > 0 and nvr_idx >= max_accs):
-                                if not pipeline_active or (max_accs > 0 and successful_accs >= max_accs):
-                                    all_done = True
-                                    with worker_lock:
-                                        for wid in range(1, actual_threads + 1):
-                                            th = worker_threads.get(wid)
-                                            if th and th.is_alive():
-                                                all_done = False
-                                                break
-                                if all_done:
-                                    break
+                        if not is_continuous:
+                            with nvr_lock:
+                                if nvr_idx >= len(nvr_list) or (max_accs > 0 and nvr_idx >= max_accs):
+                                    if not pipeline_active or (max_accs > 0 and successful_accs >= max_accs):
+                                        all_done = True
+                                        with worker_lock:
+                                            for wid in range(1, actual_threads + 1):
+                                                th = worker_threads.get(wid)
+                                                if th and th.is_alive():
+                                                    all_done = False
+                                                    break
+                            if all_done:
+                                break
 
                     # Nếu có bất kỳ luồng nào thoát hoặc lỗi ngoài ý muốn, lập tức bù luồng mới để duy trì đúng số luồng
                     if not self.stop_event.is_set():
@@ -13088,7 +13219,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 need_spawn = False
                                 if curr_reg_mode == "verify_nvr":
                                     with nvr_lock:
-                                        need_spawn = (nvr_idx < len(nvr_list) and (max_accs <= 0 or nvr_idx < max_accs)) or pipeline_active
+                                        need_spawn = (nvr_idx < len(nvr_list) and (max_accs <= 0 or nvr_idx < max_accs)) or pipeline_active or is_continuous
                                 else:
                                     with success_lock:
                                         need_spawn = (max_accs <= 0 or successful_accs < max_accs)
@@ -15146,7 +15277,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
     # =========================================================================
 
     def _on_bot_auto_upload_toggled(self):
-        '''Bat/tat tinh nang tu dong upload len Bot Shop sau khi reg thanh cong.'''
+        """Bật/tắt tính năng tự động upload lên Bot Shop sau khi reg thành công."""
         is_on = bool(self.var_bot_auto_upload.get()) if hasattr(self, 'var_bot_auto_upload') else False
         self.config['bot_auto_upload'] = is_on
 
@@ -15162,75 +15293,163 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             except Exception:
                 pass
 
-        status_text = 'B?T' if is_on else 'T?T'
-        self.log(f'?? ?? {status_text} t?nh n?ng t? ??ng upload l?n Bot Shop (Media ID)', 'info' if is_on else 'warning')
+        status_text = 'BẬT' if is_on else 'TẮT'
+        self.log(f'🤖 Đã {status_text} tính năng tự động upload lên Bot Shop (Media ID)', 'info' if is_on else 'warning')
         self.save_config(show_toast=False)
 
+    def _on_verry_continuous_toggled(self):
+        """Bật/tắt chế độ chạy liên tục tự nhận acc mới trên Tool Verry."""
+        is_on = bool(self.var_verry_auto_continuous.get()) if hasattr(self, 'var_verry_auto_continuous') else True
+        self.config['verry_auto_continuous'] = is_on
+
+        accent_color = getattr(AppTheme, 'SUCCESS', '#22c55e') if is_on else getattr(AppTheme, 'TEXT_MUTED', '#94a3b8')
+        if hasattr(self, 'chk_dash_verry_continuous'):
+            try:
+                self.chk_dash_verry_continuous.configure(fg=accent_color)
+            except Exception:
+                pass
+        if hasattr(self, 'chk_verry_continuous'):
+            try:
+                self.chk_verry_continuous.configure(fg=accent_color)
+            except Exception:
+                pass
+
+        st = 'BẬT' if is_on else 'TẮT'
+        self.log(f'🔄 Đã {st} chế độ Chạy liên tục (Tự nhận acc mới từ Tool Reg)', 'info' if is_on else 'warning')
+        self.save_config(show_toast=False)
+
+    def _on_dash_bot_media_id_changed(self, event=None):
+        """Đồng bộ khi người dùng gõ Media ID trên Dashboard."""
+        if not hasattr(self, 'entry_dash_bot_media_id'):
+            return
+        val = self.entry_dash_bot_media_id.get().strip()
+        self.config['bot_media_id'] = val
+        if hasattr(self, 'entry_bot_media_id'):
+            try:
+                if self.entry_bot_media_id.get().strip() != val:
+                    self.entry_bot_media_id.delete(0, tk.END)
+                    self.entry_bot_media_id.insert(0, val)
+            except Exception:
+                pass
+        self._cached_subcat_info = None
+
+    def _on_settings_bot_media_id_changed(self, event=None):
+        """Đồng bộ khi người dùng gõ Media ID trong Cài đặt."""
+        if not hasattr(self, 'entry_bot_media_id'):
+            return
+        val = self.entry_bot_media_id.get().strip()
+        self.config['bot_media_id'] = val
+        if hasattr(self, 'entry_dash_bot_media_id'):
+            try:
+                if self.entry_dash_bot_media_id.get().strip() != val:
+                    self.entry_dash_bot_media_id.delete(0, tk.END)
+                    self.entry_dash_bot_media_id.insert(0, val)
+            except Exception:
+                pass
+        self._cached_subcat_info = None
+
+    def _paste_dash_bot_media_id(self):
+        """Dán Media ID từ Clipboard vào ô trên Dashboard."""
+        try:
+            text = self.root.clipboard_get().strip()
+            if text:
+                if hasattr(self, 'entry_dash_bot_media_id'):
+                    self.entry_dash_bot_media_id.delete(0, tk.END)
+                    self.entry_dash_bot_media_id.insert(0, text)
+                self._on_dash_bot_media_id_changed()
+                self.save_config(show_toast=False)
+                self.log(f'📋 Đã dán Media ID: {text[:25]}...', 'info')
+                threading.Thread(target=self.test_bot_media_id_connection, daemon=True).start()
+        except Exception as e:
+            self.log(f'Lỗi dán clipboard: {e}', 'warning')
+
     def _paste_bot_media_id(self):
-        '''Dan Media ID tu Clipboard vao o nhap.'''
+        """Dán Media ID từ Clipboard vào ô nhập trong Cài đặt."""
         try:
             text = self.root.clipboard_get().strip()
             if text:
                 if hasattr(self, 'entry_bot_media_id'):
                     self.entry_bot_media_id.delete(0, tk.END)
                     self.entry_bot_media_id.insert(0, text)
+                if hasattr(self, 'entry_dash_bot_media_id'):
+                    self.entry_dash_bot_media_id.delete(0, tk.END)
+                    self.entry_dash_bot_media_id.insert(0, text)
                 self.config['bot_media_id'] = text
+                self._cached_subcat_info = None
                 self.save_config(show_toast=False)
-                self.log(f'?? ?? d?n Media ID: {text[:25]}...', 'info')
+                self.log(f'📋 Đã dán Media ID: {text[:25]}...', 'info')
                 threading.Thread(target=self.test_bot_media_id_connection, daemon=True).start()
         except Exception as e:
-            self.log(f'L?i d?n clipboard: {e}', 'warning')
+            self.log(f'Lỗi dán clipboard: {e}', 'warning')
 
     def _toggle_mask_bot_api_key(self):
-        '''An/hien API Key Bot.'''
+        """Ẩn/hiện API Key Bot."""
         if not hasattr(self, 'entry_bot_api_key'):
             return
         curr_show = self.entry_bot_api_key.cget('show')
         if curr_show == '*':
             self.entry_bot_api_key.configure(show='')
             if hasattr(self, 'btn_toggle_bot_api_key'):
-                self.btn_toggle_bot_api_key.configure(text='?? ?n Key')
+                self.btn_toggle_bot_api_key.configure(text='👁 Ẩn Key')
         else:
             self.entry_bot_api_key.configure(show='*')
             if hasattr(self, 'btn_toggle_bot_api_key'):
-                self.btn_toggle_bot_api_key.configure(text='?? Hi?n Key')
+                self.btn_toggle_bot_api_key.configure(text='👁 Hiện Key')
 
     def _get_bot_config(self):
-        '''Lay bo 3 cau hinh: (media_id, api_url, api_key).'''
+        """Lấy bộ 3 cấu hình: (media_id, api_url, api_key)."""
         mid = ''
-        if hasattr(self, 'entry_bot_media_id'):
-            mid = self.entry_bot_media_id.get().strip()
+        if hasattr(self, 'entry_dash_bot_media_id'):
+            try:
+                mid = self.entry_dash_bot_media_id.get().strip()
+            except Exception:
+                pass
+        if not mid and hasattr(self, 'entry_bot_media_id'):
+            try:
+                mid = self.entry_bot_media_id.get().strip()
+            except Exception:
+                pass
         if not mid:
             mid = str(self.config.get('bot_media_id', '')).strip()
 
         api_url = ''
         if hasattr(self, 'entry_bot_api_url'):
-            api_url = self.entry_bot_api_url.get().strip()
+            try:
+                api_url = self.entry_bot_api_url.get().strip()
+            except Exception:
+                pass
         if not api_url:
             api_url = str(self.config.get('bot_api_url', 'https://shopcl.onrender.com')).strip()
         api_url = api_url.rstrip('/')
 
         api_key = ''
         if hasattr(self, 'entry_bot_api_key'):
-            api_key = self.entry_bot_api_key.get().strip()
+            try:
+                api_key = self.entry_bot_api_key.get().strip()
+            except Exception:
+                pass
         if not api_key:
             api_key = str(self.config.get('bot_api_key', 'MatKhauAdminCuaBan123')).strip()
 
         return mid, api_url, api_key
 
     def test_bot_media_id_connection(self):
-        '''Kiem tra Media ID va ket noi den Bot Shop API trong background thread.'''
+        """Kiểm tra Media ID và kết nối đến Bot Shop API trong background thread."""
         def _worker():
             media_id, api_url, api_key = self._get_bot_config()
             if not media_id:
-                msg = '?? Vui l?ng nh?p Media ID tr??c khi ki?m tra!'
+                msg = '⚠️ Vui lòng nhập Media ID trước khi kiểm tra!'
                 self.log(msg, 'warning')
                 if hasattr(self, 'lbl_bot_media_id_status'):
-                    self.lbl_bot_media_id_status.configure(text=f'? {msg}', fg=AppTheme.WARNING)
+                    self.lbl_bot_media_id_status.configure(text=f'⚠️ {msg}', fg=AppTheme.WARNING)
+                if hasattr(self, 'lbl_dash_bot_status'):
+                    self.lbl_dash_bot_status.configure(text='[Chưa nhập Media ID]', fg=AppTheme.WARNING)
                 return
 
             if hasattr(self, 'lbl_bot_media_id_status'):
-                self.lbl_bot_media_id_status.configure(text='? ?ang k?t n?i t?i Bot Shop ?? ki?m tra Media ID...', fg=AppTheme.INFO)
+                self.lbl_bot_media_id_status.configure(text='⏳ Đang kết nối tới Bot Shop để kiểm tra Media ID...', fg=AppTheme.INFO)
+            if hasattr(self, 'lbl_dash_bot_status'):
+                self.lbl_dash_bot_status.configure(text='[Đang kiểm tra...]', fg=AppTheme.INFO)
 
             subcat_info = self._resolve_bot_media_id(media_id, api_url, api_key)
             if subcat_info.get('found'):
@@ -15238,22 +15457,26 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 price = subcat_info.get('price', 0.02)
                 stock = subcat_info.get('stock_count', 'N/A')
                 cat_name = subcat_info.get('category_name', 'Clone Facebook')
-                status_txt = f'? Kh?p Th? M?c: [{name}] ({cat_name}) | Gi?:  | T?n kho: {stock} acc'
-                self.log(f'?? [Bot Shop] {status_txt}', 'success')
+                status_txt = f'✅ Khớp Thư Mục: [{name}] ({cat_name}) | Giá: {price}$ | Tồn kho: {stock} acc'
+                self.log(f'🤖 [Bot Shop] {status_txt}', 'success')
                 if hasattr(self, 'lbl_bot_media_id_status'):
-                    self.lbl_bot_media_id_status.configure(text=f'? {status_txt}', fg=AppTheme.SUCCESS)
+                    self.lbl_bot_media_id_status.configure(text=f'✅ {status_txt}', fg=AppTheme.SUCCESS)
+                if hasattr(self, 'lbl_dash_bot_status'):
+                    self.lbl_dash_bot_status.configure(text=f'[{name[:12]}]', fg=AppTheme.SUCCESS)
                 self._cached_subcat_info = subcat_info
             else:
-                err = subcat_info.get('error', 'Kh?ng t?m th?y th? m?c kh?p v?i Media ID')
-                status_txt = f'? {err}'
-                self.log(f'?? [Bot Shop] {status_txt}', 'error')
+                err = subcat_info.get('error', 'Không tìm thấy thư mục khớp với Media ID')
+                status_txt = f'❌ {err}'
+                self.log(f'🤖 [Bot Shop] {status_txt}', 'error')
                 if hasattr(self, 'lbl_bot_media_id_status'):
-                    self.lbl_bot_media_id_status.configure(text=f'? {status_txt}', fg=AppTheme.DANGER)
+                    self.lbl_bot_media_id_status.configure(text=f'❌ {status_txt}', fg=AppTheme.DANGER)
+                if hasattr(self, 'lbl_dash_bot_status'):
+                    self.lbl_dash_bot_status.configure(text='[Sai Media ID]', fg=AppTheme.DANGER)
 
         threading.Thread(target=_worker, daemon=True, name='TestBotConn').start()
 
     def _resolve_bot_media_id(self, media_id: str, api_url: str, api_key: str) -> dict:
-        '''Tra cuu Media ID tu server Bot Shop voi co che fallback thong minh.'''
+        """Tra cứu Media ID từ server Bot Shop với cơ chế fallback thông minh."""
         import urllib.request
         import urllib.parse
         import json
@@ -15303,20 +15526,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 'id': sc.get('id'),
                                 'name': sc.get('name'),
                                 'price': sc.get('price', 0.02),
-                                'category_name': 'Clone Facebook',
-                                'stock_count': '?ang ho?t ??ng',
-                                'media_id': sc_mid or media_id
-                            }
-                    for sc in subcats:
-                        if sc.get('id') == 7 or 'r? nh?t th? gi?i' in str(sc.get('name', '')).lower():
-                            return {
-                                'found': True,
-                                'id': sc.get('id'),
-                                'name': sc.get('name'),
-                                'price': sc.get('price', 0.02),
-                                'category_name': 'Clone Facebook',
-                                'stock_count': 'S?n s?ng',
-                                'media_id': media_id
+                                'category_name': sc.get('category_name', 'Clone Facebook'),
+                                'stock_count': sc.get('stock_count', 0),
+                                'media_id': sc_mid
                             }
                     if subcats:
                         sc0 = subcats[0]
@@ -15326,39 +15538,55 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             'name': sc0.get('name'),
                             'price': sc0.get('price', 0.02),
                             'category_name': 'Clone Facebook',
-                            'stock_count': 'S?n s?ng',
+                            'stock_count': 'Sẵn sàng',
                             'media_id': media_id
                         }
         except Exception as ex2:
-            return {'found': False, 'error': f'L?i k?t n?i Bot Shop ({list_url}): {ex2}'}
+            return {'found': False, 'error': f'Lỗi kết nối Bot Shop ({list_url}): {ex2}'}
 
-        return {'found': False, 'error': f'Kh?ng t?m th?y danh m?c con n?o kh?p v?i Media ID: {media_id[:20]}...'}
+        return {'found': False, 'error': f'Không tìm thấy danh mục con nào khớp với Media ID: {media_id[:20]}...'}
 
     def upload_single_account_to_bot(self, result):
-        '''Tu dong upload 1 tai khoan vua reg thanh cong len Bot Shop theo dinh dang UID|PASS|COOKIE.'''
+        """Tự động upload 1 tài khoản vừa reg thành công lên Bot Shop theo định dạng UID|PASS|COOKIE."""
         try:
             uid = str(getattr(result, 'uid', '') or '').strip()
             pwd = str(getattr(result, 'password', '') or '').strip()
+            if not pwd and hasattr(result, 'metadata') and isinstance(result.metadata, dict):
+                pwd = str(result.metadata.get('password', '')).strip()
+            if not pwd:
+                pwd = str(self.config.get('default_password', '')).strip()
+            if not pwd and hasattr(self, 'entry_pass'):
+                try:
+                    pwd = str(self.entry_pass.get()).strip()
+                except Exception:
+                    pass
+            if not pwd:
+                pwd = 'FacebookPassword123'
+
             cookie = str(getattr(result, 'cookie_string', '') or '').strip()
             if not cookie and hasattr(result, 'cookies') and result.cookies:
                 if isinstance(result.cookies, dict):
                     cookie = '; '.join([f'{k}={v}' for k, v in result.cookies.items()])
                 elif isinstance(result.cookies, str):
-                    cookie = result.cookies
+                    cookie = str(result.cookies)
+            if not cookie and hasattr(result, 'metadata') and isinstance(result.metadata, dict):
+                cookie = str(result.metadata.get('cookie', '') or result.metadata.get('cookie_string', '')).strip()
 
             if uid and cookie and 'c_user=' not in cookie:
                 cookie = f'c_user={uid}; {cookie}'
 
             if not uid or not pwd or not cookie:
+                self.log(f'⚠️ [Bot Shop] Thiếu thông tin để up bot UID={uid}: pwd={bool(pwd)}, cookie={bool(cookie)}', 'warning')
                 return
 
             account_line = f'{uid}|{pwd}|{cookie}'
             self._do_upload_accounts_batch([account_line], batch_label=f'UID: {uid}')
         except Exception as e:
             logger.warning(f'Error in upload_single_account_to_bot: {e}')
+            self.log(f'❌ [Bot Shop] Lỗi upload UID {getattr(result, "uid", "N/A")}: {e}', 'error')
 
     def _do_upload_accounts_batch(self, account_lines: list, batch_label: str = ''):
-        '''Thuc hien day danh sach tai khoan len endpoint /api/items/bulk-upload cua Bot Shop.'''
+        """Thực hiện đẩy danh sách tài khoản lên endpoint /api/items/bulk-upload của Bot Shop."""
         if not account_lines:
             return
 
@@ -15367,11 +15595,19 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
         media_id, api_url, api_key = self._get_bot_config()
         if not media_id:
-            self.log('?? [Bot Shop] Ch?a c?u h?nh Media ID. B? qua upload l?n Bot!', 'warning')
+            self.log('⚠️ [Bot Shop] Chưa cấu hình Media ID. Vui lòng nhập Media ID!', 'warning')
             return
 
         cached = getattr(self, '_cached_subcat_info', None) or {}
-        subcat_name = cached.get('name') or 'Clone Facebook r? nh?t th? gi?i'
+        if not cached or cached.get('media_id') != media_id:
+            try:
+                cached = self._resolve_bot_media_id(media_id, api_url, api_key)
+                if cached.get('found'):
+                    self._cached_subcat_info = cached
+            except Exception:
+                pass
+
+        subcat_name = cached.get('name') or f'Clone MediaID {media_id[:12]}'
         cat_name = cached.get('category_name') or 'Clone Facebook'
         price = float(cached.get('price') or 0.02)
 
@@ -15380,7 +15616,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             'category_name': cat_name,
             'subcategory_name': subcat_name,
             'price': price,
-            'description': 'T?i kho?n Clone Facebook reg t? ??ng t? Tool',
+            'description': 'Tài khoản Clone Facebook reg tự động từ Tool',
             'items': account_lines,
             'check_live': False,
             'is_facebook': True
@@ -15408,11 +15644,22 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 self.stat_bot_uploaded = getattr(self, 'stat_bot_uploaded', 0) + up_cnt
 
                 if hasattr(self, 'lbl_bot_upload_stat'):
-                    self.lbl_bot_upload_stat.configure(text=f'?? up trong phi?n: {self.stat_bot_uploaded} acc')
+                    try:
+                        self.lbl_bot_upload_stat.configure(text=f'Đã up trong phiên: {self.stat_bot_uploaded} acc')
+                    except Exception:
+                        pass
                 if hasattr(self, 'lbl_stat_bot_uploaded'):
-                    self.lbl_stat_bot_uploaded.configure(text=f'? UP BOT: {self.stat_bot_uploaded}')
+                    try:
+                        self.lbl_stat_bot_uploaded.configure(text=f'🤖 UP BOT: {self.stat_bot_uploaded}')
+                    except Exception:
+                        pass
+                if hasattr(self, 'lbl_dash_bot_status'):
+                    try:
+                        self.lbl_dash_bot_status.configure(text=f'[{target_sub[:12]}] ({self.stat_bot_uploaded} up)', fg=AppTheme.SUCCESS)
+                    except Exception:
+                        pass
 
-                msg = f'?? [Bot Shop] ?? up th?nh c?ng {up_cnt} nick v?o [{target_sub}] (Media ID: {media_id[:12]}...)!'
+                msg = f'🤖 [Bot Shop] ✅ Đã tự up thành công {up_cnt} nick (uid|pass|cookie) vào [{target_sub}] (Media ID: {media_id[:12]}...)!'
                 if batch_label:
                     msg += f' [{batch_label}]'
                 self.log(msg, 'success')
@@ -15425,31 +15672,31 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 err_detail = edata.get('detail', str(he))
             except Exception:
                 err_detail = err_body or str(he)
-            self.log(f'? [Bot Shop] Upload th?t b?i (M? {he.code}): {err_detail}', 'error')
+            self.log(f'❌ [Bot Shop] Upload thất bại (Mã {he.code}): {err_detail}', 'error')
 
         except Exception as ex:
-            self.log(f'? [Bot Shop] L?i g?i request upload: {ex}', 'error')
+            self.log(f'❌ [Bot Shop] Lỗi gửi request upload: {ex}', 'error')
 
     def upload_all_live_to_bot(self):
-        '''Doc va up toan bo tai khoan trong accounts_live.txt len Bot Shop.'''
+        """Đọc và up toàn bộ tài khoản trong accounts_live.txt lên Bot Shop."""
         self._upload_file_to_bot_generic('accounts_live.txt', 'LIVE')
 
     def upload_all_unverified_to_bot(self):
-        '''Doc va up toan bo tai khoan trong accounts_unverified.txt len Bot Shop.'''
-        self._upload_file_to_bot_generic('accounts_unverified.txt', 'CH?A X?C MINH')
+        """Đọc và up toàn bộ tài khoản trong accounts_unverified.txt lên Bot Shop."""
+        self._upload_file_to_bot_generic('accounts_unverified.txt', 'CHƯA XÁC MINH')
 
     def _upload_file_to_bot_generic(self, filename: str, label: str):
-        '''Xu ly doc file bat ky, loc dinh dang UID|PASS|COOKIE va gui hang loat len Bot.'''
+        """Xử lý đọc file bất kỳ, lọc định dạng UID|PASS|COOKIE và gửi hàng loạt lên Bot."""
         def _worker():
             if not os.path.exists(filename):
-                self.log(f'?? [Bot Shop] File {filename} kh?ng t?n t?i tr?n ? ??a!', 'warning')
+                self.log(f'⚠️ [Bot Shop] File {filename} không tồn tại trên ổ đĩa!', 'warning')
                 return
 
             try:
                 with open(filename, 'r', encoding='utf-8-sig', errors='ignore') as f:
                     raw_lines = f.readlines()
             except Exception as e:
-                self.log(f'? [Bot Shop] Kh?ng th? ??c file {filename}: {e}', 'error')
+                self.log(f'❌ [Bot Shop] Không thể đọc file {filename}: {e}', 'error')
                 return
 
             valid_items = []
@@ -15474,10 +15721,10 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         valid_items.append(f'{uid}|{pwd}|{cookie}')
 
             if not valid_items:
-                self.log(f'?? [Bot Shop] File {filename} kh?ng c? t?i kho?n h?p l? (c?n UID|PASS|COOKIE)!', 'warning')
+                self.log(f'⚠️ [Bot Shop] File {filename} không có tài khoản hợp lệ (cần UID|PASS|COOKIE)!', 'warning')
                 return
 
-            self.log(f'? [Bot Shop] ?ang b?t ??u ??y {len(valid_items)} nick {label} t? {filename} l?n Bot Shop...', 'info')
+            self.log(f'🚀 [Bot Shop] Đang bắt đầu đẩy {len(valid_items)} nick {label} từ {filename} lên Bot Shop...', 'info')
             batch_size = 50
             for i in range(0, len(valid_items), batch_size):
                 batch = valid_items[i:i + batch_size]
@@ -15487,13 +15734,13 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         threading.Thread(target=_worker, daemon=True, name='BatchBotUpload').start()
 
     def on_context_upload_selected_to_bot(self):
-        '''Upload cac tai khoan dang duoc chon tren bang len Bot Shop.'''
+        """Upload các tài khoản đang được chọn trên bảng lên Bot Shop."""
         checked_ids = self.get_checked_items()
         selected_ids = list(self.tree.selection())
         target_ids = list(dict.fromkeys(checked_ids + selected_ids))
 
         if not target_ids:
-            messagebox.showinfo('Th?ng b?o', 'Vui l?ng t?ch ch?n ho?c b?i ?en ?t nh?t 1 t?i kho?n tr?n b?ng ?? up l?n Bot Shop!')
+            messagebox.showinfo('Thông báo', 'Vui lòng tích chọn hoặc bôi đen ít nhất 1 tài khoản trên bảng để up lên Bot Shop!')
             return
 
         def _worker():
@@ -15518,11 +15765,11 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     valid_items.append(f'{uid}|{pwd}|{cookie}')
 
             if not valid_items:
-                self.log('?? [Bot Shop] Kh?ng t?m th?y t?i kho?n h?p l? c? Cookie trong c?c d?ng ?? ch?n!', 'warning')
+                self.log('⚠️ [Bot Shop] Không tìm thấy tài khoản hợp lệ có Cookie trong các dòng đã chọn!', 'warning')
                 return
 
-            self.log(f'? [Bot Shop] ?ang up {len(valid_items)} nick ?? ch?n l?n Bot Shop...', 'info')
-            self._do_upload_accounts_batch(valid_items, batch_label=f'B?ng ?? ch?n {len(valid_items)} acc')
+            self.log(f'🚀 [Bot Shop] Đang up {len(valid_items)} nick đã chọn lên Bot Shop...', 'info')
+            self._do_upload_accounts_batch(valid_items, batch_label=f'Bảng đã chọn {len(valid_items)} acc')
 
         threading.Thread(target=_worker, daemon=True, name='SelectedBotUpload').start()
 
