@@ -1358,10 +1358,11 @@ class KiotProxyClient:
     @classmethod
     def get_cached_proxy(cls, api_key: str, max_age: Optional[float] = 120.0) -> Optional[Dict[str, Any]]:
         k = api_key.strip()
+        eff_max_age = 300.0 if max_age is None else max_age
         with _KIOT_CACHE_LOCK:
             data = _KIOT_CACHE.get(k)
             now = time.time()
-            if data and (max_age is None or (now - data.get("cached_at", 0)) < max_age) and data.get("http"):
+            if data and (now - data.get("cached_at", 0)) < eff_max_age and data.get("http"):
                 res = dict(data)
                 res["success"] = True
                 res["from_cache"] = True
@@ -1369,7 +1370,7 @@ class KiotProxyClient:
 
             disk_cache = cls._read_disk_cache()
             disk_data = disk_cache.get(k)
-            if disk_data and (max_age is None or (now - disk_data.get("cached_at", 0)) < max_age) and disk_data.get("http"):
+            if disk_data and (now - disk_data.get("cached_at", 0)) < eff_max_age and disk_data.get("http"):
                 _KIOT_CACHE[k] = dict(disk_data)
                 res = dict(disk_data)
                 res["success"] = True
@@ -1397,23 +1398,27 @@ class KiotProxyClient:
             cls._write_last_known_disk(disk_last)
 
     @classmethod
-    def get_last_known(cls, api_key: str) -> Optional[Dict[str, Any]]:
+    def get_last_known(cls, api_key: str, max_age: Optional[float] = 300.0) -> Optional[Dict[str, Any]]:
         k = api_key.strip()
+        eff_max_age = 300.0 if max_age is None else max_age
+        now = time.time()
         with _KIOT_CACHE_LOCK:
             cand = _KIOT_LAST_KNOWN.get(k)
             if cand and cand.get("http"):
-                res = dict(cand)
-                res["success"] = True
-                res["from_cache"] = True
-                return res
+                if (now - cand.get("cached_at", 0)) < eff_max_age:
+                    res = dict(cand)
+                    res["success"] = True
+                    res["from_cache"] = True
+                    return res
             disk_last = cls._read_last_known_disk()
             cand = disk_last.get(k)
             if cand and cand.get("http"):
-                _KIOT_LAST_KNOWN[k] = dict(cand)
-                res = dict(cand)
-                res["success"] = True
-                res["from_cache"] = True
-                return res
+                if (now - cand.get("cached_at", 0)) < eff_max_age:
+                    _KIOT_LAST_KNOWN[k] = dict(cand)
+                    res = dict(cand)
+                    res["success"] = True
+                    res["from_cache"] = True
+                    return res
         return None
 
     @classmethod
@@ -2492,10 +2497,11 @@ class ProxyVNClient:
     @classmethod
     def get_cached_proxy(cls, api_key: str, max_age: Optional[float] = 120.0) -> Optional[Dict[str, Any]]:
         k = api_key.strip()
+        eff_max_age = 300.0 if max_age is None else max_age
         with _PROXYVN_CACHE_LOCK:
             data = _PROXYVN_CACHE.get(k)
             now = time.time()
-            if data and (max_age is None or (now - data.get("cached_at", 0)) < max_age) and data.get("http"):
+            if data and (now - data.get("cached_at", 0)) < eff_max_age and data.get("http"):
                 res = dict(data)
                 res["success"] = True
                 res["from_cache"] = True
@@ -2504,7 +2510,7 @@ class ProxyVNClient:
             # Kiểm tra cache file trên đĩa
             disk_cache = cls._read_disk_cache()
             disk_data = disk_cache.get(k)
-            if disk_data and (max_age is None or (now - disk_data.get("cached_at", 0)) < max_age) and disk_data.get("http"):
+            if disk_data and (now - disk_data.get("cached_at", 0)) < eff_max_age and disk_data.get("http"):
                 _PROXYVN_CACHE[k] = dict(disk_data)
                 res = dict(disk_data)
                 res["success"] = True
@@ -2532,23 +2538,27 @@ class ProxyVNClient:
             cls._write_last_known_disk(disk_last)
 
     @classmethod
-    def get_last_known(cls, api_key: str) -> Optional[Dict[str, Any]]:
+    def get_last_known(cls, api_key: str, max_age: Optional[float] = 300.0) -> Optional[Dict[str, Any]]:
         k = api_key.strip()
+        eff_max_age = 300.0 if max_age is None else max_age
+        now = time.time()
         with _PROXYVN_CACHE_LOCK:
             cand = _PROXYVN_LAST_KNOWN.get(k)
             if cand and cand.get("http"):
-                res = dict(cand)
-                res["success"] = True
-                res["from_cache"] = True
-                return res
+                if (now - cand.get("cached_at", 0)) < eff_max_age:
+                    res = dict(cand)
+                    res["success"] = True
+                    res["from_cache"] = True
+                    return res
             disk_last = cls._read_last_known_disk()
             cand = disk_last.get(k)
             if cand and cand.get("http"):
-                _PROXYVN_LAST_KNOWN[k] = dict(cand)
-                res = dict(cand)
-                res["success"] = True
-                res["from_cache"] = True
-                return res
+                if (now - cand.get("cached_at", 0)) < eff_max_age:
+                    _PROXYVN_LAST_KNOWN[k] = dict(cand)
+                    res = dict(cand)
+                    res["success"] = True
+                    res["from_cache"] = True
+                    return res
         return None
 
     @classmethod

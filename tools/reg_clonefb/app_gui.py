@@ -10309,7 +10309,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 def _probe_kiot(item):
                     cand_idx, cand_k = item
                     c_tmp = KiotProxyClient(cand_k)
-                    inf_tmp = c_tmp.get_current_proxy()
+                    inf_tmp = c_tmp.get_current_proxy(force_refresh=True)
+                    if not inf_tmp.get("success") or not inf_tmp.get("http"):
+                        inf_tmp = c_tmp.get_new_proxy(fallback_current=True)
                     return cand_idx, cand_k, inf_tmp
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=min(20, len(kiot_keys))) as ex:
@@ -10597,16 +10599,16 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     k_client = KiotProxyClient(cand_k)
                     inf = initial_kiot_info.get(cand_k) if "initial_kiot_info" in locals() else None
                     if not inf or not inf.get("success") or not inf.get("http"):
-                        last_k = KiotProxyClient.get_last_known(cand_k) or KiotProxyClient.get_cached_proxy(cand_k, max_age=None)
-                        if last_k and last_k.get("http"):
-                            inf = last_k
-                    if not inf or not inf.get("success") or not inf.get("http"):
-                        inf = k_client.get_current_proxy(force_refresh=False)
+                        inf = k_client.get_current_proxy(force_refresh=True)
                     if not inf.get("success") or not inf.get("http"):
                         inf = k_client.get_new_proxy(fallback_current=True)
-                    p_item = ProxyManager.parse_proxy(inf.get("http")) if inf.get("http") else None
+                    if not inf.get("success") or not inf.get("http"):
+                        cached = KiotProxyClient.get_cached_proxy(cand_k, max_age=300.0)
+                        if cached and cached.get("http"):
+                            inf = cached
+                    p_item = ProxyManager.parse_proxy(inf.get("http")) if (inf and inf.get("http")) else None
                     cur_ip = inf.get("ip") or (p_item.host if p_item else "")
-                    loc = inf.get("location", "Vietnam")
+                    loc = inf.get("location", "Vietnam") if inf else "Vietnam"
                     if p_item and cur_ip:
                         p_item.raw = cand_k
                         p_item.country = loc
@@ -10627,6 +10629,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         "rot_lock": threading.Lock(),
                         "active_sessions": 0,
                         "client": k_client,
+                        "burned_ips": set(),
+                        "need_rotate": False,
+                        "fail_count": 0,
                     }
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=min(32, max(1, len(kiot_p_keys)))) as _pool_ex:
@@ -10640,17 +10645,17 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     pvn_client = ProxyVNClient(cand_k)
                     inf = initial_proxyvn_info.get(cand_k) if "initial_proxyvn_info" in locals() else None
                     if not inf or not inf.get("success") or not inf.get("http"):
-                        last_k = ProxyVNClient.get_last_known(cand_k) or ProxyVNClient.get_cached_proxy(cand_k, max_age=None)
-                        if last_k and last_k.get("http"):
-                            inf = last_k
-                    if not inf or not inf.get("success") or not inf.get("http"):
-                        inf = pvn_client.get_current_proxy(force_refresh=False)
+                        inf = pvn_client.get_current_proxy(force_refresh=True)
                     if not inf.get("success") or not inf.get("http"):
                         inf = pvn_client.get_new_proxy(fallback_current=True)
-                    p_str = inf.get("http")
+                    if not inf.get("success") or not inf.get("http"):
+                        cached = ProxyVNClient.get_cached_proxy(cand_k, max_age=300.0)
+                        if cached and cached.get("http"):
+                            inf = cached
+                    p_str = inf.get("http") if inf else None
                     p_item = ProxyManager.parse_proxy(p_str) if p_str else None
                     cur_ip = inf.get("ip") or (p_item.host if p_item else "")
-                    loc = inf.get("location", "Vietnam")
+                    loc = inf.get("location", "Vietnam") if inf else "Vietnam"
                     if p_item and cur_ip:
                         p_item.raw = cand_k
                         p_item.country = loc
@@ -10665,13 +10670,16 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         "last_working_proxy": copy.copy(p_item) if p_item else None,
                         "last_working_ip": cur_ip,
                         "location": loc,
-                        "carrier": inf.get("carrier", ""),
+                        "carrier": inf.get("carrier", "") if inf else "",
                         "rot_time": time.time(),
                         "last_fetch": time.time(),
                         "next_rotate_allowed_at": 0.0,
                         "rot_lock": threading.Lock(),
                         "active_sessions": 0,
                         "client": pvn_client,
+                        "burned_ips": set(),
+                        "need_rotate": False,
+                        "fail_count": 0,
                     }
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=min(32, max(1, len(proxyvn_p_keys)))) as _pool_ex:
@@ -10801,18 +10809,15 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             info = {}
 
                     if not p_item or not cur_ip:
-                        last_k = KiotProxyClient.get_last_known(k)
-                        if last_k and last_k.get("http"):
-                            p_item = ProxyManager.parse_proxy(last_k["http"])
-                            cur_ip = last_k.get("ip") or (p_item.host if p_item else "")
-                            info = {"location": last_k.get("location", "Vietnam"), "ip": cur_ip}
-
-                    if not p_item or not cur_ip:
                         try:
-                            info = kiot_client.get_current_proxy(force_refresh=False)
+                            info = kiot_client.get_current_proxy(force_refresh=True)
                             if not info.get("success") or not info.get("http"):
                                 info = kiot_client.get_new_proxy(fallback_current=True)
-                            p_item = ProxyManager.parse_proxy(info.get("http")) if info.get("http") else None
+                            if not info.get("success") or not info.get("http"):
+                                cached = KiotProxyClient.get_cached_proxy(k, max_age=300.0)
+                                if cached and cached.get("http"):
+                                    info = cached
+                            p_item = ProxyManager.parse_proxy(info.get("http")) if (info and info.get("http")) else None
                             cur_ip = info.get("ip") or (p_item.host if p_item else "")
                         except Exception:
                             pass
@@ -11088,19 +11093,25 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 info = {}
 
                     if not p_item or not cur_ip:
-                        last_k = ProxyVNClient.get_last_known(k) or ProxyVNClient.get_cached_proxy(k, max_age=None)
-                        if last_k and last_k.get("http"):
-                            p_str = last_k["http"]
+                        try:
+                            info = pvn_client.get_current_proxy(force_refresh=True)
+                            if not info.get("success") or not info.get("http"):
+                                info = pvn_client.get_new_proxy(fallback_current=True)
+                            if not info.get("success") or not info.get("http"):
+                                cached = ProxyVNClient.get_cached_proxy(k, max_age=300.0)
+                                if cached and cached.get("http"):
+                                    info = cached
+                            p_str = info.get("http") if info else None
                             p_item = ProxyManager.parse_proxy(p_str) if p_str else None
-                            cur_ip = last_k.get("ip") or (p_item.host if p_item else "")
-                            loc = last_k.get("location", "Vietnam")
+                            cur_ip = info.get("ip") or (p_item.host if p_item else "")
+                            loc = info.get("location", "Vietnam") if info else "Vietnam"
                             if p_item and cur_ip:
                                 p_item.raw = k
                                 p_item.country = loc
                                 p_item.country_code = normalize_country_code(loc) or "VN"
                                 p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=cur_ip)
                                 p_item.real_ip = cur_ip
-                                info = {"location": loc, "ip": cur_ip, "carrier": last_k.get("carrier", "")}
+                                info = {"location": loc, "ip": cur_ip, "carrier": info.get("carrier", "")}
                                 if k_state:
                                     with k_state["lock"]:
                                         k_state["proxy_obj"] = p_item
@@ -11108,6 +11119,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                         k_state["last_working_proxy"] = copy.copy(p_item)
                                         k_state["last_working_ip"] = cur_ip
                                         k_state["location"] = loc
+                        except Exception:
+                            pass
 
                     if not p_item or not cur_ip:
                         try:
@@ -11287,11 +11300,6 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             with k_state["lock"]:
                                 p_src = k_state.get("proxy_obj") or k_state.get("last_working_proxy")
                                 ip_src = k_state.get("cur_ip") or k_state.get("last_working_ip")
-                                if not p_src and k:
-                                    last_k = KiotProxyClient.get_last_known(k)
-                                    if last_k and last_k.get("http"):
-                                        p_src = ProxyManager.parse_proxy(last_k["http"])
-                                        ip_src = last_k.get("ip") or (p_src.host if p_src else "")
                                 if p_src:
                                     proxy_obj = copy.copy(p_src)
                                     assigned_ip = ip_src or ""
@@ -11299,20 +11307,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     self._worker_proxy_map[worker_id] = display_ip
                                     if ip_registry:
                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
-                        if not proxy_obj and k:
-                            last_k = KiotProxyClient.get_last_known(k)
-                            if last_k and last_k.get("http"):
-                                p_src = ProxyManager.parse_proxy(last_k["http"])
-                                if p_src:
-                                    proxy_obj = copy.copy(p_src)
-                                    assigned_ip = last_k.get("ip") or p_src.host
-                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
-                                    self._worker_proxy_map[worker_id] = display_ip
-                                    if ip_registry:
-                                        ip_registry.lease_ip(worker_id, assigned_ip, force=True)
                         if not proxy_obj and kiot_client:
                             try:
-                                info = kiot_client.get_current_proxy(force_refresh=False)
+                                info = kiot_client.get_current_proxy(force_refresh=True)
                                 if not info.get("http"):
                                     info = kiot_client.get_new_proxy(fallback_current=True)
                                 if info.get("http"):
@@ -11327,15 +11324,18 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                         assigned_ip = p_item.real_ip
                                         if ip_registry:
                                             ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                        with k_state["lock"]:
+                                            k_state["proxy_obj"] = p_item
+                                            k_state["cur_ip"] = assigned_ip
                                         self.event_queue.put(("log", {
-                                            "message": f"[KiotProxy] ? Lu?ng {worker_id} ? {key_label} ? IP: {self.mask_ip(assigned_ip)} ({p_item.country}) ? Ti?p t?c reg!",
+                                            "message": f"[KiotProxy] ✅ Luồng {worker_id} ➔ {key_label} ➔ IP: {self.mask_ip(assigned_ip)} ({p_item.country}) ➔ Tiếp tục reg!",
                                             "tag": "success"
                                         }))
                             except Exception:
                                 pass
                         if not proxy_obj:
                             self.event_queue.put(("log", {
-                                "message": f"[KiotProxy] ?? Lu?ng {worker_id} ({key_label}): Ch?a c? IP KiotProxy m?i. T?m ho?n l??t n?y ?? b?o v? IP m?y.",
+                                "message": f"[KiotProxy] ⚠️ Luồng {worker_id} ({key_label}): Chưa có IP KiotProxy mới. Tạm hoãn lượt này để bảo vệ IP máy.",
                                 "tag": "warning"
                             }))
                             time.sleep(1.0)
@@ -11386,11 +11386,6 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             with k_state["lock"]:
                                 p_src = k_state.get("proxy_obj") or k_state.get("last_working_proxy")
                                 ip_src = k_state.get("cur_ip") or k_state.get("last_working_ip")
-                                if not p_src and k:
-                                    last_k = ProxyVNClient.get_last_known(k)
-                                    if last_k and last_k.get("http"):
-                                        p_src = ProxyManager.parse_proxy(last_k["http"])
-                                        ip_src = last_k.get("ip") or (p_src.host if p_src else "")
                                 if p_src:
                                     proxy_obj = copy.copy(p_src)
                                     assigned_ip = ip_src or ""
@@ -11398,12 +11393,10 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     self._worker_proxy_map[worker_id] = display_ip
                                     if ip_registry:
                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
-                        if not proxy_obj:
-                            pvn_wait_start = time.time()
-                            while (time.time() - pvn_wait_start) < 20.0 and not self.stop_event.is_set():
-                                time.sleep(2.0)
-                                info = pvn_client.get_current_proxy(force_refresh=True) if pvn_client else {}
-                                if not info.get("http") and pvn_client:
+                        if not proxy_obj and pvn_client:
+                            try:
+                                info = pvn_client.get_current_proxy(force_refresh=True)
+                                if not info.get("http"):
                                     info = pvn_client.get_new_proxy(fallback_current=True)
                                 if info.get("http"):
                                     p_item = ProxyManager.parse_proxy(info["http"])
@@ -11415,18 +11408,23 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                         p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=p_item.real_ip)
                                         proxy_obj = p_item
                                         assigned_ip = p_item.real_ip
-                                        ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                        if ip_registry:
+                                            ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                        with k_state["lock"]:
+                                            k_state["proxy_obj"] = p_item
+                                            k_state["cur_ip"] = assigned_ip
                                         self.event_queue.put(("log", {
                                             "message": f"[Proxy.vn] ✅ Luồng {worker_id} ➔ {key_label} ➔ IP: {self.mask_ip(assigned_ip)} ({p_item.country}) ➔ Tiếp tục reg!",
                                             "tag": "success"
                                         }))
-                                        break
+                            except Exception:
+                                pass
                         if not proxy_obj:
                             self.event_queue.put(("log", {
                                 "message": f"[Proxy.vn] ⚠️ Luồng {worker_id} ({key_label}): Chưa có IP Proxy.vn mới. Tạm hoãn lượt này.",
                                 "tag": "warning"
                             }))
-                            time.sleep(3.0)
+                            time.sleep(1.0)
                             continue
 
                     if provider_name == "mproxy" and not proxy_obj:
@@ -11902,21 +11900,19 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     old_ip = assigned_ip or (proxy_obj.host if proxy_obj else "")
                     if k_state and old_ip:
                         with k_state["lock"]:
-                            if alloc_mode == "dedicated" and provider_name not in ("proxyvn", "kiotproxy", "kiotproxy_current"):
+                            if alloc_mode == "dedicated":
                                 k_state.setdefault("consumed_ips", set()).add(old_ip)
                             if last_run_die or is_run_waf:
-                                if provider_name not in ("proxyvn", "kiotproxy", "kiotproxy_current"):
-                                    k_state.setdefault("burned_ips", set()).add(old_ip)
+                                k_state.setdefault("burned_ips", set()).add(old_ip)
                                 k_state["need_rotate"] = True
                             if is_proxy_down:
                                 fc = k_state.get("fail_count", 0) + 1
                                 k_state["fail_count"] = fc
-                                if fc >= 3 or (alloc_mode == "dedicated" and provider_name not in ("proxyvn", "kiotproxy", "kiotproxy_current")):
-                                    if provider_name not in ("proxyvn", "kiotproxy", "kiotproxy_current"):
-                                        k_state.setdefault("burned_ips", set()).add(old_ip)
-                                        if k_state.get("cur_ip") == old_ip:
-                                            k_state["proxy_obj"] = None
-                                            k_state["cur_ip"] = ""
+                                if fc >= 3 or alloc_mode == "dedicated":
+                                    k_state.setdefault("burned_ips", set()).add(old_ip)
+                                    if k_state.get("cur_ip") == old_ip:
+                                        k_state["proxy_obj"] = None
+                                        k_state["cur_ip"] = ""
                                     k_state["need_rotate"] = True
                             else:
                                 k_state["fail_count"] = 0
@@ -11941,199 +11937,139 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         try:
                             k_state = shared_kiot_state.get(base_k)
                             kiot_client = (k_state.get("client") if k_state else None) or KiotProxyClient(base_k)
+                            rot_success = False
+                            first_wait_logged = False
+                            while not rot_success and not self.stop_event.is_set():
+                                cur_cached_ip = ""
+                                cur_cached_p = None
+                                burned_set = set()
+                                need_rot = False
+                                next_rot = 0.0
+                                if k_state:
+                                    with k_state["lock"]:
+                                        cur_cached_ip = k_state.get("cur_ip", "")
+                                        cur_cached_p = k_state.get("proxy_obj")
+                                        burned_set = set(k_state.get("burned_ips", set()))
+                                        need_rot = k_state.get("need_rotate", False)
+                                        next_rot = k_state.get("next_rotate_allowed_at", 0.0)
 
-                            # 1. Bảo lưu proxy trước đó của key
-                            with k_state["lock"]:
-                                cur_cached_p = k_state.get("proxy_obj") or k_state.get("last_working_proxy")
-                                cur_cached_ip = k_state.get("cur_ip") or k_state.get("last_working_ip")
-                                if cur_cached_p and not k_state.get("last_working_proxy"):
-                                    k_state["last_working_proxy"] = copy.copy(cur_cached_p)
-                                    k_state["last_working_ip"] = cur_cached_ip
+                                # TH 1: Chế độ chỉ dùng IP hiện tại không xoay (kiotproxy_current)
+                                if provider_name == "kiotproxy_current":
+                                    if cur_cached_p and cur_cached_ip:
+                                        proxy_obj = copy.copy(cur_cached_p)
+                                        assigned_ip = cur_cached_ip
+                                        display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                        self._worker_proxy_map[worker_id] = display_ip
+                                        if ip_registry:
+                                            ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                        rot_success = True
+                                        break
 
-                            now_t = time.time()
-                            next_rot_allowed = k_state.get("next_rotate_allowed_at", 0.0)
-                            rot_lock = k_state.setdefault("rot_lock", threading.Lock())
-
-                            # 2. Nếu chế độ "kiotproxy_current" (chỉ lấy IP hiện tại, không xoay):
-                            if provider_name == "kiotproxy_current":
-                                fallback_p = cur_cached_p or k_state.get("last_working_proxy")
-                                fallback_ip = cur_cached_ip or k_state.get("last_working_ip")
-                                if not fallback_p and base_k:
-                                    last_k = KiotProxyClient.get_last_known(base_k)
-                                    if last_k and last_k.get("http"):
-                                        fallback_p = ProxyManager.parse_proxy(last_k["http"])
-                                        fallback_ip = last_k.get("ip") or (fallback_p.host if fallback_p else "")
-                                if fallback_p:
-                                    proxy_obj = copy.copy(fallback_p)
-                                    assigned_ip = fallback_ip
+                                # TH 2: Luồng khác trên CÙNG KEY đã xoay sang IP MỚI thành công
+                                if cur_cached_p and cur_cached_ip and cur_cached_ip != old_ip and cur_cached_ip not in burned_set:
+                                    proxy_obj = copy.copy(cur_cached_p)
+                                    assigned_ip = cur_cached_ip
                                     display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
                                     self._worker_proxy_map[worker_id] = display_ip
                                     if ip_registry:
                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                    self.event_queue.put(("log", {
+                                        "message": f"[Luồng {worker_id}] 🟢 Đã tự động cập nhật sang IP MỚI ({base_key_label}): {self.mask_ip(assigned_ip)} ({proxy_obj.country}) ➔ Tiếp tục reg!",
+                                        "tag": "success"
+                                    }))
+                                    rot_success = True
+                                    break
 
-                            # 3. Kiểm tra nếu luồng khác đã đổi sang IP MỚI thành công:
-                            elif cur_cached_p and cur_cached_ip and cur_cached_ip != old_ip:
-                                proxy_obj = copy.copy(cur_cached_p)
-                                assigned_ip = cur_cached_ip
-                                display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
-                                self._worker_proxy_map[worker_id] = display_ip
-                                if ip_registry:
-                                    ip_registry.lease_ip(worker_id, assigned_ip, force=True)
-                                self.event_queue.put(("log", {
-                                    "message": f"[Luồng {worker_id}] 🟢 Đã tự động cập nhật sang IP MỚI ({base_key_label}): {self.mask_ip(assigned_ip)} ({proxy_obj.country}) ➔ Tiếp tục reg!",
-                                    "tag": "success"
-                                }))
+                                # TH 3: Chế độ shared, KHÔNG cần rotate (lượt vừa rồi thành công, IP sạch không bị ban)
+                                if alloc_mode == "shared" and not need_rot and old_ip not in burned_set and cur_cached_p and cur_cached_ip and cur_cached_ip not in burned_set:
+                                    proxy_obj = copy.copy(cur_cached_p)
+                                    assigned_ip = cur_cached_ip
+                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                    self._worker_proxy_map[worker_id] = display_ip
+                                    if ip_registry:
+                                        ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                    time.sleep(random.uniform(0.1, 0.4))
+                                    rot_success = True
+                                    break
 
-                            # 4. Thử xoay IP trên key hiện tại HOẶC mượn key rảnh trong pool:
-                            else:
-                                target_k = base_k
-                                target_k_state = k_state
-                                target_client = kiot_client
-                                target_label = base_key_label
-                                target_idx = base_key_idx
-
-                                # BƯỚC A: MƯỢN KEY RỖI CÓ IP KHÁC TRONG POOL 37 KEYS (0ms KHÔNG CẦN CHỜ ĐỔI)
-                                borrowed_alt = False
-                                if len(keys_pool) > 1:
-                                    for cand_idx, cand_k in enumerate(keys_pool):
-                                        if cand_k == base_k:
-                                            continue
-                                        c_st = shared_kiot_state.get(cand_k)
-                                        if c_st:
-                                            with c_st["lock"]:
-                                                c_p = c_st.get("proxy_obj") or c_st.get("last_working_proxy")
-                                                c_ip = c_st.get("cur_ip") or c_st.get("last_working_ip")
-                                                c_act = c_st.get("active_sessions", 0)
-                                                if c_p and c_ip and c_ip != old_ip and (alloc_mode == "shared" or c_act == 0):
-                                                    proxy_obj = copy.copy(c_p)
-                                                    assigned_ip = c_ip
-                                                    base_k = cand_k
-                                                    base_key_idx = cand_idx
-                                                    base_key_label = f"Key #{cand_idx + 1}"
-                                                    k_state = c_st
-                                                    kiot_client = c_st.get("client") or KiotProxyClient(cand_k)
-                                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
-                                                    self._worker_proxy_map[worker_id] = display_ip
-                                                    if ip_registry:
-                                                        ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                # TH 4: Cần xoay sang IP mới cho key này
+                                rot_lock = k_state.setdefault("rot_lock", threading.Lock()) if k_state else None
+                                if (not rot_lock) or rot_lock.acquire(blocking=False):
+                                    try:
+                                        now_t = time.time()
+                                        if now_t < next_rot:
+                                            wait_s = min(next_rot - now_t, 25.0)
+                                            if wait_s > 0:
+                                                if not first_wait_logged:
+                                                    first_wait_logged = True
                                                     self.event_queue.put(("log", {
-                                                        "message": f"[Luồng {worker_id}] ⚡ Đổi sang IP KiotProxy khác ({base_key_label}): {self.mask_ip(assigned_ip)} ({proxy_obj.country}) ➔ Tiếp tục reg (0ms chờ)!",
-                                                        "tag": "success"
-                                                    }))
-                                                    borrowed_alt = True
-                                                    break
-
-                                if not borrowed_alt:
-                                    # BƯỚC B: Nếu chưa có IP khác, quét tìm key rảnh đã hết cooldown để xoay
-                                    if now_t < next_rot_allowed and len(keys_pool) > 1:
-                                        for cand_idx, cand_k in enumerate(keys_pool):
-                                            if cand_k == base_k:
-                                                continue
-                                            c_st = shared_kiot_state.get(cand_k)
-                                            if c_st:
-                                                with c_st["lock"]:
-                                                    c_act = c_st.get("active_sessions", 0)
-                                                    c_next = c_st.get("next_rotate_allowed_at", 0.0)
-                                                    if c_act == 0 and now_t >= c_next:
-                                                        target_k = cand_k
-                                                        target_k_state = c_st
-                                                        target_client = c_st.get("client") or KiotProxyClient(cand_k)
-                                                        target_label = f"Key #{cand_idx + 1}"
-                                                        target_idx = cand_idx
-                                                        break
-
-                                    t_rot_lock = target_k_state.setdefault("rot_lock", threading.Lock())
-                                    t_next_rot = target_k_state.get("next_rotate_allowed_at", 0.0)
-
-                                    if now_t >= t_next_rot and t_rot_lock.acquire(blocking=False):
-                                        try:
-                                            rot_res = target_client.get_new_proxy(fallback_current=True)
-                                            new_http = rot_res.get("http")
-                                            new_ip = rot_res.get("ip") or (ProxyManager.parse_proxy(new_http).host if new_http else "")
-                                            is_rotated = rot_res.get("rotated", False) or (new_ip and new_ip != old_ip)
-
-                                            if rot_res.get("success") and new_http and is_rotated:
-                                                new_p = ProxyManager.parse_proxy(new_http)
-                                                if new_p:
-                                                    new_p.raw = target_client.api_key
-                                                    new_p.real_ip = new_ip
-                                                    new_p.country = rot_res.get("location", "Vietnam")
-                                                    new_p.country_code = normalize_country_code(new_p.country) or "VN"
-                                                    new_p.geo_profile = GeoTelephonyResolver.get_profile_for_country(new_p.country_code, ip=new_ip)
-                                                    proxy_obj = new_p
-                                                    assigned_ip = new_ip
-                                                    display_ip = f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_ip
-                                                    self._worker_proxy_map[worker_id] = display_ip
-                                                    real_ttc = max(30, int(rot_res.get("ttc") or rot_res.get("packageTtc") or 120))
-                                                    with target_k_state["lock"]:
-                                                        target_k_state["proxy_obj"] = new_p
-                                                        target_k_state["cur_ip"] = new_ip
-                                                        target_k_state["last_working_proxy"] = copy.copy(new_p)
-                                                        target_k_state["last_working_ip"] = new_ip
-                                                        target_k_state["location"] = new_p.country
-                                                        target_k_state["rot_time"] = time.time()
-                                                        target_k_state["last_fetch"] = time.time()
-                                                        target_k_state["next_rotate_allowed_at"] = time.time() + real_ttc
-                                                    if ip_registry:
-                                                        ip_registry.lease_ip(worker_id, new_ip, force=True)
-
-                                                    if target_k != base_k:
-                                                        base_k = target_k
-                                                        base_key_idx = target_idx
-                                                        base_key_label = target_label
-                                                        k_state = target_k_state
-                                                        kiot_client = target_client
-
-                                                    mode_tag = "MỚI" if alloc_mode == "dedicated" else "MỚI (Các luồng dùng chung sẽ tự động cập nhật)"
-                                                    self.event_queue.put(("log", {
-                                                        "message": f"[Luồng {worker_id}] 🟢 ĐÃ ĐỔI SANG IP KIOTPROXY {mode_tag} ({target_label}): {self.mask_ip(new_ip)} ({new_p.country}) ➔ Sẵn sàng xử lý tài khoản tiếp theo!",
-                                                        "tag": "success"
-                                                    }))
-                                            else:
-                                                # KiotProxy đang trong thời gian hồi (TTC cooldown)
-                                                ttc = max(15, int(rot_res.get("ttc") or rot_res.get("packageTtc") or 60))
-                                                target_k_state["next_rotate_allowed_at"] = time.time() + ttc
-                                                # VẪN DÙNG TẠM PROXY HIỆN TẠI (0ms chờ, không nghẽn)
-                                                fallback_p = cur_cached_p or k_state.get("last_working_proxy")
-                                                fallback_ip = cur_cached_ip or k_state.get("last_working_ip")
-                                                if not fallback_p and base_k:
-                                                    last_k = KiotProxyClient.get_last_known(base_k)
-                                                    if last_k and last_k.get("http"):
-                                                        fallback_p = ProxyManager.parse_proxy(last_k["http"])
-                                                        fallback_ip = last_k.get("ip") or (fallback_p.host if fallback_p else "")
-                                                if fallback_p:
-                                                    proxy_obj = copy.copy(fallback_p)
-                                                    assigned_ip = fallback_ip
-                                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
-                                                    self._worker_proxy_map[worker_id] = display_ip
-                                                    if ip_registry:
-                                                        ip_registry.lease_ip(worker_id, assigned_ip, force=True)
-                                                    self.event_queue.put(("log", {
-                                                        "message": f"[Luồng {worker_id}] ⏳ KiotProxy ({target_label}) đang hồi ({ttc}s) ➔ Vẫn dùng tạm IP hiện tại {self.mask_ip(assigned_ip)} để luồng chạy liên tục (0ms chờ)!",
+                                                        "message": f"[Luồng {worker_id}] ⏳ {base_key_label} đang trong thời gian hồi ({int(wait_s)}s) ➔ Đang chờ để xoay IP MỚI...",
                                                         "tag": "info"
                                                     }))
-                                        finally:
+                                                time.sleep(min(wait_s, 2.0))
+                                                continue
+
+                                        KiotProxyClient.invalidate_cache(base_k)
+                                        rot_res = kiot_client.get_new_proxy(fallback_current=False)
+                                        new_http = rot_res.get("http")
+                                        new_ip = rot_res.get("ip") or (ProxyManager.parse_proxy(new_http).host if new_http else "")
+                                        is_rotated = rot_res.get("rotated", False) or (new_ip and new_ip != old_ip and new_ip not in burned_set)
+
+                                        if rot_res.get("success") and new_http and is_rotated:
+                                            new_p = ProxyManager.parse_proxy(new_http)
+                                            if new_p:
+                                                new_p.raw = kiot_client.api_key
+                                                new_p.real_ip = new_ip
+                                                new_p.country = rot_res.get("location", "Vietnam")
+                                                new_p.country_code = normalize_country_code(new_p.country) or "VN"
+                                                new_p.geo_profile = GeoTelephonyResolver.get_profile_for_country(new_p.country_code, ip=new_ip)
+                                                proxy_obj = new_p
+                                                assigned_ip = new_ip
+                                                display_ip = f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_ip
+                                                self._worker_proxy_map[worker_id] = display_ip
+                                                real_ttc = max(30, int(rot_res.get("ttc") or rot_res.get("packageTtc") or 120))
+                                                if k_state:
+                                                    with k_state["lock"]:
+                                                        k_state["proxy_obj"] = new_p
+                                                        k_state["cur_ip"] = new_ip
+                                                        k_state["last_working_proxy"] = copy.copy(new_p)
+                                                        k_state["last_working_ip"] = new_ip
+                                                        k_state["location"] = new_p.country
+                                                        k_state["rot_time"] = time.time()
+                                                        k_state["last_fetch"] = time.time()
+                                                        k_state["next_rotate_allowed_at"] = time.time() + real_ttc
+                                                        k_state["need_rotate"] = False
+                                                        k_state["fail_count"] = 0
+                                                if ip_registry:
+                                                    ip_registry.lease_ip(worker_id, new_ip, force=True)
+
+                                                mode_tag = "MỚI" if alloc_mode == "dedicated" else "MỚI (Các luồng dùng chung sẽ tự động cập nhật)"
+                                                self.event_queue.put(("log", {
+                                                    "message": f"[Luồng {worker_id}] 🟢 ĐÃ ĐỔI SANG IP KIOTPROXY {mode_tag} ({base_key_label}): {self.mask_ip(new_ip)} ({new_p.country}) ➔ Sẵn sàng xử lý nick tiếp theo!",
+                                                    "tag": "success"
+                                                }))
+                                                rot_success = True
+                                                break
+                                        else:
+                                            ttc = max(10, int(rot_res.get("ttc") or rot_res.get("packageTtc") or 30))
+                                            if k_state:
+                                                with k_state["lock"]:
+                                                    k_state["next_rotate_allowed_at"] = time.time() + ttc
+                                            if not first_wait_logged:
+                                                first_wait_logged = True
+                                                self.event_queue.put(("log", {
+                                                    "message": f"[Luồng {worker_id}] ⏳ KiotProxy ({base_key_label}) đang trong thời gian chờ ({ttc}s) ➔ Đang đợi để lấy IP mới...",
+                                                    "tag": "info"
+                                                }))
+                                            time.sleep(min(float(ttc), 2.0))
+                                    finally:
+                                        if rot_lock:
                                             try:
-                                                t_rot_lock.release()
+                                                rot_lock.release()
                                             except Exception:
                                                 pass
-                                    else:
-                                        # Chưa đến thời gian xoay hoặc luồng khác đang xoay:
-                                        # VẪN DÙNG TẠM PROXY HIỆN TẠI (0ms chờ, không nghẽn)
-                                        fallback_p = cur_cached_p or k_state.get("last_working_proxy")
-                                        fallback_ip = cur_cached_ip or k_state.get("last_working_ip")
-                                        if not fallback_p and base_k:
-                                            last_k = KiotProxyClient.get_last_known(base_k)
-                                            if last_k and last_k.get("http"):
-                                                fallback_p = ProxyManager.parse_proxy(last_k["http"])
-                                                fallback_ip = last_k.get("ip") or (fallback_p.host if fallback_p else "")
-                                        if fallback_p:
-                                            proxy_obj = copy.copy(fallback_p)
-                                            assigned_ip = fallback_ip
-                                            display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
-                                            self._worker_proxy_map[worker_id] = display_ip
-                                            if ip_registry:
-                                                ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                else:
+                                    time.sleep(1.0)
                         except Exception as e:
                             logger.warning(f"Error checking KiotProxy rotation for worker {worker_id}: {e}")
 
@@ -12401,243 +12337,130 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         try:
                             k_state = shared_proxyvn_state.get(base_k)
                             pvn_client = (k_state.get("client") if k_state else None) or ProxyVNClient(base_k)
+                            rot_success = False
+                            first_wait_logged = False
+                            while not rot_success and not self.stop_event.is_set():
+                                cur_cached_ip = ""
+                                cur_cached_p = None
+                                burned_set = set()
+                                need_rot = False
+                                next_rot = 0.0
+                                if k_state:
+                                    with k_state["lock"]:
+                                        cur_cached_ip = k_state.get("cur_ip", "")
+                                        cur_cached_p = k_state.get("proxy_obj")
+                                        burned_set = set(k_state.get("burned_ips", set()))
+                                        need_rot = k_state.get("need_rotate", False)
+                                        next_rot = k_state.get("next_rotate_allowed_at", 0.0)
 
-                            # 1. Bảo lưu proxy trước đó của key
-                            with k_state["lock"]:
-                                cur_cached_p = k_state.get("proxy_obj") or k_state.get("last_working_proxy")
-                                cur_cached_ip = k_state.get("cur_ip") or k_state.get("last_working_ip")
-                                if cur_cached_p and not k_state.get("last_working_proxy"):
-                                    k_state["last_working_proxy"] = copy.copy(cur_cached_p)
-                                    k_state["last_working_ip"] = cur_cached_ip
+                                # TH 1: Luồng khác trên cùng key đã xoay sang IP MỚI thành công
+                                if cur_cached_p and cur_cached_ip and cur_cached_ip != old_ip and cur_cached_ip not in burned_set:
+                                    proxy_obj = copy.copy(cur_cached_p)
+                                    assigned_ip = cur_cached_ip
+                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                    self._worker_proxy_map[worker_id] = display_ip
+                                    if ip_registry:
+                                        ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                    self.event_queue.put(("log", {
+                                        "message": f"[Luồng {worker_id}] 🟢 Đã tự động đổi sang IP MỚI từ luồng khác ({base_key_label}): {self.mask_ip(assigned_ip)} ({proxy_obj.country}) ➔ Tiếp tục reg!",
+                                        "tag": "success"
+                                    }))
+                                    rot_success = True
+                                    break
 
-                            now_t = time.time()
-                            next_rot_allowed = k_state.get("next_rotate_allowed_at", 0.0)
-                            rot_lock = k_state.setdefault("rot_lock", threading.Lock())
+                                # TH 2: Chế độ shared, KHÔNG cần rotate (lượt vừa rồi thành công, IP sạch)
+                                if alloc_mode == "shared" and not need_rot and old_ip not in burned_set and cur_cached_p and cur_cached_ip and cur_cached_ip not in burned_set:
+                                    proxy_obj = copy.copy(cur_cached_p)
+                                    assigned_ip = cur_cached_ip
+                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                    self._worker_proxy_map[worker_id] = display_ip
+                                    if ip_registry:
+                                        ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                    time.sleep(random.uniform(0.1, 0.4))
+                                    rot_success = True
+                                    break
 
-                            # 2. Kiểm tra nếu luồng khác đã đổi sang IP MỚI thành công:
-                            if cur_cached_p and cur_cached_ip and cur_cached_ip != old_ip:
-                                proxy_obj = copy.copy(cur_cached_p)
-                                assigned_ip = cur_cached_ip
-                                display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
-                                self._worker_proxy_map[worker_id] = display_ip
-                                if ip_registry:
-                                    ip_registry.lease_ip(worker_id, assigned_ip, force=True)
-                                self.event_queue.put(("log", {
-                                    "message": f"[Luồng {worker_id}] 🟢 Đã tự động đổi sang IP MỚI từ luồng khác ({base_key_label}): {self.mask_ip(assigned_ip)} ({proxy_obj.country}) ➔ Tiếp tục reg!",
-                                    "tag": "success"
-                                }))
-
-                            # 3. Thử xoay IP trên key hiện tại HOẶC mượn key rỗi sẵn sàng trong pool:
-                            else:
-                                target_k = base_k
-                                target_k_state = k_state
-                                target_client = pvn_client
-                                target_label = base_key_label
-                                target_idx = base_key_idx
-
-                                # BƯỚC A: MƯỢN KEY RỖI CÓ IP KHÁC TRONG POOL (0ms KHÔNG CHỜ ĐỔI)
-                                borrowed_alt = False
-                                if len(keys_pool) > 1:
-                                    for cand_idx, cand_k in enumerate(keys_pool):
-                                        if cand_k == base_k:
-                                            continue
-                                        c_st = shared_proxyvn_state.get(cand_k)
-                                        if c_st:
-                                            with c_st["lock"]:
-                                                c_p = c_st.get("proxy_obj") or c_st.get("last_working_proxy")
-                                                c_ip = c_st.get("cur_ip") or c_st.get("last_working_ip")
-                                                c_act = c_st.get("active_sessions", 0)
-                                                if c_p and c_ip and c_ip != old_ip and (alloc_mode == "shared" or c_act == 0):
-                                                    proxy_obj = copy.copy(c_p)
-                                                    assigned_ip = c_ip
-                                                    base_k = cand_k
-                                                    base_key_idx = cand_idx
-                                                    base_key_label = f"Key #{cand_idx + 1}"
-                                                    k_state = c_st
-                                                    pvn_client = c_st.get("client") or ProxyVNClient(cand_k)
-                                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
-                                                    self._worker_proxy_map[worker_id] = display_ip
-                                                    if ip_registry:
-                                                        ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                # TH 3: Cần xoay sang IP mới cho key này
+                                rot_lock = k_state.setdefault("rot_lock", threading.Lock()) if k_state else None
+                                if (not rot_lock) or rot_lock.acquire(blocking=False):
+                                    try:
+                                        now_t = time.time()
+                                        if now_t < next_rot:
+                                            wait_s = min(next_rot - now_t, 25.0)
+                                            if wait_s > 0:
+                                                if not first_wait_logged:
+                                                    first_wait_logged = True
                                                     self.event_queue.put(("log", {
-                                                        "message": f"[Luồng {worker_id}] ⚡ Đổi sang IP Proxy.vn khác trong pool ({base_key_label}): {self.mask_ip(assigned_ip)} ({proxy_obj.country}) ➔ Tiếp tục reg (0ms)!",
-                                                        "tag": "success"
-                                                    }))
-                                                    borrowed_alt = True
-                                                    break
-
-                                if not borrowed_alt:
-                                    # BƯỚC B: Thử xoay IP
-                                    if now_t < next_rot_allowed and len(keys_pool) > 1:
-                                        for cand_idx, cand_k in enumerate(keys_pool):
-                                            if cand_k == base_k:
-                                                continue
-                                            c_st = shared_proxyvn_state.get(cand_k)
-                                            if c_st:
-                                                with c_st["lock"]:
-                                                    c_act = c_st.get("active_sessions", 0)
-                                                    c_next = c_st.get("next_rotate_allowed_at", 0.0)
-                                                    if c_act == 0 and now_t >= c_next:
-                                                        target_k = cand_k
-                                                        target_k_state = c_st
-                                                        target_client = c_st.get("client") or ProxyVNClient(cand_k)
-                                                        target_label = f"Key #{cand_idx + 1}"
-                                                        target_idx = cand_idx
-                                                        break
-
-                                    t_rot_lock = target_k_state.setdefault("rot_lock", threading.Lock())
-                                    t_next_rot = target_k_state.get("next_rotate_allowed_at", 0.0)
-
-                                    if now_t >= t_next_rot and t_rot_lock.acquire(blocking=False):
-                                        try:
-                                            rot_res = target_client.get_new_proxy(fallback_current=True)
-                                            new_str = rot_res.get("http") or rot_res.get("raw_http")
-                                            new_ip = rot_res.get("ip") or (ProxyManager.parse_proxy(new_str).host if new_str else "")
-                                            is_rotated = rot_res.get("rotated", False) or (new_ip and new_ip != old_ip)
-
-                                            if rot_res.get("success") and new_str and is_rotated:
-                                                new_p = ProxyManager.parse_proxy(new_str)
-                                                if new_p:
-                                                    new_p.raw = target_k
-                                                    new_p.real_ip = new_ip
-                                                    new_p.country = rot_res.get("location", "Vietnam")
-                                                    new_p.country_code = normalize_country_code(new_p.country) or "VN"
-                                                    new_p.geo_profile = GeoTelephonyResolver.get_profile_for_country(new_p.country_code, ip=new_ip)
-                                                    proxy_obj = new_p
-                                                    assigned_ip = new_ip
-                                                    display_ip = f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_ip
-                                                    self._worker_proxy_map[worker_id] = display_ip
-                                                    real_ttc = max(30, int(rot_res.get("ttc") or 60))
-                                                    with target_k_state["lock"]:
-                                                        target_k_state["proxy_obj"] = new_p
-                                                        target_k_state["cur_ip"] = new_ip
-                                                        target_k_state["last_working_proxy"] = copy.copy(new_p)
-                                                        target_k_state["last_working_ip"] = new_ip
-                                                        target_k_state["location"] = new_p.country
-                                                        target_k_state["carrier"] = rot_res.get("carrier", "")
-                                                        target_k_state["rot_time"] = time.time()
-                                                        target_k_state["last_fetch"] = time.time()
-                                                        target_k_state["next_rotate_allowed_at"] = time.time() + real_ttc
-                                                    if ip_registry:
-                                                        ip_registry.lease_ip(worker_id, new_ip, force=True)
-
-                                                    if target_k != base_k:
-                                                        base_k = target_k
-                                                        base_key_idx = target_idx
-                                                        base_key_label = target_label
-                                                        k_state = target_k_state
-                                                        pvn_client = target_client
-
-                                                    carrier_info = f" | {rot_res.get('carrier')}" if rot_res.get('carrier') else ""
-                                                    self.event_queue.put(("log", {
-                                                        "message": f"[Luồng {worker_id}] 🟢 ĐÃ ĐỔI SANG IP PROXY.VN MỚI ({target_label}): {self.mask_ip(new_ip)} ({new_p.country}{carrier_info}) ➔ Các luồng khác sẽ tự động cập nhật!",
-                                                        "tag": "success"
-                                                    }))
-                                            else:
-                                                # Server đang trong thời gian cooldown (status 101)
-                                                ttc = max(10, int(rot_res.get("ttc") or 30))
-                                                target_k_state["next_rotate_allowed_at"] = time.time() + ttc
-                                                # VẪN DÙNG TẠM PROXY HIỆN TẠI (0ms chờ, không nghẽn)
-                                                fallback_p = cur_cached_p or k_state.get("last_working_proxy")
-                                                fallback_ip = cur_cached_ip or k_state.get("last_working_ip")
-                                                if not fallback_p and base_k:
-                                                    last_k = ProxyVNClient.get_last_known(base_k)
-                                                    if last_k and last_k.get("http"):
-                                                        fallback_p = ProxyManager.parse_proxy(last_k["http"])
-                                                        fallback_ip = last_k.get("ip") or (fallback_p.host if fallback_p else "")
-                                                if fallback_p:
-                                                    proxy_obj = copy.copy(fallback_p)
-                                                    assigned_ip = fallback_ip
-                                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
-                                                    self._worker_proxy_map[worker_id] = display_ip
-                                                    if ip_registry:
-                                                        ip_registry.lease_ip(worker_id, assigned_ip, force=True)
-                                                    self.event_queue.put(("log", {
-                                                        "message": f"[Luồng {worker_id}] ⏳ Proxy.vn ({target_label}) đang hồi ({ttc}s) ➔ Vẫn dùng tạm IP hiện tại {self.mask_ip(assigned_ip)} để luồng chạy liên tục (0ms chờ)!",
+                                                        "message": f"[Luồng {worker_id}] ⏳ {base_key_label} đang trong thời gian hồi ({int(wait_s)}s) ➔ Đang chờ để xoay IP MỚI...",
                                                         "tag": "info"
                                                     }))
-                                        finally:
+                                                time.sleep(min(wait_s, 2.0))
+                                                continue
+
+                                        ProxyVNClient.invalidate_cache(base_k)
+                                        rot_res = pvn_client.get_new_proxy(fallback_current=False)
+                                        new_str = rot_res.get("http") or rot_res.get("raw_http")
+                                        new_ip = rot_res.get("ip") or (ProxyManager.parse_proxy(new_str).host if new_str else "")
+                                        is_rotated = rot_res.get("rotated", False) or (new_ip and new_ip != old_ip and new_ip not in burned_set)
+
+                                        if rot_res.get("success") and new_str and is_rotated:
+                                            new_p = ProxyManager.parse_proxy(new_str)
+                                            if new_p:
+                                                new_p.raw = base_k
+                                                new_p.real_ip = new_ip
+                                                new_p.country = rot_res.get("location", "Vietnam")
+                                                new_p.country_code = normalize_country_code(new_p.country) or "VN"
+                                                new_p.geo_profile = GeoTelephonyResolver.get_profile_for_country(new_p.country_code, ip=new_ip)
+                                                proxy_obj = new_p
+                                                assigned_ip = new_ip
+                                                display_ip = f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_ip
+                                                self._worker_proxy_map[worker_id] = display_ip
+                                                real_ttc = max(30, int(rot_res.get("ttc") or 60))
+                                                if k_state:
+                                                    with k_state["lock"]:
+                                                        k_state["proxy_obj"] = new_p
+                                                        k_state["cur_ip"] = new_ip
+                                                        k_state["last_working_proxy"] = copy.copy(new_p)
+                                                        k_state["last_working_ip"] = new_ip
+                                                        k_state["location"] = new_p.country
+                                                        k_state["carrier"] = rot_res.get("carrier", "")
+                                                        k_state["rot_time"] = time.time()
+                                                        k_state["last_fetch"] = time.time()
+                                                        k_state["next_rotate_allowed_at"] = time.time() + real_ttc
+                                                        k_state["need_rotate"] = False
+                                                        k_state["fail_count"] = 0
+                                                if ip_registry:
+                                                    ip_registry.lease_ip(worker_id, new_ip, force=True)
+
+                                                mode_tag = "MỚI" if alloc_mode == "dedicated" else "MỚI (Các luồng dùng chung sẽ tự động cập nhật)"
+                                                self.event_queue.put(("log", {
+                                                    "message": f"[Luồng {worker_id}] 🟢 ĐÃ ĐỔI SANG IP PROXY.VN {mode_tag} ({base_key_label}): {self.mask_ip(new_ip)} ({new_p.country}) ➔ Sẵn sàng xử lý nick tiếp theo!",
+                                                    "tag": "success"
+                                                }))
+                                                rot_success = True
+                                                break
+                                        else:
+                                            ttc = max(10, int(rot_res.get("ttc") or 30))
+                                            if k_state:
+                                                with k_state["lock"]:
+                                                    k_state["next_rotate_allowed_at"] = time.time() + ttc
+                                            if not first_wait_logged:
+                                                first_wait_logged = True
+                                                self.event_queue.put(("log", {
+                                                    "message": f"[Luồng {worker_id}] ⏳ Proxy.vn ({base_key_label}) đang trong thời gian chờ ({ttc}s) ➔ Đang đợi để lấy IP mới...",
+                                                    "tag": "info"
+                                                }))
+                                            time.sleep(min(float(ttc), 2.0))
+                                    finally:
+                                        if rot_lock:
                                             try:
-                                                t_rot_lock.release()
+                                                rot_lock.release()
                                             except Exception:
                                                 pass
-                                    else:
-                                        # Chưa đến thời gian xoay hoặc luồng khác đang xoay:
-                                        # VẪN DÙNG TẠM PROXY HIỆN TẠI (0ms chờ, không nghẽn)
-                                        fallback_p = cur_cached_p or k_state.get("last_working_proxy")
-                                        fallback_ip = cur_cached_ip or k_state.get("last_working_ip")
-                                        if not fallback_p and base_k:
-                                            last_k = ProxyVNClient.get_last_known(base_k)
-                                            if last_k and last_k.get("http"):
-                                                fallback_p = ProxyManager.parse_proxy(last_k["http"])
-                                                fallback_ip = last_k.get("ip") or (fallback_p.host if fallback_p else "")
-                                        if fallback_p:
-                                            proxy_obj = copy.copy(fallback_p)
-                                            assigned_ip = fallback_ip
-                                            display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
-                                            self._worker_proxy_map[worker_id] = display_ip
-                                            if ip_registry:
-                                                ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                else:
+                                    time.sleep(1.0)
                         except Exception as e:
-                            logger.warning(f"Error checking Proxy.vn rotation for worker {worker_id}: {e}")
-
-                    elif provider_name in ("free_proxy_live", "free_proxy_cached", "free_proxy") and free_mgr:
-                        try:
-                            ip_registry.release_ip(worker_id)
-                            # Đánh dấu IP bẩn nếu không tạo được phiên, tăng điểm nếu thành công
-                            if not session_created:
-                                if old_p_obj:
-                                    free_mgr.record_session_failure(old_p_obj.as_url(), reason="Khởi tạo phiên thất bại")
-                                elif old_ip and old_ip != "Direct":
-                                    free_mgr.record_session_failure(old_ip, reason="Khởi tạo phiên thất bại")
-                            else:
-                                if old_p_obj:
-                                    free_mgr.record_session_success(old_p_obj.as_url())
-
-                            free_mgr.release_proxy(worker_id=worker_id, cooldown_seconds=10.0)
-
-                            # Bốc ngay IP LIVE mới độc lập từ kho RAM khác với IP cũ (0ms không chờ đợi)
-                            new_free = free_mgr.claim_instant_candidate(worker_id=worker_id, registry=ip_registry)
-                            if not new_free:
-                                for _ in range(2):
-                                    if self.stop_event.is_set():
-                                        break
-                                    time.sleep(0.3)
-                                    new_free = free_mgr.claim_instant_candidate(worker_id=worker_id, registry=ip_registry)
-                                    if new_free:
-                                        break
-                            if not new_free:
-                                new_free = free_mgr.get_verified_live_proxy(worker_id=worker_id, timeout=1.0, registry=ip_registry, worker_count=actual_threads)
-                            if not new_free:
-                                new_free = free_mgr.scrape_fresh_live_proxy(worker_id=worker_id, timeout=1.0, registry=ip_registry)
-                            if not new_free:
-                                new_free = free_mgr.rotate_for_worker(worker_id)
-
-                            if new_free:
-                                if not getattr(new_free, "geo_profile", None):
-                                    try:
-                                        new_free.geo_profile = GeoTelephonyResolver.resolve_ip(new_free.real_ip or new_free.host, hint_country=getattr(new_free, "country", None))
-                                        if new_free.geo_profile:
-                                            new_free.country = new_free.geo_profile.country_name
-                                            new_free.country_code = new_free.geo_profile.country_code
-                                    except Exception:
-                                        pass
-                                proxy_obj = new_free
-                                assigned_ip = new_free.host
-                                if ip_registry and not ip_registry._leased_ips.get(worker_id):
-                                    ip_registry.lease_ip(worker_id, new_free.real_ip or new_free.host, force=False)
-                                lat = getattr(new_free, "latency", 1.0)
-                                src_lbl = getattr(new_free, "source_label", "Online")
-                                src_str = f" [{src_lbl}]" if src_lbl else ""
-                                self.event_queue.put(("log", {
-                                    "message": f"[{p_label}] 🔄 Luồng {worker_id} ➔ Đổi sang IP LIVE MỚI & SẠCH{src_str}: {self.mask_ip(new_free.host)}:{new_free.port} (Ping {lat}s | Không trùng) ➔ Tạo phiên luồng khác ngay!",
-                                    "tag": "info"
-                                }))
-                            else:
-                                proxy_obj = None
-                                assigned_ip = ""
-                        except Exception as e:
-                            logger.debug(f"Free proxy rotate error: {e}")
+                            logger.warning(f"Error checking ProxyVN rotation for worker {worker_id}: {e}")
 
                     elif provider_name == "proxy_list":
                         try:
