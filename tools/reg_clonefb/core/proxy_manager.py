@@ -2442,21 +2442,39 @@ class ProxyVNClient:
 
     @classmethod
     def _read_last_known_disk(cls) -> Dict[str, Dict[str, Any]]:
-        try:
-            if os.path.exists(cls.LAST_KNOWN_FILE):
-                with open(cls.LAST_KNOWN_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f)
-        except Exception:
-            pass
-        return {}
+        result = {}
+        paths = [cls.LAST_KNOWN_FILE, "C:/Users/truon/Downloads/reg clonefb 2_3/core/.proxyvn_last_known.json", "C:/Users/truon/Downloads/verry/core/.proxyvn_last_known.json", os.path.join(os.path.expanduser("~"), ".proxyvn_last_known.json")]
+        for cp in paths:
+            try:
+                if os.path.exists(cp):
+                    with open(cp, "r", encoding="utf-8") as f:
+                        d = json.load(f)
+                        if isinstance(d, dict):
+                            result.update(d)
+            except Exception:
+                pass
+        return result
 
     @classmethod
     def _write_last_known_disk(cls, data: Dict[str, Dict[str, Any]]) -> None:
-        try:
-            with open(cls.LAST_KNOWN_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        target_paths = [cls.LAST_KNOWN_FILE, "C:/Users/truon/Downloads/reg clonefb 2_3/core/.proxyvn_last_known.json", "C:/Users/truon/Downloads/verry/core/.proxyvn_last_known.json", os.path.join(os.path.expanduser("~"), ".proxyvn_last_known.json")]
+        for tp in target_paths:
+            try:
+                d = os.path.dirname(tp)
+                if os.path.isdir(d):
+                    merged = dict(data)
+                    if os.path.exists(tp):
+                        try:
+                            with open(tp, "r", encoding="utf-8") as rf:
+                                ex = json.load(rf)
+                                if isinstance(ex, dict):
+                                    merged = {**ex, **data}
+                        except Exception:
+                            pass
+                    with open(tp, "w", encoding="utf-8") as f:
+                        json.dump(merged, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
 
     def __init__(
         self,
@@ -2478,26 +2496,35 @@ class ProxyVNClient:
 
     @classmethod
     def _read_disk_cache(cls) -> Dict[str, Dict[str, Any]]:
-        try:
-            if os.path.exists(cls.CACHE_FILE):
-                with open(cls.CACHE_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f)
-        except Exception:
-            pass
-        return {}
+        result = {}
+        paths = [cls.CACHE_FILE, "C:/Users/truon/Downloads/reg clonefb 2_3/core/.proxyvn_cache.json", "C:/Users/truon/Downloads/verry/core/.proxyvn_cache.json", os.path.join(os.path.expanduser("~"), ".proxyvn_cache.json")]
+        for cp in paths:
+            try:
+                if os.path.exists(cp):
+                    with open(cp, "r", encoding="utf-8") as f:
+                        d = json.load(f)
+                        if isinstance(d, dict):
+                            result.update(d)
+            except Exception:
+                pass
+        return result
 
     @classmethod
     def _write_disk_cache(cls, data: Dict[str, Dict[str, Any]]) -> None:
-        try:
-            with open(cls.CACHE_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        target_paths = [cls.CACHE_FILE, "C:/Users/truon/Downloads/reg clonefb 2_3/core/.proxyvn_cache.json", "C:/Users/truon/Downloads/verry/core/.proxyvn_cache.json", os.path.join(os.path.expanduser("~"), ".proxyvn_cache.json")]
+        for tp in target_paths:
+            try:
+                d = os.path.dirname(tp)
+                if os.path.isdir(d):
+                    with open(tp, "w", encoding="utf-8") as f:
+                        json.dump(data, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
 
     @classmethod
     def get_cached_proxy(cls, api_key: str, max_age: Optional[float] = 120.0) -> Optional[Dict[str, Any]]:
         k = api_key.strip()
-        eff_max_age = 300.0 if max_age is None else max_age
+        eff_max_age = 86400.0 if max_age is None else max_age
         with _PROXYVN_CACHE_LOCK:
             data = _PROXYVN_CACHE.get(k)
             now = time.time()
@@ -2516,6 +2543,9 @@ class ProxyVNClient:
                 res["success"] = True
                 res["from_cache"] = True
                 return res
+            lk = cls.get_last_known(k)
+            if lk and lk.get("http"):
+                return lk
         return None
 
     @classmethod
@@ -2538,9 +2568,9 @@ class ProxyVNClient:
             cls._write_last_known_disk(disk_last)
 
     @classmethod
-    def get_last_known(cls, api_key: str, max_age: Optional[float] = 300.0) -> Optional[Dict[str, Any]]:
+    def get_last_known(cls, api_key: str, max_age: Optional[float] = None) -> Optional[Dict[str, Any]]:
         k = api_key.strip()
-        eff_max_age = 300.0 if max_age is None else max_age
+        eff_max_age = 86400.0 if max_age is None else max_age
         now = time.time()
         with _PROXYVN_CACHE_LOCK:
             cand = _PROXYVN_LAST_KNOWN.get(k)
@@ -2566,6 +2596,11 @@ class ProxyVNClient:
         k = api_key.strip()
         with _PROXYVN_CACHE_LOCK:
             _PROXYVN_CACHE.pop(k, None)
+            disk_cache = cls._read_disk_cache()
+            if k in disk_cache:
+                disk_cache.pop(k, None)
+                cls._write_disk_cache(disk_cache)
+        # LƯU Ý: Tuyệt đối KHÔNG xóa _PROXYVN_LAST_KNOWN hay LAST_KNOWN_FILE!
 
     def _clean_proxy_token(self, proxy_token: str, proto: str = "http") -> str:
         if not proxy_token:
@@ -2709,23 +2744,26 @@ class ProxyVNClient:
 
                 # Nếu chưa từng lưu cache (lần đầu gọi lúc đang cooldown)
                 # và ttc ngắn (<=15s), tự động chờ và thử lại để lấy thông tin proxy
-                if 0 < ttc <= 15:
-                    time.sleep(float(ttc) + 1.0)
-                    try:
-                        r2 = requests.get(self.BASE_URL, params=params, timeout=12)
-                        d2 = r2.json()
-                        if d2.get("status") == 100:
-                            parsed = self._parse_response_data(d2)
-                            self.last_proxy = parsed["http"]
-                            self.last_ip = parsed["ip"]
-                            self.location = parsed["location"]
-                            self.carrier = parsed["carrier"]
-                            self.expiration = parsed["expiration"]
-                            self.update_cache(self.api_key, parsed)
-                            return parsed
-                    except Exception:
-                        pass
+                wait_sec = min(max(1, ttc), 35) if ttc > 0 else 3
+                time.sleep(float(wait_sec) + 1.0)
+                try:
+                    r2 = requests.get(self.BASE_URL, params=params, timeout=12)
+                    d2 = r2.json()
+                    if d2.get("status") == 100:
+                        parsed = self._parse_response_data(d2)
+                        self.last_proxy = parsed["http"]
+                        self.last_ip = parsed["ip"]
+                        self.location = parsed["location"]
+                        self.carrier = parsed["carrier"]
+                        self.expiration = parsed["expiration"]
+                        self.update_cache(self.api_key, parsed)
+                        return parsed
+                except Exception:
+                    pass
 
+                cached = self.get_last_known(self.api_key)
+                if cached and cached.get("http"):
+                    return cached
                 return {
                     "success": True,
                     "cooldown": True,

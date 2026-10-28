@@ -11,3 +11,7 @@ tools/reg_clonefb/config.json
 tools/reg_clonefb/table_session.json
 tools/reg_clonefb/accounts*.txt
 tools/reg_clonefb/output/
+
+# ProxyVN runtime cache and last known keys
+.proxyvn*.json
+tools/reg_clonefb/core/.proxyvn*.json

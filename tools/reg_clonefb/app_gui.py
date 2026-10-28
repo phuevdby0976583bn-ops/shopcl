@@ -10817,7 +10817,15 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 def _probe_pvn(item):
                     cand_idx, cand_k = item
                     c_tmp = ProxyVNClient(cand_k)
-                    inf_tmp = c_tmp.get_current_proxy(force_refresh=True)
+                    inf_tmp = c_tmp.get_cached_proxy(cand_k, max_age=None) or c_tmp.get_last_known(cand_k)
+                    if not inf_tmp or not inf_tmp.get("http"):
+                        inf_tmp = c_tmp.get_current_proxy(force_refresh=False)
+                    if not inf_tmp or not inf_tmp.get("http"):
+                        inf_tmp = c_tmp.get_current_proxy(force_refresh=True)
+                    if not inf_tmp or not inf_tmp.get("http"):
+                        lk = ProxyVNClient.get_last_known(cand_k)
+                        if lk and lk.get("http"):
+                            inf_tmp = lk
                     return cand_idx, cand_k, inf_tmp
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=min(20, len(proxyvn_keys))) as ex:
@@ -11143,14 +11151,20 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 def _init_one_pvn(cand_k):
                     pvn_client = ProxyVNClient(cand_k)
                     inf = initial_proxyvn_info.get(cand_k) if "initial_proxyvn_info" in locals() else None
-                    if not inf or not inf.get("success") or not inf.get("http"):
-                        inf = pvn_client.get_current_proxy(force_refresh=True)
-                    if not inf.get("success") or not inf.get("http"):
-                        inf = pvn_client.get_new_proxy(fallback_current=True)
-                    if not inf.get("success") or not inf.get("http"):
-                        cached = ProxyVNClient.get_cached_proxy(cand_k, max_age=300.0)
+                    if not inf or not inf.get("http"):
+                        cached = ProxyVNClient.get_cached_proxy(cand_k, max_age=None)
                         if cached and cached.get("http"):
                             inf = cached
+                    if not inf or not inf.get("http"):
+                        lk = ProxyVNClient.get_last_known(cand_k)
+                        if lk and lk.get("http"):
+                            inf = lk
+                    if not inf or not inf.get("http"):
+                        inf = pvn_client.get_current_proxy(force_refresh=False)
+                    if not inf or not inf.get("http"):
+                        inf = pvn_client.get_new_proxy(fallback_current=True)
+                    if not inf or not inf.get("http"):
+                        inf = ProxyVNClient.get_last_known(cand_k) or {}
                     p_str = inf.get("http") if inf else None
                     p_item = ProxyManager.parse_proxy(p_str) if p_str else None
                     cur_ip = inf.get("ip") or (p_item.host if p_item else "")
@@ -11592,25 +11606,19 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 info = {}
 
                     if not p_item or not cur_ip:
-                        try:
-                            info = pvn_client.get_current_proxy(force_refresh=True)
-                            if not info.get("success") or not info.get("http"):
-                                info = pvn_client.get_new_proxy(fallback_current=True)
-                            if not info.get("success") or not info.get("http"):
-                                cached = ProxyVNClient.get_cached_proxy(k, max_age=300.0)
-                                if cached and cached.get("http"):
-                                    info = cached
-                            p_str = info.get("http") if info else None
-                            p_item = ProxyManager.parse_proxy(p_str) if p_str else None
-                            cur_ip = info.get("ip") or (p_item.host if p_item else "")
-                            loc = info.get("location", "Vietnam") if info else "Vietnam"
+                        lk = ProxyVNClient.get_last_known(k) or ProxyVNClient.get_cached_proxy(k, max_age=None)
+                        if lk and lk.get("http"):
+                            p_str = lk.get("http")
+                            p_item = ProxyManager.parse_proxy(p_str)
+                            cur_ip = lk.get("ip") or (p_item.host if p_item else "")
+                            loc = lk.get("location", "Vietnam")
                             if p_item and cur_ip:
                                 p_item.raw = k
                                 p_item.country = loc
                                 p_item.country_code = normalize_country_code(loc) or "VN"
                                 p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=cur_ip)
                                 p_item.real_ip = cur_ip
-                                info = {"location": loc, "ip": cur_ip, "carrier": info.get("carrier", "")}
+                                info = {"location": loc, "ip": cur_ip, "carrier": lk.get("carrier", "")}
                                 if k_state:
                                     with k_state["lock"]:
                                         k_state["proxy_obj"] = p_item
@@ -11618,8 +11626,6 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                         k_state["last_working_proxy"] = copy.copy(p_item)
                                         k_state["last_working_ip"] = cur_ip
                                         k_state["location"] = loc
-                        except Exception:
-                            pass
 
                     if not p_item or not cur_ip:
                         try:
@@ -11887,43 +11893,82 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 ip_src = k_state.get("cur_ip") or k_state.get("last_working_ip")
                                 if p_src:
                                     proxy_obj = copy.copy(p_src)
-                                    assigned_ip = ip_src or ""
+                                    assigned_ip = ip_src or getattr(proxy_obj, "real_ip", "") or proxy_obj.host
                                     display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
                                     self._worker_proxy_map[worker_id] = display_ip
                                     if ip_registry:
                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
-                        if not proxy_obj and pvn_client:
-                            try:
-                                info = pvn_client.get_current_proxy(force_refresh=True)
-                                if not info.get("http"):
-                                    info = pvn_client.get_new_proxy(fallback_current=True)
-                                if info.get("http"):
-                                    p_item = ProxyManager.parse_proxy(info["http"])
-                                    if p_item:
-                                        p_item.raw = k
-                                        p_item.country = info.get("location", "Vietnam")
-                                        p_item.country_code = normalize_country_code(p_item.country) or "VN"
-                                        p_item.real_ip = info.get("ip") or p_item.host
-                                        p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=p_item.real_ip)
-                                        proxy_obj = p_item
-                                        assigned_ip = p_item.real_ip
-                                        if ip_registry:
-                                            ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                        if not proxy_obj:
+                            lk = ProxyVNClient.get_last_known(k) or ProxyVNClient.get_cached_proxy(k, max_age=None)
+                            if lk and lk.get("http"):
+                                p_item = ProxyManager.parse_proxy(lk["http"])
+                                if p_item:
+                                    p_item.raw = k
+                                    p_item.country = lk.get("location", "Vietnam")
+                                    p_item.country_code = normalize_country_code(p_item.country) or "VN"
+                                    p_item.real_ip = lk.get("ip") or p_item.host
+                                    p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=p_item.real_ip)
+                                    proxy_obj = p_item
+                                    assigned_ip = p_item.real_ip
+                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                    self._worker_proxy_map[worker_id] = display_ip
+                                    if ip_registry:
+                                        ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                    if k_state:
                                         with k_state["lock"]:
                                             k_state["proxy_obj"] = p_item
                                             k_state["cur_ip"] = assigned_ip
-                                        self.event_queue.put(("log", {
-                                            "message": f"[Proxy.vn] ✅ Luồng {worker_id} ➔ {key_label} ➔ IP: {self.mask_ip(assigned_ip)} ({p_item.country}) ➔ Tiếp tục reg!",
-                                            "tag": "success"
-                                        }))
-                            except Exception:
-                                pass
+                                            k_state["last_working_proxy"] = copy.copy(p_item)
+                                            k_state["last_working_ip"] = assigned_ip
+                        if not proxy_obj and pvn_client:
+                            t_rot_lock = k_state.setdefault("rot_lock", threading.Lock()) if k_state else None
+                            if (not t_rot_lock) or t_rot_lock.acquire(blocking=False):
+                                try:
+                                    info = pvn_client.get_current_proxy(force_refresh=True)
+                                    if not info.get("http"):
+                                        info = pvn_client.get_new_proxy(fallback_current=True)
+                                    if info.get("http"):
+                                        p_item = ProxyManager.parse_proxy(info["http"])
+                                        if p_item:
+                                            p_item.raw = k
+                                            p_item.country = info.get("location", "Vietnam")
+                                            p_item.country_code = normalize_country_code(p_item.country) or "VN"
+                                            p_item.real_ip = info.get("ip") or p_item.host
+                                            p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=p_item.real_ip)
+                                            proxy_obj = p_item
+                                            assigned_ip = p_item.real_ip
+                                            display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                            self._worker_proxy_map[worker_id] = display_ip
+                                            if ip_registry:
+                                                ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                            if k_state:
+                                                with k_state["lock"]:
+                                                    k_state["proxy_obj"] = p_item
+                                                    k_state["cur_ip"] = assigned_ip
+                                                    k_state["last_working_proxy"] = copy.copy(p_item)
+                                                    k_state["last_working_ip"] = assigned_ip
+                                            self.event_queue.put(("log", {
+                                                "message": f"[Proxy.vn] ✅ Luồng {worker_id} ➔ {key_label} ➔ IP: {self.mask_ip(assigned_ip)} ({p_item.country}) ➔ Tiếp tục reg!",
+                                                "tag": "success"
+                                            }))
+                                except Exception:
+                                    pass
+                                finally:
+                                    if t_rot_lock:
+                                        try:
+                                            t_rot_lock.release()
+                                        except Exception:
+                                            pass
                         if not proxy_obj:
-                            self.event_queue.put(("log", {
-                                "message": f"[Proxy.vn] ⚠️ Luồng {worker_id} ({key_label}): Chưa có IP Proxy.vn mới. Tạm hoãn lượt này.",
-                                "tag": "warning"
-                            }))
-                            time.sleep(1.0)
+                            now_t = time.time()
+                            last_log_t = getattr(self, f"_last_pvn_wait_log_{worker_id}", 0.0)
+                            if (now_t - last_log_t) >= 15.0:
+                                setattr(self, f"_last_pvn_wait_log_{worker_id}", now_t)
+                                self.event_queue.put(("log", {
+                                    "message": f"[Proxy.vn] ⏳ Luồng {worker_id} ({key_label}): Đang chờ IP Proxy.vn sẵn sàng...",
+                                    "tag": "warning"
+                                }))
+                            time.sleep(3.0)
                             continue
 
                     if provider_name == "mproxy" and not proxy_obj:
@@ -13016,7 +13061,6 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                                 time.sleep(min(wait_s, 2.0))
                                                 continue
 
-                                        ProxyVNClient.invalidate_cache(base_k)
                                         rot_res = pvn_client.get_new_proxy(fallback_current=False)
                                         new_str = rot_res.get("http") or rot_res.get("raw_http")
                                         new_ip = rot_res.get("ip") or (ProxyManager.parse_proxy(new_str).host if new_str else "")
