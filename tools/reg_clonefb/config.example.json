@@ -1,0 +1,16 @@
+{
+  "mode": "web",
+  "reg_mode": "legacy_nv",
+  "legacy_verify_mode": "none",
+  "threads": 5,
+  "max_accounts": 100,
+  "enable_2fa": false,
+  "save_format": "UID|PASS|COOKIE",
+  "output_live_file": "accounts_live.txt",
+  "output_die_file": "accounts_die.txt",
+  "output_unver_file": "accounts_unverified.txt",
+  "bot_auto_upload": true,
+  "bot_media_id": "0AgACAgUAAxUAAWrdTEFel8nwqyfqdm-JW5tDEZQ-AAJmE2sbA8fhVvptkVWyk7XSAQADAgADYwADPQQ",
+  "bot_api_url": "https://shopcl.onrender.com",
+  "bot_api_key": "MatKhauAdminCuaBan123"
+}

@@ -5,3 +5,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 static/no_image.jpeg
+
+# Desktop Reg Tool Local Config & Accounts
+tools/reg_clonefb/config.json
+tools/reg_clonefb/table_session.json
+tools/reg_clonefb/accounts*.txt
+tools/reg_clonefb/output/
