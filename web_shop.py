@@ -188,7 +188,7 @@ def render_base_layout(
         admin_button_html = ""
         if is_admin:
             admin_button_html = """
-            <a href="/admin" class="btn btn-warning btn-sm fw-bold text-dark me-2 shadow-sm pulse-admin-btn" title="Chuyển sang trang Quản trị Admin Panel">
+            <a href="/admin/" class="btn btn-warning btn-sm fw-bold text-dark me-2 shadow-sm pulse-admin-btn" title="Chuyển sang trang Quản trị Admin Panel">
                 <i class="fa-solid fa-gauge-high me-1"></i> <span data-i18n="btn_admin_panel">Trang Quản trị Admin</span>
             </a>
             """
@@ -209,7 +209,7 @@ def render_base_layout(
                     <li><a class="dropdown-item py-2" href="/recharge" data-i18n="menu_recharge"><i class="fa-solid fa-wallet text-purple me-2"></i> Nạp tiền số dư</a></li>
                     <li><a class="dropdown-item py-2" href="/orders" data-i18n="menu_orders"><i class="fa-solid fa-box text-primary me-2"></i> Lịch sử đơn hàng</a></li>
                     <li><a class="dropdown-item py-2" href="/balance-history" data-i18n="menu_balance_history"><i class="fa-solid fa-clock-rotate-left text-info me-2"></i> Biến động số dư</a></li>
-                    {f'<li><a class="dropdown-item py-2 text-warning fw-bold" href="/admin" data-i18n="menu_admin_portal"><i class="fa-solid fa-sliders me-2"></i> Quản trị Website (/admin)</a></li>' if is_admin else ''}
+                    {f'<li><a class="dropdown-item py-2 text-warning fw-bold" href="/admin/" data-i18n="menu_admin_portal"><i class="fa-solid fa-sliders me-2"></i> Quản trị Website (/admin)</a></li>' if is_admin else ''}
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item py-2 text-danger" href="/logout" data-i18n="menu_logout"><i class="fa-solid fa-right-from-bracket me-2"></i> Đăng xuất</a></li>
                 </ul>
@@ -255,8 +255,6 @@ def render_base_layout(
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <!-- Bootstrap 5.3 JS Bundle in head for instant modal availability -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -3719,15 +3717,42 @@ async def web_login_page(request: Request, next: str = Query("/"), error: Option
 
 
 @web_router.post("/login")
-async def web_login_submit(
-    request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-    next: str = Form("/")
-):
+async def web_login_submit(request: Request):
+    username = ""
+    password = ""
+    next_param = "/"
+
+    try:
+        form = await request.form()
+        username = str(form.get("username", ""))
+        password = str(form.get("password", ""))
+        next_param = str(form.get("next", "/"))
+    except Exception:
+        pass
+
+    if not username and not password:
+        try:
+            raw = await request.body()
+            from urllib.parse import parse_qs
+            parsed = parse_qs(raw.decode("utf-8", errors="ignore"))
+            username = parsed.get("username", [""])[0]
+            password = parsed.get("password", [""])[0]
+            next_param = parsed.get("next", ["/"])[0]
+        except Exception:
+            pass
+
+    if not username and not password:
+        try:
+            body = await request.json()
+            username = str(body.get("username", ""))
+            password = str(body.get("password", ""))
+            next_param = str(body.get("next", "/"))
+        except Exception:
+            pass
+
     clean_username = username.strip()
     clean_password = password.strip()
-    target_url = next if next and next.startswith("/") else "/"
+    target_url = next_param if next_param and next_param.startswith("/") else "/"
 
     async with get_db_session() as session:
         # 1. KIỂM TRA ĐĂNG NHẬP ADMIN (username == "admin" hoặc khớp mật khẩu admin)
@@ -3904,19 +3929,43 @@ async def web_register_page(request: Request, next: str = Query("/"), error: Opt
 
 
 @web_router.post("/register")
-async def web_register_submit(
-    request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-    confirm_password: str = Form(...),
-    agree_terms: Optional[str] = Form(None),
-    telegram_id: Optional[str] = Form(None),
-    next: str = Form("/")
-):
+async def web_register_submit(request: Request):
+    username = ""
+    password = ""
+    confirm_password = ""
+    agree_terms = None
+    telegram_id = None
+    next_param = "/"
+
+    try:
+        form = await request.form()
+        username = str(form.get("username", ""))
+        password = str(form.get("password", ""))
+        confirm_password = str(form.get("confirm_password", ""))
+        agree_terms = form.get("agree_terms")
+        telegram_id = form.get("telegram_id")
+        next_param = str(form.get("next", "/"))
+    except Exception:
+        pass
+
+    if not username and not password:
+        try:
+            raw = await request.body()
+            from urllib.parse import parse_qs
+            parsed = parse_qs(raw.decode("utf-8", errors="ignore"))
+            username = parsed.get("username", [""])[0]
+            password = parsed.get("password", [""])[0]
+            confirm_password = parsed.get("confirm_password", [""])[0]
+            agree_terms = parsed.get("agree_terms", [None])[0]
+            telegram_id = parsed.get("telegram_id", [None])[0]
+            next_param = parsed.get("next", ["/"])[0]
+        except Exception:
+            pass
+
     clean_un = username.strip()
     clean_pw = password.strip()
     clean_cpw = confirm_password.strip()
-    target_url = next if next and next.startswith("/") else "/"
+    target_url = next_param if next_param and next_param.startswith("/") else "/"
 
     if not agree_terms:
         return RedirectResponse(url=f"/register?error=B%E1%BA%A1n%20c%E1%BA%A7n%20%C4%91%E1%BB%93ng%20%C3%BD%20v%E1%BB%9Bi%20%C4%91i%E1%BB%81u%20kho%E1%BA%A3n%20d%E1%BB%8Bch%20v%E1%BB%A5%20%C4%91%E1%BB%83%20%C4%91%C4%83ng%20k%C3%BD&next={quote(target_url)}", status_code=302)

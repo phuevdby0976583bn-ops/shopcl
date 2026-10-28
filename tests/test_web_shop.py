@@ -173,7 +173,7 @@ async def test_web_admin_login_shows_admin_panel_button(test_app):
             r_home = await ac.get("/")
             assert r_home.status_code == 200
             assert "pulse-admin-btn" in r_home.text
-            assert 'href="/admin"' in r_home.text
+            assert 'href="/admin/' in r_home.text or 'href="/admin"' in r_home.text
 
 
 @pytest.mark.asyncio
