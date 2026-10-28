@@ -2879,6 +2879,17 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             rows = data.get("rows", [])
             if not rows:
                 return
+
+            curr_reg_mode = self.config.get("reg_mode", "")
+            # Nếu đang ở Tool Reg (không phải verify_nvr), lọc bỏ triệt để các dòng "Chờ ngấu" bị lưu nhầm từ trước
+            if curr_reg_mode != "verify_nvr":
+                rows = [
+                    r for r in rows
+                    if "ngấu" not in str(r.get("values", [])).lower()
+                    and "chờ xác minh (pipeline)" not in str(r.get("values", [])).lower()
+                ]
+                if not rows:
+                    return
             if not hasattr(self, "_row_full_lines"):
                 self._row_full_lines = {}
             if not hasattr(self, "_row_acc_data"):
@@ -14972,13 +14983,12 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
     def _pipeline_sync_tick(self):
         """
         Đồng bộ định kỳ mỗi 1 giây giữa hàng đợi Pipeline và Bảng chính (Treeview):
-        1. Tự động kéo mọi tài khoản NVR đang ngấu/chờ verry từ pipeline_nvr_queue.json lên Bảng.
-        2. Đếm ngược thời gian (Realtime Countdown) hiển thị trên cột Tình trạng:
-           VD: '⏳ Chờ ngấu: 01:59' -> '01:58' -> ... -> '⚡ Sẵn sàng xác minh'.
-        3. Cập nhật số liệu thống kê & nút Bắt đầu xác minh.
+        QUAN TRỌNG: CHỈ CHẠY CHO TOOL VERRY (chế độ verify_nvr).
+        Tool Reg chỉ chuyển acc một chiều sang Verry, không kéo ngược về bảng Reg.
         """
         try:
-            if hasattr(self, "tree") and not getattr(self, "_closing", False):
+            curr_reg_mode = self.config.get("reg_mode", "")
+            if curr_reg_mode == "verify_nvr" and hasattr(self, "tree") and not getattr(self, "_closing", False):
                 self._update_pipeline_table_countdown()
         except Exception as e:
             logger.debug(f"Error in _pipeline_sync_tick: {e}")
@@ -14994,10 +15004,11 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         if not hasattr(self, "tree"):
             return
 
-        is_pipeline_enabled = bool(getattr(self, "var_enable_verry_pipeline", None) and self.var_enable_verry_pipeline.get())
         curr_reg_mode = self.config.get("reg_mode", "")
-        # Chạy đồng bộ nếu pipeline được bật hoặc đang ở chế độ xác minh NVR
-        if not is_pipeline_enabled and curr_reg_mode != "verify_nvr":
+        # QUAN TRỌNG: Acc NVR CHỈ chuyển MỘT CHIỀU từ Tool Reg sang Tool Verry, TUYỆT ĐỐI KHÔNG kéo ngược về Tool Reg.
+        # Vì vậy hàm này CHỈ CHẠY TRÊN TOOL VERRY (curr_reg_mode == 'verify_nvr').
+        # Tool Reg (legacy_nv, nvr, vr...) tuyệt đối không nạp queue hay đếm ngược trên bảng của mình.
+        if curr_reg_mode != "verify_nvr":
             return
 
         v_dir = self.var_verry_pipeline_dir.get().strip() if hasattr(self, "var_verry_pipeline_dir") else r"C:\Users\truon\Downloads\verry"
