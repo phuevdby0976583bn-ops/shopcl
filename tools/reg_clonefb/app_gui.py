@@ -1347,6 +1347,10 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         self._row_full_lines = {}
         self._file_save_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="AsyncFileSaver")
         self.var_bot_auto_upload = tk.BooleanVar(value=bool(self.config.get("bot_auto_upload", False)))
+        self.var_enable_verry_pipeline = tk.BooleanVar(value=bool(self.config.get("enable_verry_pipeline", True)))
+        self.var_verry_pipeline_delay = tk.StringVar(value=str(self.config.get("verry_pipeline_delay", "2 phút (Khuyến nghị)")))
+        self.var_verry_pipeline_threads = tk.StringVar(value=str(self.config.get("verry_pipeline_threads", 50)))
+        self.var_verry_pipeline_dir = tk.StringVar(value=str(self.config.get("verry_pipeline_dir", r"C:\Users\truon\Downloads\verry")))
         self.stat_bot_uploaded = 0
         self._cached_subcat_info = None
         self._bot_uploaded_uids = set()
@@ -1413,6 +1417,10 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             "bot_media_id": "0AgACAgUAAxUAAWrdTEFel8nwqyfqdm-JW5tDEZQ-AAJmE2sbA8fhVvptkVWyk7XSAQADAgADYwADPQQ",
             "bot_api_url": "https://shopcl.onrender.com",
             "bot_api_key": "MatKhauAdminCuaBan123",
+            "enable_verry_pipeline": True,
+            "verry_pipeline_delay": "2 phút (Khuyến nghị)",
+            "verry_pipeline_threads": 50,
+            "verry_pipeline_dir": r"C:\Users\truon\Downloads\verry",
         }
         if os.path.exists(self.config_path):
             try:
@@ -2655,6 +2663,14 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             self.config["bot_api_url"] = str(self.entry_bot_api_url.get()).strip()
         if hasattr(self, "entry_bot_api_key"):
             self.config["bot_api_key"] = str(self.entry_bot_api_key.get()).strip()
+        if hasattr(self, "var_enable_verry_pipeline"):
+            self.config["enable_verry_pipeline"] = bool(self.var_enable_verry_pipeline.get())
+        if hasattr(self, "var_verry_pipeline_delay"):
+            self.config["verry_pipeline_delay"] = str(self.var_verry_pipeline_delay.get()).strip()
+        if hasattr(self, "var_verry_pipeline_threads"):
+            self.config["verry_pipeline_threads"] = str(self.var_verry_pipeline_threads.get()).strip()
+        if hasattr(self, "var_verry_pipeline_dir"):
+            self.config["verry_pipeline_dir"] = str(self.var_verry_pipeline_dir.get()).strip()
 
         try:
             with open(self.config_path, "w", encoding="utf-8") as f:
@@ -5731,6 +5747,182 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         )
         btn_manual_up_all.pack(side=tk.RIGHT)
 
+        # Card 5.2: Tự Động Kết Hợp Với Tool Verry
+        card_verry = tk.LabelFrame(
+            parent,
+            text=" 🔗 5.2. Kết Hợp Tự Động Với Tool Verry [NVR -> Chờ Ngấu -> Xác Minh] ",
+            font=AppTheme.FONT_HEADER,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.ACCENT,
+            bd=1,
+            relief="solid",
+            padx=10,
+            pady=8
+        )
+        card_verry.pack(fill=tk.X, pady=(0, 8))
+
+        # 1. Hàng Bật / Tắt chức năng
+        row_verry_toggle = tk.Frame(card_verry, bg=AppTheme.BG_CARD)
+        row_verry_toggle.pack(fill=tk.X, pady=(2, 6))
+
+        is_verry_pipe_on = bool(self.config.get("enable_verry_pipeline", True))
+        self.chk_verry_pipeline = tk.Checkbutton(
+            row_verry_toggle,
+            text="⚡ BẬT TỰ ĐỘNG CHUYỂN ACC NVR SANG TOOL VERRY [Sau thời gian ngấu]",
+            variable=self.var_enable_verry_pipeline,
+            font=AppTheme.FONT_BODY_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.SUCCESS if is_verry_pipe_on else AppTheme.TEXT_MUTED,
+            selectcolor=AppTheme.BG_INPUT,
+            activebackground=AppTheme.BG_CARD,
+            activeforeground=AppTheme.SUCCESS,
+            command=self._on_verry_pipeline_toggled
+        )
+        self.chk_verry_pipeline.pack(side=tk.LEFT)
+
+        # 2. Hàng Thời gian chờ & Số luồng Verry
+        row_verry_opts = tk.Frame(card_verry, bg=AppTheme.BG_CARD)
+        row_verry_opts.pack(fill=tk.X, pady=(2, 4))
+
+        tk.Label(
+            row_verry_opts,
+            text="Thời gian chờ ngấu nick:",
+            font=AppTheme.FONT_BODY_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.TEXT_MAIN
+        ).pack(side=tk.LEFT)
+
+        self.cb_verry_delay = ttk.Combobox(
+            row_verry_opts,
+            textvariable=self.var_verry_pipeline_delay,
+            values=[
+                "1 phút",
+                "2 phút (Khuyến nghị)",
+                "5 phút",
+                "10 phút",
+                "15 phút",
+                "30 phút"
+            ],
+            state="readonly",
+            width=22,
+            font=AppTheme.FONT_BODY
+        )
+        self.cb_verry_delay.pack(side=tk.LEFT, padx=(6, 16))
+
+        tk.Label(
+            row_verry_opts,
+            text="Số luồng Verry:",
+            font=AppTheme.FONT_BODY_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.TEXT_MAIN
+        ).pack(side=tk.LEFT)
+
+        self.spn_verry_threads = tk.Spinbox(
+            row_verry_opts,
+            from_=1,
+            to=500,
+            textvariable=self.var_verry_pipeline_threads,
+            width=6,
+            bg=AppTheme.BG_INPUT,
+            fg=AppTheme.TEXT_MAIN,
+            font=AppTheme.FONT_BODY,
+            justify=tk.CENTER
+        )
+        self.spn_verry_threads.pack(side=tk.LEFT, padx=(6, 8))
+
+        tk.Label(
+            row_verry_opts,
+            text="(Chạy nền độc lập khi Tool Verry chưa mở giao diện)",
+            font=AppTheme.FONT_SMALL,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.TEXT_MUTED
+        ).pack(side=tk.LEFT, padx=(4, 0))
+
+        # 3. Hàng Đường dẫn thư mục Tool Verry
+        row_verry_dir = tk.Frame(card_verry, bg=AppTheme.BG_CARD)
+        row_verry_dir.pack(fill=tk.X, pady=(2, 4))
+
+        tk.Label(
+            row_verry_dir,
+            text="Thư mục Tool Verry:",
+            font=AppTheme.FONT_BODY_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.TEXT_MAIN
+        ).pack(side=tk.LEFT)
+
+        self.entry_verry_dir = tk.Entry(
+            row_verry_dir,
+            textvariable=self.var_verry_pipeline_dir,
+            bg=AppTheme.BG_INPUT,
+            fg=AppTheme.TEXT_MAIN,
+            bd=1,
+            relief="solid",
+            font=AppTheme.FONT_CODE
+        )
+        self.entry_verry_dir.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 4))
+
+        btn_browse_verry = tk.Button(
+            row_verry_dir,
+            cursor="hand2",
+            text="📁 Chọn Thư Mục",
+            font=AppTheme.FONT_SMALL,
+            bg=AppTheme.BG_INPUT,
+            fg=AppTheme.TEXT_MAIN,
+            activebackground=AppTheme.BORDER,
+            bd=1,
+            relief="solid",
+            padx=8,
+            pady=1,
+            command=self._browse_verry_pipeline_dir
+        )
+        btn_browse_verry.pack(side=tk.LEFT, padx=(0, 4))
+
+        btn_check_verry = tk.Button(
+            row_verry_dir,
+            cursor="hand2",
+            text="🔍 Kiểm Tra Kết Nối",
+            font=AppTheme.FONT_BODY_BOLD,
+            bg=AppTheme.BG_INPUT,
+            fg=AppTheme.ACCENT,
+            activebackground=AppTheme.BORDER,
+            bd=1,
+            relief="solid",
+            padx=8,
+            pady=1,
+            command=self._check_verry_pipeline_status
+        )
+        btn_check_verry.pack(side=tk.LEFT)
+
+        # 4. Hàng Trạng thái Hàng đợi
+        row_verry_status = tk.Frame(card_verry, bg=AppTheme.BG_CARD)
+        row_verry_status.pack(fill=tk.X, pady=(2, 4))
+
+        self.lbl_verry_pipeline_status = tk.Label(
+            row_verry_status,
+            text="● Trạng thái Pipeline: Sẵn sàng kết nối với Tool Verry",
+            font=AppTheme.FONT_SMALL,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.TEXT_MUTED,
+            anchor="w"
+        )
+        self.lbl_verry_pipeline_status.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        btn_refresh_verry = tk.Button(
+            row_verry_status,
+            cursor="hand2",
+            text="🔄 Làm Mới",
+            font=AppTheme.FONT_SMALL,
+            bg=AppTheme.BG_INPUT,
+            fg=AppTheme.TEXT_MAIN,
+            activebackground=AppTheme.BORDER,
+            bd=1,
+            relief="solid",
+            padx=6,
+            pady=1,
+            command=self._refresh_verry_pipeline_status
+        )
+        btn_refresh_verry.pack(side=tk.RIGHT)
+
         # Card 6: Điều khiển & Lưu Cài Đặt
         card_actions = tk.LabelFrame(
             parent,
@@ -6016,7 +6208,22 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             activeforeground=AppTheme.SUCCESS,
             command=self._on_bot_auto_upload_toggled
         )
-        self.chk_dash_bot_upload.pack(side=tk.LEFT, padx=(6, 4))
+        self.chk_dash_bot_upload.pack(side=tk.LEFT, padx=(6, 2))
+
+        # Checkbox Auto Pipeline Verry ngay tren Dashboard
+        self.chk_dash_verry_pipeline = tk.Checkbutton(
+            quick_bar,
+            text="🔗 Chuyển Verry",
+            variable=self.var_enable_verry_pipeline,
+            font=AppTheme.FONT_SMALL_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.SUCCESS if self.var_enable_verry_pipeline.get() else AppTheme.TEXT_MUTED,
+            selectcolor=AppTheme.BG_INPUT,
+            activebackground=AppTheme.BG_CARD,
+            activeforeground=AppTheme.SUCCESS,
+            command=self._on_verry_pipeline_toggled
+        )
+        self.chk_dash_verry_pipeline.pack(side=tk.LEFT, padx=(2, 4))
 
         # Phía Phải: Nút Mở Cài Đặt
         right_box = tk.Frame(quick_bar, bg=AppTheme.BG_CARD)
@@ -8175,6 +8382,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             is_live_confirmed = False
             is_nvr = bool(not is_checkpoint and uid_to_check and uid_to_check.isdigit() and len(uid_to_check) >= 8)
 
+        has_uid_and_cookie = bool(uid_to_check and uid_to_check.isdigit() and len(uid_to_check) >= 8 and (has_valid_cookie or getattr(result, "cookie_string", "")))
         # Tự động up lên Bot Shop nếu tính năng được bật (Hỗ trợ cả LIVE và NVR hợp lệ)
         should_upload_to_bot = bool(
             hasattr(self, "var_bot_auto_upload")
@@ -8182,7 +8390,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             and uid_to_check
             and uid_to_check != "N/A"
             and not is_checkpoint
-            and (is_live_confirmed or (result.success and has_valid_cookie))
+            and (is_live_confirmed or (result.success and has_valid_cookie) or (is_nvr and has_uid_and_cookie))
         )
         if should_upload_to_bot:
             if not hasattr(self, "_bot_uploaded_uids"):
@@ -8337,6 +8545,22 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         f.write(f"{line}|NVR\n")
             except Exception as e:
                 self.log(f"Lỗi ghi file Chưa xác minh: {e}", "error")
+
+            # KÍCH HOẠT PIPELINE CHUYỂN SANG TOOL VERRY (NVR)
+            if getattr(self, "var_enable_verry_pipeline", None) and self.var_enable_verry_pipeline.get():
+                try:
+                    from core.nvr_pipeline_bridge import enqueue_nvr_account, _safe_float
+                    v_dir = self.var_verry_pipeline_dir.get().strip() if hasattr(self, "var_verry_pipeline_dir") else r"C:\Users\truon\Downloads\verry"
+                    delay_val = self.var_verry_pipeline_delay.get() if hasattr(self, "var_verry_pipeline_delay") else "2 phút"
+                    delay_m = _safe_float(delay_val, 2.0)
+                    enqueue_nvr_account(
+                        account_data_or_line=result,
+                        delay_minutes=delay_m,
+                        verry_dir=v_dir,
+                        logger_fn=lambda msg, lvl="info": self.log(msg, lvl)
+                    )
+                except Exception as ex_pipe:
+                    self.log(f"⚠️ [Pipeline Verry] Lỗi đẩy acc vào hàng đợi: {ex_pipe}", "warning")
 
         # 3. DIE / CHECKPOINT 282 / THẬT SỰ HỎNG -> accounts_die.txt (CHỈ GHI KHI THỰC SỰ LÀ CHECKPOINT/DIE!)
         elif is_checkpoint or status in ("checkpoint", "die_282") or res_meta.get("checkpoint"):
@@ -10230,12 +10454,15 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
             nvr_queue = getattr(self, "nvr_accounts_queue", [])
             if not nvr_queue:
-                messagebox.showwarning(
-                    "Chưa có tài khoản",
-                    "Vui lòng bấm nút '📋 Nhập / Dán Acc NVR' để nạp danh sách tài khoản cần xác minh!"
-                )
-                self.open_nvr_import_dialog()
-                return
+                if getattr(self, "var_enable_verry_pipeline", None) and self.var_enable_verry_pipeline.get():
+                    self.log("⚡ [Pipeline Verry] Chưa có sẵn acc trong bảng, chuyển sang chế độ CHỜ ACC TỰ ĐỘNG TỪ TOOL REG [sau thời gian ngấu]...", "info")
+                else:
+                    messagebox.showwarning(
+                        "Chưa có tài khoản",
+                        "Vui lòng bấm nút '📋 Nhập / Dán Acc NVR' để nạp danh sách tài khoản cần xác minh!"
+                    )
+                    self.open_nvr_import_dialog()
+                    return
 
         self.is_running = True
         self.stop_event.clear()
@@ -10245,6 +10472,20 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             self._worker_target_map.clear()
         self.btn_start.config(state=tk.DISABLED, bg=AppTheme.BORDER)
         self.btn_stop.config(state=tk.NORMAL)
+
+        # Pipeline khởi động: liên kết với Tool Verry hoặc khởi động StandaloneVerryEngine
+        if getattr(self, "var_enable_verry_pipeline", None) and self.var_enable_verry_pipeline.get():
+            v_dir = self.var_verry_pipeline_dir.get().strip() if hasattr(self, "var_verry_pipeline_dir") else r"C:\Users\truon\Downloads\verry"
+            delay_str = self.var_verry_pipeline_delay.get() if hasattr(self, "var_verry_pipeline_delay") else "2 phút"
+            from core.nvr_pipeline_bridge import is_verry_gui_running, StandaloneVerryEngine, _safe_int
+            if curr_reg_mode != "verify_nvr":
+                if is_verry_gui_running(v_dir):
+                    self.log(f"🔗 [Pipeline Verry] Đã liên kết với Tool Verry [đang mở]! Nick NVR sau khi reg sẽ hẹn giờ chuyển sang Verry sau {delay_str}.", "info")
+                else:
+                    v_threads = _safe_int(self.var_verry_pipeline_threads.get() if hasattr(self, "var_verry_pipeline_threads") else 50, 50)
+                    engine = StandaloneVerryEngine.get_instance(v_dir, v_threads)
+                    engine.set_logger(lambda m, t="info": self.log(m, t))
+                    engine.start()
 
         if curr_reg_mode == "vr":
             mode_desc = "VR OTP (Xác minh OTP)"
@@ -10592,6 +10833,45 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             nvr_list = list(nvr_list_to_run)
             nvr_idx = 0
             nvr_lock = threading.Lock()
+            pipeline_active = bool(getattr(self, "var_enable_verry_pipeline", None) and self.var_enable_verry_pipeline.get())
+            pipeline_stop_event = threading.Event()
+
+            if curr_reg_mode == "verify_nvr" and pipeline_active:
+                def _pipeline_feeder():
+                    from core.nvr_pipeline_bridge import claim_ready_accounts
+                    v_dir = self.var_verry_pipeline_dir.get().strip() if hasattr(self, "var_verry_pipeline_dir") else os.getcwd()
+                    known_uids = set()
+                    with nvr_lock:
+                        for acc in nvr_list:
+                            u = str(acc.get("uid", "")).strip()
+                            if u:
+                                known_uids.add(u)
+
+                    while not self.stop_event.is_set() and not pipeline_stop_event.is_set():
+                        try:
+                            ready_accs = claim_ready_accounts(v_dir, max_count=50, worker_tag="verry_gui")
+                            if ready_accs:
+                                new_ones = []
+                                with nvr_lock:
+                                    for ra in ready_accs:
+                                        ru = str(ra.get("uid", "")).strip()
+                                        if ru and ru not in known_uids:
+                                            known_uids.add(ru)
+                                            nvr_list.append(ra)
+                                            new_ones.append(ra)
+                                if new_ones:
+                                    self.event_queue.put(("log", {
+                                        "message": f"⚡ [Pipeline Verry] Kéo thành công {len(new_ones)} tài khoản NVR đã ngấu từ Tool Reg vào luồng xác minh!",
+                                        "tag": "success"
+                                    }))
+                                    for na in new_ones:
+                                        self.event_queue.put(("table_insert_pipeline", na))
+                        except Exception as ex_f:
+                            logger.warning(f"Error in pipeline feeder: {ex_f}")
+                        pipeline_stop_event.wait(timeout=2.0)
+
+                feeder_th = threading.Thread(target=_pipeline_feeder, daemon=True, name="PipelineFeeder")
+                feeder_th.start()
             shared_kiot_state = {}
             if provider_name in ("kiotproxy", "kiotproxy_current") and (effective_kiot_keys or kiot_keys):
                 kiot_p_keys = effective_kiot_keys if effective_kiot_keys else kiot_keys
@@ -11506,12 +11786,23 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
                     curr_acc_data = None
                     if curr_reg_mode == "verify_nvr":
-                        with nvr_lock:
-                            if nvr_idx >= len(nvr_list) or (max_accs > 0 and nvr_idx >= max_accs):
+                        while not self.stop_event.is_set():
+                            with nvr_lock:
+                                if nvr_idx < len(nvr_list):
+                                    if max_accs > 0 and nvr_idx >= max_accs:
+                                        break
+                                    curr_acc_data = nvr_list[nvr_idx]
+                                    nvr_idx += 1
+                                    current_num = nvr_idx
+                                    break
+                            if not pipeline_active:
                                 break
-                            curr_acc_data = nvr_list[nvr_idx]
-                            nvr_idx += 1
-                            current_num = nvr_idx
+                            if max_accs > 0 and successful_accs >= max_accs:
+                                break
+                            if self.stop_event.wait(timeout=1.5):
+                                break
+                        if not curr_acc_data:
+                            break
                     else:
                         with success_lock:
                             if max_accs > 0 and successful_accs >= max_accs:
@@ -11814,6 +12105,17 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     is_genuinely_success = False
                     if curr_reg_mode == "verify_nvr":
                         is_genuinely_success = bool(res.success and (res.uid or getattr(res, "cookie_string", "")))
+                        try:
+                            from core.nvr_pipeline_bridge import mark_account_result
+                            v_dir = self.var_verry_pipeline_dir.get().strip() if hasattr(self, "var_verry_pipeline_dir") else os.getcwd()
+                            if is_genuinely_success:
+                                rec_line = res.format_line(curr_save_format) if hasattr(res, "format_line") else f"{target_uid}|{res.cookie_string}"
+                                mark_account_result(target_uid, success=True, result_line=rec_line, verry_dir=v_dir)
+                            else:
+                                err_str = getattr(res, "error_message", "") or "Checkpoint"
+                                mark_account_result(target_uid, success=False, result_line=f"{target_uid}|{acc_custom_proxy}", verry_dir=v_dir, error=err_str, is_checkpoint=True)
+                        except Exception as ex_m:
+                            logger.warning(f"Error marking account result in pipeline: {ex_m}")
                     elif curr_reg_mode == "vr":
                         is_genuinely_success = bool(res.success and (res.uid or getattr(res, "cookie_string", "")) and not getattr(res, "is_checkpoint", False))
                     elif curr_reg_mode in ("legacy_nv", "legacy"):
@@ -11882,7 +12184,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     has_more_accs = False
                     if curr_reg_mode == "verify_nvr":
                         with nvr_lock:
-                            has_more_accs = (nvr_idx < len(nvr_list) and (max_accs <= 0 or nvr_idx < max_accs))
+                            has_more_accs = (nvr_idx < len(nvr_list) and (max_accs <= 0 or nvr_idx < max_accs)) or pipeline_active
                     else:
                         with success_lock:
                             has_more_accs = (max_accs <= 0 or successful_accs < max_accs)
@@ -12647,13 +12949,14 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     if curr_reg_mode == "verify_nvr":
                         with nvr_lock:
                             if nvr_idx >= len(nvr_list) or (max_accs > 0 and nvr_idx >= max_accs):
-                                all_done = True
-                                with worker_lock:
-                                    for wid in range(1, actual_threads + 1):
-                                        th = worker_threads.get(wid)
-                                        if th and th.is_alive():
-                                            all_done = False
-                                            break
+                                if not pipeline_active or (max_accs > 0 and successful_accs >= max_accs):
+                                    all_done = True
+                                    with worker_lock:
+                                        for wid in range(1, actual_threads + 1):
+                                            th = worker_threads.get(wid)
+                                            if th and th.is_alive():
+                                                all_done = False
+                                                break
                                 if all_done:
                                     break
 
@@ -12666,7 +12969,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 need_spawn = False
                                 if curr_reg_mode == "verify_nvr":
                                     with nvr_lock:
-                                        need_spawn = (nvr_idx < len(nvr_list) and (max_accs <= 0 or nvr_idx < max_accs))
+                                        need_spawn = (nvr_idx < len(nvr_list) and (max_accs <= 0 or nvr_idx < max_accs)) or pipeline_active
                                 else:
                                     with success_lock:
                                         need_spawn = (max_accs <= 0 or successful_accs < max_accs)
@@ -12683,6 +12986,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             except Exception as e:
                 logger.error(f"master_worker error: {e}", exc_info=True)
             finally:
+                pipeline_stop_event.set()
                 try:
                     from core.proxy_manager import FreeProxyManager
                     FreeProxyManager().stop_continuous_validator()
@@ -12699,6 +13003,12 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
     def stop_execution(self):
         if not self.is_running:
             return
+        try:
+            from core.nvr_pipeline_bridge import StandaloneVerryEngine
+            if StandaloneVerryEngine._instance:
+                StandaloneVerryEngine.get_instance().stop()
+        except Exception:
+            pass
         try:
             from core.proxy_manager import FreeProxyManager
             FreeProxyManager().stop_continuous_validator()
@@ -13083,6 +13393,47 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
                 elif msg_type == "meta_otp_done":
                     self.meta_otp_on_done(data)
+
+                elif msg_type == "table_insert_pipeline":
+                    try:
+                        acc = data
+                        t_uid = str(acc.get("uid") or "").strip()
+                        if not hasattr(self, "_tree_items_by_uid"):
+                            self._tree_items_by_uid = {}
+                        if t_uid and t_uid in self._tree_items_by_uid:
+                            continue
+                        self.row_counter += 1
+                        pwd = str(acc.get("password") or "").strip()
+                        twofa = str(acc.get("two_factor_secret") or "").strip()
+                        cookie = str(acc.get("cookie") or "").strip()
+                        token = str(acc.get("token") or "").strip()
+                        email = str(acc.get("email") or "").strip()
+                        target = email if email else "(Chờ gán Mail)"
+                        cookie_disp = (cookie[:32] + "...") if len(cookie) > 32 else cookie
+                        token_disp = (token[:24] + "...") if len(token) > 24 else token
+                        now_str = datetime.now().strftime("%H:%M:%S")
+                        row_vals = (
+                            "☑",
+                            self.row_counter,
+                            t_uid or "N/A",
+                            target,
+                            pwd,
+                            twofa,
+                            cookie_disp,
+                            token_disp,
+                            "(Chờ cấp IP)",
+                            "⏳ Chờ xác minh (Pipeline)",
+                            now_str
+                        )
+                        new_itm = self.tree.insert("", tk.END, values=row_vals, tags=("unverified",))
+                        if t_uid:
+                            self._tree_items_by_uid[t_uid] = new_itm
+                        if hasattr(self, "_row_acc_data"):
+                            self._row_acc_data[new_itm] = acc
+                        if hasattr(self, "_row_full_lines"):
+                            self._row_full_lines[new_itm] = acc.get("raw_line") or f"{t_uid}|{pwd}|{cookie}"
+                    except Exception as ex_ti:
+                        logger.debug(f"table_insert_pipeline error: {ex_ti}")
 
                 elif msg_type == "kiot_status":
                     text = self.mask_ip(data.get("text", ""))
@@ -14437,6 +14788,78 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         load_sources_data()
 
 
+
+    # =========================================================================
+    # PIPELINE INTEGRATION WITH TOOL VERRY
+    # =========================================================================
+
+    def _on_verry_pipeline_toggled(self):
+        """Bật/tắt chế độ pipeline kết hợp giữa Tool Reg và Tool Verry."""
+        is_on = bool(self.var_enable_verry_pipeline.get()) if hasattr(self, "var_enable_verry_pipeline") else False
+        self.config["enable_verry_pipeline"] = is_on
+        accent_color = getattr(AppTheme, "SUCCESS", "#22c55e") if is_on else getattr(AppTheme, "TEXT_MUTED", "#94a3b8")
+        if hasattr(self, "chk_verry_pipeline"):
+            try:
+                self.chk_verry_pipeline.configure(fg=accent_color)
+            except Exception:
+                pass
+        if hasattr(self, "chk_dash_verry_pipeline"):
+            try:
+                self.chk_dash_verry_pipeline.configure(fg=accent_color)
+            except Exception:
+                pass
+        st_txt = "BẬT" if is_on else "TẮT"
+        delay_txt = self.var_verry_pipeline_delay.get() if hasattr(self, "var_verry_pipeline_delay") else "2 phút"
+        self.log(f"🔗 [Pipeline Verry] Đã {st_txt} chế độ Tự động chuyển acc NVR sang Tool Verry [Hẹn giờ sau {delay_txt}]!", "info")
+        self.save_config(show_toast=False)
+
+    def _browse_verry_pipeline_dir(self):
+        """Mở hộp thoại chọn thư mục Tool Verry."""
+        from tkinter import filedialog
+        cur_dir = self.var_verry_pipeline_dir.get().strip() if hasattr(self, "var_verry_pipeline_dir") else ""
+        if not os.path.exists(cur_dir):
+            cur_dir = r"C:\Users\truon\Downloads"
+        new_dir = filedialog.askdirectory(initialdir=cur_dir, title="Chọn thư mục Tool Verry")
+        if new_dir:
+            self.var_verry_pipeline_dir.set(new_dir)
+            self.config["verry_pipeline_dir"] = new_dir
+            self.save_config(show_toast=False)
+            self._check_verry_pipeline_status()
+
+    def _check_verry_pipeline_status(self):
+        """Kiểm tra kết nối và trạng thái Tool Verry trong background thread."""
+        def _worker():
+            v_dir = self.var_verry_pipeline_dir.get().strip() if hasattr(self, "var_verry_pipeline_dir") else r"C:\Users\truon\Downloads\verry"
+            if not os.path.exists(v_dir):
+                msg = f"❌ Không tìm thấy thư mục Verry: {v_dir}"
+                self.log(msg, "warning")
+                if hasattr(self, "lbl_verry_pipeline_status"):
+                    self.lbl_verry_pipeline_status.configure(text=msg, fg=AppTheme.DANGER)
+                return
+
+            cfg_file = os.path.join(v_dir, "config.json")
+            if not os.path.exists(cfg_file):
+                msg = f"⚠️ Tìm thấy thư mục nhưng thiếu config.json trong {v_dir}"
+                self.log(msg, "warning")
+                if hasattr(self, "lbl_verry_pipeline_status"):
+                    self.lbl_verry_pipeline_status.configure(text=msg, fg=AppTheme.WARNING)
+                return
+
+            from core.nvr_pipeline_bridge import is_verry_gui_running, get_pipeline_summary
+            is_running = is_verry_gui_running(v_dir)
+            summary = get_pipeline_summary(v_dir)
+
+            run_state = "ĐANG MỞ GIAO DIỆN [Sẵn sàng nhận nick]" if is_running else "Chưa mở giao diện [Sẽ chạy nền tự động]"
+            status_txt = f"✅ Khớp Tool Verry: [{run_state}] | Đang ngấu: {summary['maturing']} | Chờ xác minh: {summary['waiting']} | LIVE: {summary['live']}"
+            self.log(f"🔗 [Pipeline Verry] {status_txt}", "success")
+            if hasattr(self, "lbl_verry_pipeline_status"):
+                self.lbl_verry_pipeline_status.configure(text=f"● {status_txt}", fg=AppTheme.SUCCESS)
+
+        threading.Thread(target=_worker, daemon=True, name="CheckVerryStatus").start()
+
+    def _refresh_verry_pipeline_status(self):
+        """Làm mới trạng thái hàng đợi Verry."""
+        self._check_verry_pipeline_status()
 
     # =========================================================================
     # BOT SHOP AUTO-UPLOAD INTEGRATION (MEDIA ID)
