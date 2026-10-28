@@ -424,3 +424,13 @@ async def test_admin_redirect_loop_prevention_and_single_icons(test_app):
             auth_res = await authentication_backend.authenticate(req_admin)
             assert auth_res is True
             assert "token" in req_admin.session
+
+            # 5. Check no JavaScript syntax errors in HTML scripts
+            assert "String.fromCharCode(10)" in r.text
+            assert "var usdRate =" in r.text
+            assert "bootstrap.bundle.min.js" in r.text
+            assert "addEventListener('click'" in r.text
+            # Verify no unescaped multiline string literal joins in script tags
+            import re
+            for m in re.finditer(r'<script[\s\S]*?</script>', r.text):
+                assert "join('\n')" not in m.group(0), "Broken unescaped multiline join detected in script tag"

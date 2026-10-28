@@ -255,6 +255,8 @@ def render_base_layout(
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- Bootstrap 5.3 JS Bundle in head for instant modal availability -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -338,6 +340,12 @@ def render_base_layout(
         .top-bar a:not(.dropdown-item):hover {{
             opacity: 1;
             text-decoration: none;
+        }}
+        .modal {{
+            z-index: 10500 !important;
+        }}
+        .modal-backdrop {{
+            z-index: 10400 !important;
         }}
         .top-bar .dropdown-menu,
         .dropdown-menu {{
@@ -1774,6 +1782,7 @@ async def web_home(request: Request):
     <script>
         var isUserLoggedIn = {'true' if user else 'false'};
         var currentBalanceUsd = {balance};
+        var usdRate = {rate};
         var activeSubMaxStock = 0;
 
         function filterCategory(catId, btn) {{
@@ -1788,13 +1797,26 @@ async def web_home(request: Request):
             }});
         }}
 
-        function handleBuyClick(btn) {{
+        function handleBuyClick(el) {{
+            var btn = el ? (el.closest ? (el.closest('.btn-open-buy') || el) : el) : null;
+            if (!btn) return;
             var subId = parseInt(btn.getAttribute('data-sub-id'));
             var subName = btn.getAttribute('data-sub-name') || '';
             var unitPrice = parseFloat(btn.getAttribute('data-unit-price')) || 0.02;
             var stockQty = parseInt(btn.getAttribute('data-stock-qty')) || 0;
             openBuyModal(subId, subName, unitPrice, stockQty);
         }}
+
+        // Event delegation fallback so clicks never fail
+        document.addEventListener('DOMContentLoaded', function() {{
+            document.body.addEventListener('click', function(e) {{
+                var targetBtn = e.target.closest ? e.target.closest('.btn-open-buy') : null;
+                if (targetBtn) {{
+                    e.preventDefault();
+                    handleBuyClick(targetBtn);
+                }}
+            }});
+        }});
 
         function openBuyModal(subId, subName, unitPrice, stockQty) {{
             if (!isUserLoggedIn) {{
@@ -1952,7 +1974,7 @@ async def web_home(request: Request):
                     document.getElementById('buyModalSuccessStep').classList.remove('d-none');
                     document.getElementById('resOrderId').innerText = '#' + data.order_id;
                     document.getElementById('resOrderQty').innerText = data.quantity;
-                    document.getElementById('deliveredAccountsArea').value = data.accounts.join('\n');
+                    document.getElementById('deliveredAccountsArea').value = (data.accounts || []).join(String.fromCharCode(10));
 
                     currentBalanceUsd = data.new_balance;
                     var newVnd = Math.round(currentBalanceUsd * usdRate).toLocaleString('vi-VN') + ' đ';
@@ -3113,7 +3135,7 @@ async def web_orders(request: Request):
             if (data.status === 'success') {{
                 currentOrderAccounts = data.accounts || [];
                 document.getElementById('modalOrderCount').innerText = currentOrderAccounts.length;
-                document.getElementById('modalOrderTextarea').value = currentOrderAccounts.join('\n');
+                document.getElementById('modalOrderTextarea').value = (currentOrderAccounts || []).join(String.fromCharCode(10));
             }} else {{
                 document.getElementById('modalOrderTextarea').value = 'Lỗi: ' + (data.message || 'Không thể tải');
             }}
@@ -3154,7 +3176,7 @@ async def web_orders(request: Request):
             const resp = await fetch('/api/web/order/' + orderId);
             const data = await resp.json();
             if (data.status === 'success' && data.accounts) {{
-                const blob = new Blob([data.accounts.join('\n')], {{ type: 'text/plain;charset=utf-8' }});
+                const blob = new Blob([(data.accounts || []).join(String.fromCharCode(10))], {{ type: 'text/plain;charset=utf-8' }});
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
