@@ -1367,8 +1367,10 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         if self.config.get("reg_mode") == "verify_nvr" and hasattr(self, "tree") and not self.tree.get_children():
             self.populate_table_with_nvr_accounts()
 
+        self._pipeline_ready_times = {}
         self.root.bind("<FocusIn>", self._on_window_focus)
         self.root.after(100, self.process_queue_events)
+        self.root.after(1000, self._pipeline_sync_tick)
         if self.config.get("auto_rotate_proxy", False):
             self.root.after(2000, self._ensure_auto_rotate_daemon_running)
 
@@ -6518,6 +6520,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         self.tree.tag_configure("unverified", foreground=AppTheme.WARNING, font=AppTheme.FONT_BODY_BOLD)
         self.tree.tag_configure("unver", foreground=AppTheme.WARNING, font=AppTheme.FONT_BODY_BOLD)
         self.tree.tag_configure("running", foreground=AppTheme.INFO)
+        self.tree.tag_configure("maturing", foreground="#38bdf8", font=AppTheme.FONT_BODY_BOLD)
 
         sb_y = ttk.Scrollbar(table_container, orient=tk.VERTICAL, command=self.tree.yview)
         sb_x = ttk.Scrollbar(table_container, orient=tk.HORIZONTAL, command=self.tree.xview)
@@ -7250,6 +7253,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 self._tree_item_values.clear()
             if hasattr(self, "_tree_item_tags"):
                 self._tree_item_tags.clear()
+            if hasattr(self, "_pipeline_ready_times"):
+                self._pipeline_ready_times.clear()
             self.stat_total = 0
             self.stat_success = 0
             self.stat_failed = 0
@@ -7733,7 +7738,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
             is_die_match = any(t in tags for t in ("die", "failed", "danger")) or any(k in status_val for k in ("die", "282", "khóa", "vô hiệu", "checkpoint", "tạm ngưng", "ufac", "hết phiên"))
             is_live_match = (not is_die_match) and (any(t in tags for t in ("live", "success")) or "live" in status_val) and ("nvr" not in status_val and "chờ" not in status_val)
-            is_unver_match = (not is_die_match) and (not is_live_match) and (any(t in tags for t in ("unver", "unverified", "warning", "running")) or any(k in status_val for k in ("chưa", "nvr", "chờ", "unver", "đang xử lý")))
+            is_unver_match = (not is_die_match) and (not is_live_match) and (any(t in tags for t in ("unver", "unverified", "warning", "running", "maturing")) or any(k in status_val for k in ("chưa", "nvr", "chờ", "unver", "đang xử lý")))
 
             if is_die_match:
                 failed += 1
@@ -10411,6 +10416,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         nvr_list_to_run.append(acc_map[citm])
             if not nvr_list_to_run:
                 nvr_list_to_run = list(getattr(self, "nvr_accounts_queue", []))
+            if not nvr_list_to_run and hasattr(self, "_row_acc_data") and self._row_acc_data:
+                nvr_list_to_run = list(self._row_acc_data.values())
 
         try:
             num_threads = max(1, int(str(self.spn_threads.get()).strip()))
@@ -11791,15 +11798,28 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 if nvr_idx < len(nvr_list):
                                     if max_accs > 0 and nvr_idx >= max_accs:
                                         break
-                                    curr_acc_data = nvr_list[nvr_idx]
-                                    nvr_idx += 1
-                                    current_num = nvr_idx
-                                    break
+                                    now_ts = time.time()
+                                    chosen_idx = -1
+                                    for scan_i in range(nvr_idx, len(nvr_list)):
+                                        cand = nvr_list[scan_i]
+                                        cand_ready = float(cand.get("ready_at") or 0.0)
+                                        if cand_ready <= 0 or now_ts >= cand_ready:
+                                            chosen_idx = scan_i
+                                            break
+                                    if chosen_idx != -1:
+                                        if chosen_idx != nvr_idx:
+                                            curr_acc_data = nvr_list.pop(chosen_idx)
+                                            nvr_list.insert(nvr_idx, curr_acc_data)
+                                        else:
+                                            curr_acc_data = nvr_list[nvr_idx]
+                                        nvr_idx += 1
+                                        current_num = nvr_idx
+                                        break
                             if not pipeline_active:
                                 break
                             if max_accs > 0 and successful_accs >= max_accs:
                                 break
-                            if self.stop_event.wait(timeout=1.5):
+                            if self.stop_event.wait(timeout=1.0):
                                 break
                         if not curr_acc_data:
                             break
@@ -11812,6 +11832,13 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             current_num = total_attempts
 
                     target_uid = str(curr_acc_data.get("uid", "")).strip() if (curr_reg_mode == "verify_nvr" and curr_acc_data) else ""
+                    if curr_reg_mode == "verify_nvr" and target_uid:
+                        self.event_queue.put(("row_state_update", {
+                            "uid": target_uid,
+                            "worker_id": worker_id,
+                            "status": "🔄 Đang xác minh OTP...",
+                            "tag": "running"
+                        }))
                     acc_custom_proxy = str(curr_acc_data.get("proxy", "")).strip() if (curr_reg_mode == "verify_nvr" and curr_acc_data) else ""
                     if acc_custom_proxy:
                         eff_proxy_str = acc_custom_proxy
@@ -14860,6 +14887,160 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
     def _refresh_verry_pipeline_status(self):
         """Làm mới trạng thái hàng đợi Verry."""
         self._check_verry_pipeline_status()
+
+    def _pipeline_sync_tick(self):
+        """
+        Đồng bộ định kỳ mỗi 1 giây giữa hàng đợi Pipeline và Bảng chính (Treeview):
+        1. Tự động kéo mọi tài khoản NVR đang ngấu/chờ verry từ pipeline_nvr_queue.json lên Bảng.
+        2. Đếm ngược thời gian (Realtime Countdown) hiển thị trên cột Tình trạng:
+           VD: '⏳ Chờ ngấu: 01:59' -> '01:58' -> ... -> '⚡ Sẵn sàng xác minh'.
+        3. Cập nhật số liệu thống kê & nút Bắt đầu xác minh.
+        """
+        try:
+            if hasattr(self, "tree") and not getattr(self, "_closing", False):
+                self._update_pipeline_table_countdown()
+        except Exception as e:
+            logger.debug(f"Error in _pipeline_sync_tick: {e}")
+        finally:
+            if hasattr(self, "root") and not getattr(self, "_closing", False):
+                try:
+                    self.root.after(1000, self._pipeline_sync_tick)
+                except Exception:
+                    pass
+
+    def _update_pipeline_table_countdown(self):
+        """Quét và đếm ngược thời gian ngấu realtime cho các tài khoản NVR trên bảng."""
+        if not hasattr(self, "tree"):
+            return
+
+        is_pipeline_enabled = bool(getattr(self, "var_enable_verry_pipeline", None) and self.var_enable_verry_pipeline.get())
+        curr_reg_mode = self.config.get("reg_mode", "")
+        # Chạy đồng bộ nếu pipeline được bật hoặc đang ở chế độ xác minh NVR
+        if not is_pipeline_enabled and curr_reg_mode != "verify_nvr":
+            return
+
+        v_dir = self.var_verry_pipeline_dir.get().strip() if hasattr(self, "var_verry_pipeline_dir") else r"C:\Users\truon\Downloads\verry"
+        if not os.path.exists(v_dir):
+            v_dir = os.getcwd()
+
+        from core.nvr_pipeline_bridge import NVRPipelineStorage
+        q_data = NVRPipelineStorage.load_queue(v_dir)
+        items = q_data.get("items", {})
+        if not items:
+            return
+
+        now_ts = time.time()
+        if not hasattr(self, "_tree_items_by_uid"):
+            self._tree_items_by_uid = {}
+        if not hasattr(self, "_pipeline_ready_times"):
+            self._pipeline_ready_times = {}
+
+        has_new_inserted = False
+
+        # 1. Quét các acc trong pipeline queue, nếu chưa có trên bảng thì nạp lên ngay
+        for uid_k, itm in items.items():
+            uid_str = str(uid_k).strip()
+            if not uid_str:
+                continue
+
+            st = itm.get("status", "waiting")
+            ready_ts = float(itm.get("ready_at") or 0.0)
+            if ready_ts > 0:
+                self._pipeline_ready_times[uid_str] = ready_ts
+
+            # Nếu chưa có trên bảng thì thêm vào
+            item_id = self._tree_items_by_uid.get(uid_str)
+            if not item_id or not self.tree.exists(item_id):
+                # Chỉ nạp các acc waiting hoặc processing
+                if st in ("waiting", "processing"):
+                    self.row_counter += 1
+                    pwd = str(itm.get("password") or "").strip()
+                    twofa = str(itm.get("two_factor_secret") or "").strip()
+                    cookie = str(itm.get("cookie") or "").strip()
+                    token = str(itm.get("token") or "").strip()
+                    email = str(itm.get("email") or "").strip()
+                    target = email if email else "(Chờ gán Mail)"
+                    cookie_disp = (cookie[:32] + "...") if len(cookie) > 32 else cookie
+                    token_disp = (token[:24] + "...") if len(token) > 24 else token
+
+                    rem_sec = max(0, int(ready_ts - now_ts)) if ready_ts > 0 else 0
+                    if st == "processing":
+                        status_disp = "🔄 Đang xác minh..."
+                        tag = "running"
+                    elif rem_sec > 0:
+                        mm, ss = divmod(rem_sec, 60)
+                        status_disp = f"⏳ Chờ ngấu: {mm:02d}:{ss:02d}"
+                        tag = "maturing"
+                    else:
+                        status_disp = "⚡ Sẵn sàng xác minh"
+                        tag = "unverified"
+
+                    c_time = itm.get("created_at") or now_ts
+                    now_str = datetime.fromtimestamp(c_time).strftime("%H:%M:%S")
+                    row_vals = (
+                        "☑",
+                        self.row_counter,
+                        uid_str,
+                        target,
+                        pwd,
+                        twofa,
+                        cookie_disp,
+                        token_disp,
+                        "(Chờ cấp IP)",
+                        status_disp,
+                        now_str
+                    )
+                    new_id = self.tree.insert("", "end", values=row_vals, tags=(tag,))
+                    self._tree_items_by_uid[uid_str] = new_id
+                    if hasattr(self, "_tree_item_values"):
+                        self._tree_item_values[new_id] = list(row_vals)
+                    if hasattr(self, "_tree_item_tags"):
+                        self._tree_item_tags[new_id] = (tag,)
+                    if hasattr(self, "_row_full_lines"):
+                        self._row_full_lines[new_id] = itm.get("raw_line") or f"{uid_str}|{pwd}|{cookie}"
+                    if hasattr(self, "_row_acc_data"):
+                        self._row_acc_data[new_id] = itm
+                    has_new_inserted = True
+
+        # 2. Đếm ngược realtime từng giây trên cột status
+        for uid_str, ready_ts in list(self._pipeline_ready_times.items()):
+            item_id = self._tree_items_by_uid.get(uid_str)
+            if not item_id or not self.tree.exists(item_id):
+                continue
+
+            current_status = str(self.tree.set(item_id, "status") or "")
+            # Chỉ đếm ngược nếu trạng thái đang là Chờ ngấu hoặc Sẵn sàng
+            if "Chờ ngấu" in current_status or "Sẵn sàng" in current_status:
+                rem_sec = int(ready_ts - now_ts)
+                if rem_sec > 0:
+                    mm, ss = divmod(rem_sec, 60)
+                    new_status = f"⏳ Chờ ngấu: {mm:02d}:{ss:02d}"
+                    if current_status != new_status:
+                        self.tree.set(item_id, "status", new_status)
+                        self.tree.item(item_id, tags=("maturing",))
+                else:
+                    if current_status != "⚡ Sẵn sàng xác minh":
+                        self.tree.set(item_id, "status", "⚡ Sẵn sàng xác minh")
+                        self.tree.item(item_id, tags=("unverified",))
+                        self._pipeline_ready_times.pop(uid_str, None)
+
+        if has_new_inserted:
+            self.recalculate_stats()
+            self.update_stats_display()
+
+        # 3. Cập nhật nhãn nút bắt đầu xác minh
+        if not self.is_running and hasattr(self, "btn_start") and curr_reg_mode == "verify_nvr":
+            maturing_count = len(self._pipeline_ready_times)
+            ready_count = max(0, self.stat_unverified - maturing_count)
+            if maturing_count > 0:
+                self.btn_start.config(text=f"▶ BẮT ĐẦU XÁC MINH ({ready_count} SẴN SÀNG | {maturing_count} ĐANG NGẤU)")
+            else:
+                total_cnt = len(self.tree.get_children())
+                self.btn_start.config(text=f"▶ BẮT ĐẦU XÁC MINH ({total_cnt} ACC NVR)")
+            if hasattr(self, "lbl_nvr_count"):
+                self.lbl_nvr_count.config(
+                    text=f"✅ Đang có {len(self.tree.get_children())} acc hiển thị trên bảng ({ready_count} sẵn sàng, {maturing_count} đang ngấu)"
+                )
 
     # =========================================================================
     # BOT SHOP AUTO-UPLOAD INTEGRATION (MEDIA ID)
