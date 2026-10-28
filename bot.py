@@ -569,7 +569,7 @@ app.add_middleware(AntiDDoSMiddleware, max_requests_per_minute=120)
 
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
-    return {"status": "ok", "message": "AiogramShopBot is running", "version": "v3_policy_wallet_fix"}
+    return {"status": "ok", "message": "AiogramShopBot is running", "version": "v4_multipart_bulk_upload_fix"}
 
 
 @app.get("/cron/check-live")

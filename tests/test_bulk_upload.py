@@ -31,7 +31,7 @@ def test_bulk_upload_request_model():
 
 def test_bulk_upload_request_with_media_id():
     req = BulkUploadRequest(
-        media_id="0AgACAgUAAxUAAWrdTEFel8nwqyfqdm-JW5tDEZQ-AAJmE2sbA8fhVvptkVWyk7XSAQADAgADYwADPQQ",
+        media_id="0AgACAgUAAxUAAWrdTEFel8nwqyfqdm-IW5tDEZQ-AAJmE2sbA8fhVvptkVWyk7XSAQADAgADYwADPQQ",
         items=[
             "100082728282|Pass123|c_user=100082728282; xs=123;"
         ]
@@ -42,40 +42,30 @@ def test_bulk_upload_request_with_media_id():
 
 
 def test_bulk_upload_admin_view_in_bot():
-    with open("bot.py", "r", encoding="utf-8") as f:
-        content = f.read()
+    with open("bot.py", "r", encoding="utf-8") as fw:
+        content = fw.read()
     assert "admin.add_base_view(BulkUploadAdminView)" in content
 
 
 @pytest.mark.asyncio
 async def test_multipart_size_limit_exceeds_1024kb():
-    """Kiem tra upload tai khoan vuot qua 1024KB khong bi loi 400 Part exceeded maximum size of 1024KB."""
     import utils.multipart_fix  # noqa: F401
     from starlette.requests import Request
 
-    boundary = "boundary_test_multipart_exceeded_check"
-    line = b"10008892182|Pass123|2FA_CODE|mail@domain.com|mailpass
-"
-    large_payload = line * 50000  # ~2.7 MB, vuot xa nguong 1024KB (1MB)
+    boundary = "test_boundary_multipart_check"
+    line = b"10008892182|Pass123|2FA_CODE|mail@domain.com|mailpass\n"
+    large_payload = line * 50000
     assert len(large_payload) > 1024 * 1024
 
+    crlf = b"\r\n"
     body = (
-        f"--{boundary}
-".encode() +
-        b'Content-Disposition: form-data; name="private_data"
-
-' +
-        large_payload +
-        b"
-" +
-        f"--{boundary}
-".encode() +
-        b'Content-Disposition: form-data; name="price"
-
-0.25
-' +
-        f"--{boundary}--
-".encode()
+        b"--" + boundary.encode() + crlf +
+        b'Content-Disposition: form-data; name="private_data"' + crlf + crlf +
+        large_payload + crlf +
+        b"--" + boundary.encode() + crlf +
+        b'Content-Disposition: form-data; name="price"' + crlf + crlf +
+        b"0.25" + crlf +
+        b"--" + boundary.encode() + b"--" + crlf
     )
 
     sent = False
