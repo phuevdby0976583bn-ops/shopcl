@@ -1363,9 +1363,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         self.refresh_hotmail_count()
         self.load_table_session()
 
-        # Nếu đang ở chế độ Xác minh NVR mà bảng đang trống, tự động nạp từ file accounts_unverified.txt
-        if self.config.get("reg_mode") == "verify_nvr" and hasattr(self, "tree") and not self.tree.get_children():
-            self.populate_table_with_nvr_accounts()
+        # Không tự động nạp dữ liệu cũ vào bảng khi khởi động tool (tránh gây nhầm lẫn khi người dùng chưa thêm tài khoản)
 
         self._pipeline_ready_times = {}
         self.root.bind("<FocusIn>", self._on_window_focus)
@@ -2788,7 +2786,13 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 except Exception:
                     pass
             bak_path = self.session_path + ".bak"
-            if os.path.exists(self.session_path):
+            if not data.get("rows"):
+                try:
+                    with open(bak_path, "w", encoding="utf-8") as f_b:
+                        json.dump(data, f_b, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
+            elif os.path.exists(self.session_path):
                 try:
                     import shutil
                     shutil.copyfile(self.session_path, bak_path)
@@ -2836,12 +2840,14 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 logger.warning(f"Loi doc {self.session_path}: {e_main}")
                 data = None
 
-        # 2. Tu dong khoi phuc tu file backup .bak
+        # 2. Chi tu dong khoi phuc tu file backup .bak neu file chinh bi loi / khong ton tai VA file backup co chua rows
         if not data and os.path.exists(bak_file):
             try:
                 with open(bak_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                self.log(f"[*] Da tu dong khoi phuc phien lam viec tu file sao luu ({bak_file})!", "info")
+                    bak_data = json.load(f)
+                if isinstance(bak_data, dict) and bak_data.get("rows"):
+                    data = bak_data
+                    self.log(f"[*] Da tu dong khoi phuc phien lam viec tu file sao luu ({bak_file})!", "info")
             except Exception as e_bak:
                 logger.warning(f"Loi doc file backup {bak_file}: {e_bak}")
                 data = None
@@ -2871,6 +2877,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
         try:
             rows = data.get("rows", [])
+            if not rows:
+                return
             if not hasattr(self, "_row_full_lines"):
                 self._row_full_lines = {}
             if not hasattr(self, "_row_acc_data"):
@@ -7233,14 +7241,71 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         self.log(f"[Copy] Đã copy {len(lines)} tài khoản vào Clipboard!", "success")
         messagebox.showinfo("Đã Copy", f"Đã copy {len(lines)} tài khoản vào Clipboard!")
 
+    def _on_uids_deleted_by_user(self, uids: List[str]):
+        """
+        Xử lý triệt để khi người dùng xóa tài khoản khỏi bảng:
+        1. Ghi nhớ UID vào self._deleted_pipeline_uids để luồng ngầm không bao giờ nạp lại.
+        2. Dọn dẹp cache bộ nhớ (_tree_items_by_uid, _pipeline_ready_times, nvr_accounts_queue).
+        3. Xóa UID khỏi file pipeline_nvr_queue.json và accounts_unverified.txt trên đĩa.
+        """
+        if not uids:
+            return
+        cleaned_uids = [str(u).strip() for u in uids if str(u).strip() and str(u).strip() != "N/A"]
+        if not cleaned_uids:
+            return
+
+        if not hasattr(self, "_deleted_pipeline_uids"):
+            self._deleted_pipeline_uids = set()
+        self._deleted_pipeline_uids.update(cleaned_uids)
+
+        if hasattr(self, "_tree_items_by_uid"):
+            for u in cleaned_uids:
+                self._tree_items_by_uid.pop(u, None)
+        if hasattr(self, "_pipeline_ready_times"):
+            for u in cleaned_uids:
+                self._pipeline_ready_times.pop(u, None)
+
+        if hasattr(self, "nvr_accounts_queue") and self.nvr_accounts_queue:
+            u_set = set(cleaned_uids)
+            self.nvr_accounts_queue = [
+                a for a in self.nvr_accounts_queue
+                if str(a.get("uid") or "").strip() not in u_set
+            ]
+
+        # Xóa khỏi hàng đợi pipeline và file accounts_unverified.txt trên đĩa
+        try:
+            from core.nvr_pipeline_bridge import remove_accounts_from_pipeline
+            dirs_to_clean = [os.getcwd()]
+            if hasattr(self, "var_verry_pipeline_dir"):
+                d = self.var_verry_pipeline_dir.get().strip()
+                if d and d not in dirs_to_clean:
+                    dirs_to_clean.append(d)
+            for d in dirs_to_clean:
+                if os.path.exists(d):
+                    remove_accounts_from_pipeline(cleaned_uids, verry_dir=d)
+        except Exception as e_q:
+            logger.debug(f"Error removing UIDs from pipeline: {e_q}")
+
     def clear_entire_table(self):
         if not self.tree.get_children():
             return
         if messagebox.askyesno("Xác nhận", "Bạn có chắc chắn muốn xóa sạch toàn bộ tài khoản trên bảng?"):
+            all_uids = []
             for item in self.tree.get_children():
+                vals = self._get_tree_values(item)
+                if vals and len(vals) > 2 and vals[2] and vals[2] != "N/A":
+                    all_uids.append(str(vals[2]).strip())
                 self.tree.delete(item)
+
+            if not hasattr(self, "_deleted_pipeline_uids"):
+                self._deleted_pipeline_uids = set()
+            self._deleted_pipeline_uids.update(all_uids)
+
             self.row_counter = 0
-            self._row_full_lines = {}
+            if hasattr(self, "_row_full_lines"):
+                self._row_full_lines.clear()
+            if hasattr(self, "_row_acc_data"):
+                self._row_acc_data.clear()
             if hasattr(self, "_tree_item_values"):
                 self._tree_item_values.clear()
             if hasattr(self, "_tree_item_tags"):
@@ -7249,12 +7314,24 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 self._worker_item_map.clear()
             if hasattr(self, "_tree_items_by_uid"):
                 self._tree_items_by_uid.clear()
-            if hasattr(self, "_tree_item_values"):
-                self._tree_item_values.clear()
-            if hasattr(self, "_tree_item_tags"):
-                self._tree_item_tags.clear()
             if hasattr(self, "_pipeline_ready_times"):
                 self._pipeline_ready_times.clear()
+            self.nvr_accounts_queue = []
+
+            # Xóa sạch hàng đợi pipeline trên đĩa
+            try:
+                from core.nvr_pipeline_bridge import clear_pipeline_queue
+                dirs_to_clean = [os.getcwd()]
+                if hasattr(self, "var_verry_pipeline_dir"):
+                    d = self.var_verry_pipeline_dir.get().strip()
+                    if d and d not in dirs_to_clean:
+                        dirs_to_clean.append(d)
+                for d in dirs_to_clean:
+                    if os.path.exists(d):
+                        clear_pipeline_queue(d)
+            except Exception:
+                pass
+
             self.stat_total = 0
             self.stat_success = 0
             self.stat_failed = 0
@@ -7263,11 +7340,20 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             self.session_new_unver = 0
             self.session_new_failed = 0
             self.update_stats_display()
-            if os.path.exists(self.session_path):
+
+            # Xóa triệt để cả session_path và session_path.bak
+            empty_session = {
+                "rows": [],
+                "stats": {"total": 0, "success": 0, "failed": 0, "unverified": 0}
+            }
+            for sf in [self.session_path, self.session_path + ".bak", self.session_path + ".tmp"]:
                 try:
-                    os.remove(self.session_path)
+                    if os.path.exists(sf):
+                        with open(sf, "w", encoding="utf-8") as f:
+                            json.dump(empty_session, f, indent=2, ensure_ascii=False)
                 except Exception:
                     pass
+            self.save_table_session(force=True)
             self.log("[*] Đã xóa sạch toàn bộ dữ liệu bảng, sẵn sàng cho phiên mới!", "info")
 
     def delete_selected_rows(self):
@@ -7276,18 +7362,27 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             messagebox.showinfo("Thông báo", "Vui lòng tích chọn dòng cần xóa!")
             return
         if messagebox.askyesno("Xác nhận xóa", f"Bạn có chắc muốn xóa {len(items)} dòng đã chọn?"):
+            deleted_uids = []
             for item in items:
+                vals = self._get_tree_values(item)
+                if vals and len(vals) > 2 and vals[2] and vals[2] != "N/A":
+                    deleted_uids.append(str(vals[2]).strip())
                 self.tree.delete(item)
                 if hasattr(self, "_tree_item_values"):
                     self._tree_item_values.pop(item, None)
                 if hasattr(self, "_tree_item_tags"):
                     self._tree_item_tags.pop(item, None)
+                if hasattr(self, "_row_full_lines"):
+                    self._row_full_lines.pop(item, None)
+                if hasattr(self, "_row_acc_data"):
+                    self._row_acc_data.pop(item, None)
             if hasattr(self, "_worker_item_map"):
                 for wid, itm in list(self._worker_item_map.items()):
                     if itm in items:
                         self._worker_item_map.pop(wid, None)
+            self._on_uids_deleted_by_user(deleted_uids)
             self.recalculate_stats_from_tree()
-            self.save_table_session()
+            self.save_table_session(force=True)
             self.log(f"[*] Đã xóa {len(items)} dòng khỏi bảng.", "info")
 
     def on_search_key_release(self, event=None):
@@ -7401,28 +7496,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 self.log("[*] Đã copy toàn bộ nội dung log vào Clipboard.", "info")
 
     def clear_table_data(self):
-        if not self.tree.get_children():
-            return
-        if messagebox.askyesno("Xác nhận", "Bạn có chắc chắn muốn xóa TOÀN BỘ dữ liệu trên bảng?"):
-            for item in self.tree.get_children():
-                self.tree.delete(item)
-            if hasattr(self, "_worker_item_map"):
-                self._worker_item_map.clear()
-            if hasattr(self, "_tree_items_by_uid"):
-                self._tree_items_by_uid.clear()
-            if hasattr(self, "_tree_item_values"):
-                self._tree_item_values.clear()
-            if hasattr(self, "_tree_item_tags"):
-                self._tree_item_tags.clear()
-            self.stat_total = 0
-            self.stat_success = 0
-            self.stat_failed = 0
-            self.stat_unverified = 0
-            self.row_counter = 0
-            self._row_full_lines = {}
-            self.update_stats_display()
-            self.save_table_session()
-            self.log("[*] Đã dọn dẹp sạch bảng tài khoản.", "info")
+        self.clear_entire_table()
 
     def open_nvr_import_dialog(self):
         """Mở hộp thoại Nhập danh sách tài khoản NVR thông minh."""
@@ -7644,6 +7718,13 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
         if not accs:
             return 0
+
+        # Nếu người dùng chủ động nạp lại danh sách thì mở khóa các UID này khỏi danh sách đã xóa
+        if hasattr(self, "_deleted_pipeline_uids") and accs:
+            for a in accs:
+                u_str = str(a.get("uid") or "").strip()
+                if u_str:
+                    self._deleted_pipeline_uids.discard(u_str)
 
         self.nvr_accounts_queue = list(accs)
 
@@ -14943,6 +15024,10 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             if not uid_str:
                 continue
 
+            # Bỏ qua nếu người dùng đã chủ động xóa tài khoản này khỏi bảng
+            if hasattr(self, "_deleted_pipeline_uids") and uid_str in self._deleted_pipeline_uids:
+                continue
+
             st = itm.get("status", "waiting")
             ready_ts = float(itm.get("ready_at") or 0.0)
             if ready_ts > 0:
@@ -15004,6 +15089,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
         # 2. Đếm ngược realtime từng giây trên cột status
         for uid_str, ready_ts in list(self._pipeline_ready_times.items()):
+            if hasattr(self, "_deleted_pipeline_uids") and uid_str in self._deleted_pipeline_uids:
+                self._pipeline_ready_times.pop(uid_str, None)
+                continue
             item_id = self._tree_items_by_uid.get(uid_str)
             if not item_id or not self.tree.exists(item_id):
                 continue
