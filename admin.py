@@ -1,3 +1,4 @@
+import utils.multipart_fix  # noqa: F401
 from sqladmin.authentication import AuthenticationBackend
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response

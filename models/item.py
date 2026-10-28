@@ -581,8 +581,11 @@ class ItemAdmin(ModelView, model=Item):
                 for line in clean_lines[1:]
             ]
             async with get_db_session() as session:
-                session.add_all(extra_items)
-                await session_commit(session)
+                chunk_size = 1000
+                for i in range(0, len(extra_items), chunk_size):
+                    chunk = extra_items[i:i + chunk_size]
+                    session.add_all(chunk)
+                    await session_commit(session)
 
         return first_obj
 

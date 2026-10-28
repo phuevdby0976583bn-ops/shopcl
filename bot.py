@@ -1,3 +1,4 @@
+import utils.multipart_fix  # noqa: F401 - Patch Starlette 1024KB limit
 import asyncio
 
 import logging
@@ -621,6 +622,9 @@ admin.add_base_view(PaymentApiConfigView)
 
 from admin_policy_view import WarrantyPolicyAdminView
 admin.add_base_view(WarrantyPolicyAdminView)
+
+from bulk_upload_view import BulkUploadAdminView
+admin.add_base_view(BulkUploadAdminView)
 
 
 

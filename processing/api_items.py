@@ -59,14 +59,19 @@ def is_request_authorized(request: Request, x_api_key: Optional[str] = None) -> 
 
 
 class BulkUploadRequest(BaseModel):
-    category_name: str
-    subcategory_name: str
-    price: float
-    description: str = "Tài khoản chất lượng cao"
+    category_name: Optional[str] = None
+    subcategory_name: Optional[str] = None
+    media_id: Optional[str] = None
+    price: Optional[float] = None
+    description: Optional[str] = "Tài khoản chất lượng cao"
     items: list[str]
     is_facebook: Optional[bool] = None
     check_live: Optional[bool] = None
     delete_die: Optional[bool] = None
+
+
+class LookupMediaIdRequest(BaseModel):
+    media_id: str
 
 
 @api_router.post("/items/bulk-upload")
@@ -82,25 +87,109 @@ async def bulk_upload_items(payload: BulkUploadRequest, request: Request, x_api_
 
     from services.facebook import is_facebook_product, is_facebook_clone, scan_and_filter_facebook_raw_lines
 
-    if payload.is_facebook is not None:
-        is_fb = payload.is_facebook
-    else:
-        is_fb = is_facebook_product(payload.category_name, payload.subcategory_name) or any(
-            is_facebook_clone(line) for line in payload.items[:10]
+    async with get_db_session() as session:
+        subcategory = None
+        category = None
+
+        # 1. Tìm theo Media ID nếu có truyền
+        raw_mid = (payload.media_id or "").strip()
+        if raw_mid:
+            cand_mids = [raw_mid]
+            if raw_mid.startswith('0'):
+                cand_mids.append(raw_mid[1:])
+            else:
+                cand_mids.append('0' + raw_mid)
+
+            subcat_stmt = select(Subcategory).where(Subcategory.media_id.in_(cand_mids))
+            subcat_res = await session.execute(subcat_stmt)
+            subcategory = subcat_res.scalars().first()
+
+            if not subcategory and len(raw_mid) >= 15:
+                prefix = raw_mid[:30] if len(raw_mid) >= 30 else raw_mid
+                subcat_stmt2 = select(Subcategory).where(Subcategory.media_id.contains(prefix))
+                subcat_res2 = await session.execute(subcat_stmt2)
+                subcategory = subcat_res2.scalars().first()
+
+            if subcategory:
+                item_stmt = select(Item).where(Item.subcategory_id == subcategory.id)
+                existing_item = (await session.execute(item_stmt)).scalars().first()
+                if existing_item and existing_item.category_id:
+                    category = (await session.execute(select(Category).where(Category.id == existing_item.category_id))).scalar_one_or_none()
+
+        # 2. Nếu chưa tìm thấy bằng Media ID, tìm bằng subcategory_name
+        if not subcategory:
+            subcat_name = (payload.subcategory_name or "").strip()
+            if not subcat_name:
+                if raw_mid:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Không tìm thấy Danh mục con nào khớp với Media ID: {raw_mid}"
+                    )
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cần cung cấp media_id hoặc subcategory_name để nạp hàng!"
+                )
+
+            subcat_stmt = select(Subcategory).where(Subcategory.name == subcat_name)
+            subcat_res = await session.execute(subcat_stmt)
+            subcategory = subcat_res.scalar_one_or_none()
+            if not subcategory:
+                subcategory = Subcategory(
+                    name=subcat_name,
+                    media_id=(raw_mid or "0no_image_default"),
+                    price=float(payload.price) if payload.price else 0.02,
+                    description=payload.description or "Clone Facebook chất lượng cao"
+                )
+                session.add(subcategory)
+                await session.flush()
+            else:
+                if payload.price and float(payload.price) > 0:
+                    subcategory.price = float(payload.price)
+                    from sqlalchemy import update
+                    await session.execute(
+                        update(Item)
+                        .where(Item.subcategory_id == subcategory.id, Item.is_sold == False)
+                        .values(price=float(payload.price))
+                    )
+                if payload.description:
+                    subcategory.description = payload.description
+
+        # 3. Tìm hoặc tự động tạo Category
+        if not category:
+            cat_name = (payload.category_name or "Clone Facebook").strip()
+            cat_stmt = select(Category).where(Category.name == cat_name)
+            cat_res = await session.execute(cat_stmt)
+            category = cat_res.scalar_one_or_none()
+            if not category:
+                first_cat = (await session.execute(select(Category).order_by(Category.id))).scalars().first()
+                if first_cat:
+                    category = first_cat
+                else:
+                    category = Category(name=cat_name, media_id="0no_image_default")
+                    session.add(category)
+                    await session.flush()
+
+        effective_price = float(subcategory.price) if (subcategory and subcategory.price and float(subcategory.price) > 0) else float(payload.price or 0.02)
+        effective_desc = payload.description or subcategory.description or "Clone Facebook chất lượng cao"
+
+        if payload.is_facebook is not None:
+            is_fb = payload.is_facebook
+        else:
+            is_fb = is_facebook_product(category.name, subcategory.name) or any(
+                is_facebook_clone(line) for line in payload.items[:10]
+            )
+
+        should_check_live = (
+            payload.check_live if payload.check_live is not None
+            else getattr(config, 'FB_AUTO_CHECK_ON_UPLOAD', True)
+        )
+        should_delete_die = (
+            payload.delete_die if payload.delete_die is not None
+            else getattr(config, 'FB_AUTO_DELETE_DIE_ON_UPLOAD', True)
         )
 
-    should_check_live = (
-        payload.check_live if payload.check_live is not None
-        else getattr(config, 'FB_AUTO_CHECK_ON_UPLOAD', True)
-    )
-    should_delete_die = (
-        payload.delete_die if payload.delete_die is not None
-        else getattr(config, 'FB_AUTO_DELETE_DIE_ON_UPLOAD', True)
-    )
+        should_filter_dups = getattr(config, 'FB_FILTER_DUPLICATE_UIDS', True)
 
-    should_filter_dups = getattr(config, 'FB_FILTER_DUPLICATE_UIDS', True)
-
-    async with get_db_session() as session:
         clean_lines, dead_lines, stats = await scan_and_filter_facebook_raw_lines(
             payload.items,
             check_live=(is_fb and should_check_live),
@@ -117,45 +206,7 @@ async def bulk_upload_items(payload: BulkUploadRequest, request: Request, x_api_
                 detail=f"Không thể nạp hàng! Tất cả {len(payload.items)} tài khoản đều không hợp lệ ({dup_count} nick trùng UID, {die_count} nick DIE)."
             )
 
-        # 1. Tìm hoặc tự động tạo Category
-        cat_stmt = select(Category).where(Category.name == payload.category_name.strip())
-        cat_res = await session.execute(cat_stmt)
-        category = cat_res.scalar_one_or_none()
-        if not category:
-            category = Category(name=payload.category_name.strip(), media_id="0no_image_default")
-            session.add(category)
-            await session.flush()
-
-        # 2. Tìm hoặc tự động tạo Subcategory
-        subcat_stmt = select(Subcategory).where(
-            Subcategory.name == payload.subcategory_name.strip()
-        )
-        subcat_res = await session.execute(subcat_stmt)
-        subcategory = subcat_res.scalar_one_or_none()
-        if not subcategory:
-            subcategory = Subcategory(
-                name=payload.subcategory_name.strip(),
-                media_id="0no_image_default",
-                price=float(payload.price) if payload.price else 0.02,
-                description=payload.description or "Clone Facebook chất lượng cao"
-            )
-            session.add(subcategory)
-            await session.flush()
-        else:
-            if payload.price and float(payload.price) > 0:
-                subcategory.price = float(payload.price)
-                from sqlalchemy import update
-                await session.execute(
-                    update(Item)
-                    .where(Item.subcategory_id == subcategory.id, Item.is_sold == False)
-                    .values(price=float(payload.price))
-                )
-            if payload.description:
-                subcategory.description = payload.description
-
-        effective_price = float(subcategory.price) if (subcategory and subcategory.price and float(subcategory.price) > 0) else float(payload.price or 0.02)
-
-        # 3. Tạo danh sách Items nạp vào kho
+        # 4. Tạo danh sách Items nạp vào kho
         items_to_add = []
         for line in clean_lines:
             item = Item(
@@ -166,7 +217,7 @@ async def bulk_upload_items(payload: BulkUploadRequest, request: Request, x_api_
                 price=effective_price,
                 is_sold=False,
                 is_new=True,
-                description=payload.description or subcategory.description
+                description=effective_desc
             )
             items_to_add.append(item)
 
@@ -198,7 +249,8 @@ async def bulk_upload_items(payload: BulkUploadRequest, request: Request, x_api_
             "category_name": category.name,
             "subcategory_id": subcategory.id,
             "subcategory_name": subcategory.name,
-            "price_per_item": payload.price
+            "media_id": subcategory.media_id,
+            "price_per_item": effective_price
         }
 
 
@@ -391,7 +443,16 @@ async def list_categories_and_subcategories(request: Request, x_api_key: str = H
         return {
             "status": "success",
             "categories": [{"id": c.id, "name": c.name} for c in cats],
-            "subcategories": [{"id": s.id, "name": s.name} for s in subcats]
+            "subcategories": [
+                {
+                    "id": s.id,
+                    "name": s.name,
+                    "price": float(s.price or 0.0),
+                    "description": s.description or "",
+                    "media_id": s.media_id or ""
+                }
+                for s in subcats
+            ]
         }
 
 
@@ -468,4 +529,71 @@ async def clean_duplicates_endpoint(request: Request, x_api_key: str = Header(No
             "status": "success",
             "message": msg,
             **result
+        }
+
+
+
+@api_router.post("/subcategory/lookup-media-id")
+@api_router.get("/subcategory/by-media-id/{media_id:path}")
+async def get_subcategory_by_media_id_endpoint(
+    request: Request,
+    media_id: Optional[str] = None,
+    payload: Optional[LookupMediaIdRequest] = None,
+    x_api_key: str = Header(None)
+):
+    """Tra cứu thông tin Danh mục con bằng Media ID để Tool kiểm tra kết nối & lấy đúng thư mục."""
+    if not is_request_authorized(request, x_api_key):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sai mã X-API-KEY hoặc chưa đăng nhập Admin!")
+
+    target_id = ""
+    if media_id:
+        target_id = media_id.strip()
+    elif payload and payload.media_id:
+        target_id = payload.media_id.strip()
+    else:
+        q_id = request.query_params.get("media_id") or ""
+        target_id = q_id.strip()
+
+    if not target_id:
+        raise HTTPException(status_code=400, detail="Media ID không được để trống!")
+
+    cand_mids = [target_id]
+    if target_id.startswith('0'):
+        cand_mids.append(target_id[1:])
+    else:
+        cand_mids.append('0' + target_id)
+
+    async with get_db_session() as session:
+        stmt = select(Subcategory).where(Subcategory.media_id.in_(cand_mids))
+        subcat = (await session.execute(stmt)).scalars().first()
+        if not subcat and len(target_id) >= 15:
+            prefix = target_id[:30] if len(target_id) >= 30 else target_id
+            stmt2 = select(Subcategory).where(Subcategory.media_id.contains(prefix))
+            subcat = (await session.execute(stmt2)).scalars().first()
+
+        if not subcat:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy Danh mục con nào với Media ID: {target_id}")
+
+        cat = None
+        it = (await session.execute(select(Item).where(Item.subcategory_id == subcat.id))).scalars().first()
+        if it and it.category_id:
+            cat = (await session.execute(select(Category).where(Category.id == it.category_id))).scalar_one_or_none()
+        if not cat:
+            cat = (await session.execute(select(Category).order_by(Category.id))).scalars().first()
+
+        unsold_count = len((await session.execute(select(Item.id).where(Item.subcategory_id == subcat.id, Item.is_sold == False))).scalars().all())
+
+        return {
+            "status": "success",
+            "found": True,
+            "subcategory": {
+                "id": subcat.id,
+                "name": subcat.name,
+                "price": float(subcat.price or 0.02),
+                "description": subcat.description or "",
+                "media_id": subcat.media_id,
+                "stock_count": unsold_count,
+                "category_id": cat.id if cat else None,
+                "category_name": cat.name if cat else "Clone Facebook"
+            }
         }

@@ -1,3 +1,4 @@
+import utils.multipart_fix  # noqa: F401
 # -*- coding: utf-8 -*-
 """
 Web Shop Khách Hàng - Bubba Gump Facebook Clone Shop

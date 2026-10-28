@@ -1,3 +1,4 @@
+import utils.multipart_fix  # noqa: F401
 import traceback
 import logging
 from aiogram import types, F, Router

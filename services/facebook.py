@@ -349,7 +349,10 @@ async def scan_and_filter_facebook_raw_lines(
 
     live_lines = []
     dead_lines = []
-    semaphore = asyncio.Semaphore(concurrency_limit)
+    effective_concurrency = concurrency_limit
+    if effective_concurrency == 15 and len(unique_lines) > 50:
+        effective_concurrency = min(50, max(15, len(unique_lines) // 20))
+    semaphore = asyncio.Semaphore(effective_concurrency)
 
     async def _check_line(line: str, http_session: aiohttp.ClientSession):
         uid = extract_uid(line)

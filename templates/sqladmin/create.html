@@ -1,0 +1,180 @@
+﻿{% extends "sqladmin/layout.html" %}
+{% from 'sqladmin/_macros.html' import render_form_fields %}
+
+{% block content %}
+<div class="col-12">
+  <div class="card shadow-sm border-0">
+    <div class="card-header bg-primary text-white d-flex align-items-center justify-content-between py-3">
+      <h3 class="card-title text-white mb-0 fs-4">
+        <i class="fa-solid fa-plus-circle me-2"></i>Thêm Mới {{ model_view.name }}
+      </h3>
+      {% if model_view.identity == 'item' %}
+      <a href="/admin/bulk-upload" class="btn btn-warning btn-sm fw-bold">
+        <i class="fa-solid fa-cloud-arrow-up me-1"></i> Chuyển sang Nạp Hàng Loạt (1000+)
+      </a>
+      {% endif %}
+    </div>
+
+    <div class="card-body py-4">
+      <form id="createModelForm" action="{{ url_for('admin:create', identity=model_view.identity) }}" method="POST" enctype="multipart/form-data">
+        <div class="row">
+          {% if error %}
+          <div class="col-12 mb-3">
+            <div class="alert alert-danger d-flex align-items-center shadow-sm" role="alert">
+              <i class="fa-solid fa-triangle-exclamation me-2 fs-4"></i>
+              <div><strong>Lỗi:</strong> {{ error }}</div>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+
+        {% if model_view.identity == 'item' %}
+        <div class="alert alert-info border-info mb-4">
+          <div class="d-flex align-items-center">
+            <i class="fa-solid fa-circle-info fs-3 text-info me-3"></i>
+            <div>
+              <div class="fw-bold">Nạp Tài Khoản / Clone Hàng Loạt (Đã nâng cấp dung lượng 500MB)</div>
+              <div class="small text-muted">
+                Bạn có thể dán trực tiếp hàng nghìn tài khoản hoặc bấm <strong>"Chọn file .txt"</strong> bên dưới để tự động đọc dữ liệu.
+              </div>
+            </div>
+          </div>
+          <div class="mt-3 pt-2 border-top border-info-subtle d-flex flex-wrap align-items-center gap-2">
+            <label class="btn btn-outline-primary btn-sm fw-bold mb-0" style="cursor: pointer;">
+              <i class="fa-solid fa-file-import me-1"></i> 📁 Chọn File .txt Nạp Nhanh
+              <input type="file" id="fileTxtPicker" accept=".txt,.csv" style="display: none;" onchange="handleFileChosen(event)">
+            </label>
+            <span id="fileChosenStatus" class="badge bg-secondary">Chưa chọn file (hoặc dán trực tiếp vào ô bên dưới)</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearPrivateData()">
+              <i class="fa-solid fa-eraser me-1"></i> Xoá nội dung ô dán
+            </button>
+          </div>
+        </div>
+        {% endif %}
+
+        <fieldset class="form-fieldset">
+          {{ render_form_fields(form, form_opts=form_opts) }}
+        </fieldset>
+
+        {% if model_view.identity == 'item' %}
+        <div class="mt-2 mb-4 p-2 bg-light rounded border text-muted small d-flex justify-content-between align-items-center">
+          <div>
+            <i class="fa-solid fa-list-ol me-1 text-primary"></i>
+            <span id="accountCounter" class="fw-bold text-dark">0</span> dòng tài khoản đã nhập.
+          </div>
+          <div>
+            <span id="accountSizePreview" class="badge bg-light text-dark border">0 KB</span>
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="row mt-4 pt-3 border-top">
+          <div class="col-md-3 mb-2">
+            <a href="{{ url_for('admin:list', identity=model_view.identity) }}" class="btn btn-outline-secondary w-100">
+              <i class="fa-solid fa-arrow-left me-1"></i> Huỷ & Quay lại
+            </a>
+          </div>
+          <div class="col-md-9 mb-2">
+            <div class="btn-group w-100" role="group">
+              <button type="submit" name="save" value="Save" id="submitBtnSave" class="btn btn-primary fw-bold">
+                <i class="fa-solid fa-floppy-disk me-1"></i> Lưu & Hoàn tất
+              </button>
+              <button type="submit" name="save" value="Save and continue editing" class="btn btn-outline-primary">
+                Lưu & Tiếp tục sửa
+              </button>
+              <button type="submit" name="save" value="Save and add another" class="btn btn-outline-primary">
+                Lưu & Thêm mục khác
+              </button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function updateAccountStats() {
+    const ta = document.querySelector('textarea[name="private_data"]');
+    if (!ta) return;
+    const text = ta.value || "";
+    const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+    const counter = document.getElementById("accountCounter");
+    if (counter) counter.innerText = lines.length.toLocaleString('vi-VN');
+    const sizeBadge = document.getElementById("accountSizePreview");
+    if (sizeBadge) {
+        const bytes = new Blob([text]).size;
+        if (bytes < 1024 * 1024) {
+            sizeBadge.innerText = (bytes / 1024).toFixed(1) + " KB";
+        } else {
+            sizeBadge.innerText = (bytes / (1024 * 1024)).toFixed(2) + " MB";
+        }
+    }
+}
+
+function handleFileChosen(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const status = document.getElementById("fileChosenStatus");
+    if (status) {
+        status.className = "badge bg-info text-dark";
+        status.innerText = "⏳ Đang đọc file: " + file.name + "...";
+    }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result || "";
+        const ta = document.querySelector('textarea[name="private_data"]');
+        if (ta) {
+            ta.value = text;
+            updateAccountStats();
+        }
+        if (status) {
+            const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+            status.className = "badge bg-success";
+            status.innerText = "✅ " + file.name + " (" + lines.length.toLocaleString('vi-VN') + " nick, " + (file.size / 1024).toFixed(1) + " KB)";
+        }
+    };
+    reader.onerror = function() {
+        if (status) {
+            status.className = "badge bg-danger";
+            status.innerText = "❌ Lỗi đọc file!";
+        }
+    };
+    reader.readAsText(file, "UTF-8");
+}
+
+function clearPrivateData() {
+    const ta = document.querySelector('textarea[name="private_data"]');
+    if (ta) {
+        ta.value = "";
+        updateAccountStats();
+    }
+    const status = document.getElementById("fileChosenStatus");
+    if (status) {
+        status.className = "badge bg-secondary";
+        status.innerText = "Đã xoá nội dung";
+    }
+    const picker = document.getElementById("fileTxtPicker");
+    if (picker) picker.value = "";
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    const ta = document.querySelector('textarea[name="private_data"]');
+    if (ta) {
+        ta.addEventListener("input", updateAccountStats);
+        updateAccountStats();
+    }
+
+    const form = document.getElementById("createModelForm");
+    if (form) {
+        form.addEventListener("submit", function() {
+            const btn = document.getElementById("submitBtnSave");
+            if (btn) {
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Đang nạp tài khoản vào kho...';
+                btn.classList.add("disabled");
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
