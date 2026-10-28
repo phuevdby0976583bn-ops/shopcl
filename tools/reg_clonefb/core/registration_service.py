@@ -2072,35 +2072,38 @@ class RegistrationService:
                 except Exception:
                     pass
 
-                # Giãn cách tần suất submit tự nhiên theo IP Proxy (Non-blocking scheduling)
+                # Giãn cách tần suất submit tự nhiên theo IP Proxy và đồng bộ khoá giữa các luồng dùng chung 1 IP
                 proxy_slot_key = target_host or (task_input.proxy.real_ip if hasattr(task_input.proxy, "real_ip") and task_input.proxy.real_ip else str(task_input.proxy or ""))
-                ProxySubmitRateLimiter.wait_turn(proxy_slot_key, min_interval=random.uniform(0.2, 0.45))
+                reg_ip_lock = ProxySubmitRateLimiter.get_ip_lock(proxy_slot_key)
                 response_2 = None
-                for post_attempt in range(2):
-                    try:
-                        response_2 = client.post(
-                            f"https://{server}/reg/submit/",
-                            params=params,
-                            headers=post_headers,
-                            data=data,
-                            allow_redirects=False,
-                            timeout=14,
-                        )
-                        if response_2 is not None:
-                            break
-                    except (ProxyConnectionError, RequestTimeoutError, HttpClientError) as p_err:
-                        if post_attempt == 0:
-                            if hasattr(client, "_reset_session_connections"):
-                                client._reset_session_connections()
-                            _safe_sleep(random.uniform(0.5, 1.0))
-                            continue
-                        logger.warning(f"[Legacy Submit Error] Proxy error: {p_err}")
-                        return RegistrationResult(
-                            success=False,
-                            status="failed",
-                            error_message=f"Lỗi kết nối Proxy: {p_err}",
-                            elapsed_seconds=round(time.time() - start_time, 2)
-                        )
+                with reg_ip_lock:
+                    ProxySubmitRateLimiter.wait_turn(proxy_slot_key, min_interval=random.uniform(1.2, 2.2), max_wait=6.0)
+                    for post_attempt in range(2):
+                        try:
+                            response_2 = client.post(
+                                f"https://{server}/reg/submit/",
+                                params=params,
+                                headers=post_headers,
+                                data=data,
+                                allow_redirects=False,
+                                timeout=14,
+                            )
+                            if response_2 is not None:
+                                break
+                        except (ProxyConnectionError, RequestTimeoutError, HttpClientError) as p_err:
+                            if post_attempt == 0:
+                                if hasattr(client, "_reset_session_connections"):
+                                    client._reset_session_connections()
+                                _safe_sleep(random.uniform(0.5, 1.0))
+                                continue
+                            logger.warning(f"[Legacy Submit Error] Proxy error: {p_err}")
+                            return RegistrationResult(
+                                success=False,
+                                status="failed",
+                                error_message=f"Lỗi kết nối Proxy: {p_err}",
+                                elapsed_seconds=round(time.time() - start_time, 2)
+                            )
+                    ProxySubmitRateLimiter.record_submit_finish(proxy_slot_key)
 
                 if not response_2:
                     continue
@@ -2278,10 +2281,13 @@ class RegistrationService:
 
                 if is_waf_1351050:
                     identity["did_use_suggested_name"] = "false"
+                    emit("warning", {
+                        "message": "⚠️ Facebook từ chối biểu mẫu (Lỗi 1351050 - FB WAF chặn IP) ➔ IP đã bị chặn, dừng mồi lại để đổi IP mới!"
+                    })
+                    break
 
                 is_fb_rejected = (
                     is_name_rejected
-                    or is_waf_1351050
                     or "country_code_selector" in resp_lower
                     or "select your country" in resp_lower
                     or "vui lòng chọn quốc gia" in resp_lower
@@ -2296,7 +2302,7 @@ class RegistrationService:
                     total_retries = len(candidate_targets) - 1
                     attempt_cur = cand_idx + 1
                     retry_next = cand_idx + 1
-                    fail_desc = "Facebook Error 1351050 (Từ chối biểu mẫu đăng ký)" if is_waf_1351050 else ("Facebook từ chối tên" if is_name_rejected else "Chưa nhận cookie phiên (c_user)")
+                    fail_desc = "Facebook từ chối tên" if is_name_rejected else "Chưa nhận cookie phiên (c_user)"
                     emit("warning", {
                         "message": f"[Legacy NV Mồi Lại] ⚠️ Facebook từ chối ({fail_desc}) ở lượt {attempt_cur}/{len(candidate_targets)} ➔ Tự động mồi lại lượt {retry_next}/{total_retries} với thông tin mới..."
                     })

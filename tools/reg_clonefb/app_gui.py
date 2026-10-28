@@ -12007,7 +12007,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                                 c_ip = c_st.get("cur_ip", "")
                                                 c_burned = c_st.get("burned_ips", set())
                                                 c_act = c_st.get("active_sessions", 0)
-                                                if c_p and c_ip and c_ip != old_ip and c_ip not in c_burned and c_ip not in burned_set and c_act < 3:
+                                                max_borrow_act = max(4, actual_threads // len(keys_pool) // 2) if len(keys_pool) > 0 else 3
+                                                if c_p and c_ip and c_ip != old_ip and c_ip not in c_burned and c_ip not in burned_set and c_act < max_borrow_act:
                                                     proxy_obj = copy.copy(c_p)
                                                     assigned_ip = c_ip
                                                     display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
@@ -12430,7 +12431,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                                 c_ip = c_st.get("cur_ip", "")
                                                 c_burned = c_st.get("burned_ips", set())
                                                 c_act = c_st.get("active_sessions", 0)
-                                                if c_p and c_ip and c_ip != old_ip and c_ip not in c_burned and c_ip not in burned_set and c_act < 3:
+                                                max_borrow_act = max(4, actual_threads // len(keys_pool) // 2) if len(keys_pool) > 0 else 3
+                                                if c_p and c_ip and c_ip != old_ip and c_ip not in c_burned and c_ip not in burned_set and c_act < max_borrow_act:
                                                     proxy_obj = copy.copy(c_p)
                                                     assigned_ip = c_ip
                                                     display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
@@ -12748,7 +12750,10 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 if not hasattr(self, "_last_worker_push_ts"):
                     self._last_worker_push_ts = {}
                 last_push = self._last_worker_push_ts.get(wid, 0.0)
-                if tg_name == "running" and not uid and (now_push - last_push < 0.20):
+                cached_threads = getattr(self, "_cached_num_threads", 1)
+                throttle_interval = 1.5 if cached_threads >= 100 else (1.0 if cached_threads >= 50 else (0.4 if cached_threads >= 20 else 0.20))
+                is_terminal = tg_name in ("live", "die", "unver", "checkpoint", "failed") or (uid and str(uid).isdigit())
+                if not is_terminal and (now_push - last_push < throttle_interval):
                     return
                 self._last_worker_push_ts[wid] = now_push
                 self._last_worker_row_state[wid] = curr
@@ -12787,7 +12792,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             name_l = name.lower()
             is_high_concurrency = False
             try:
-                is_high_concurrency = getattr(self, "_cached_num_threads", 1) >= 15
+                is_high_concurrency = getattr(self, "_cached_num_threads", 1) >= 30
             except Exception:
                 is_high_concurrency = False
 
@@ -12866,14 +12871,14 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         elif evt == "info":
             is_high_concurrency = False
             try:
-                is_high_concurrency = getattr(self, "_cached_num_threads", 1) >= 15
+                is_high_concurrency = getattr(self, "_cached_num_threads", 1) >= 30
             except Exception:
                 is_high_concurrency = False
 
             msg_l = msg.lower()
             is_info_milestone = any(k in msg_l for k in (
-                "bắt được mã otp", "bắt được link", "tạo thành công uid", "khởi động",
-                "đã tạo phiên", "mồi lại", "xoay ip", "ip mới", "thành công"
+                "bắt được mã otp", "bắt được link", "tạo thành công uid", "sinh uid",
+                "xác minh thành công", "đổi sang ip", "đã đổi sang ip", "live", "die"
             ))
             if not is_high_concurrency or is_info_milestone:
                 self.event_queue.put(("log", {
@@ -13042,8 +13047,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         try:
             # Tối ưu xả hàng đợi thông minh: tự động tăng lưu lượng khi backlog nhiều để giao diện không lag
             qsz = self.event_queue.qsize()
-            max_drain = 300 if qsz > 200 else (150 if qsz > 50 else 80)
-            max_time = 0.020
+            max_drain = 1000 if qsz > 500 else (500 if qsz > 200 else (250 if qsz > 50 else 100))
+            max_time = 0.035 if qsz > 200 else 0.020
             while processed < max_drain and (time.perf_counter() - start_t) < max_time:
                 try:
                     msg_type, data = self.event_queue.get_nowait()
@@ -13519,7 +13524,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     else:
                         norm_keys.append(wid_k)
 
-                draw_keys = (pri_keys + norm_keys)[:35]
+                pending_cnt = len(self._pending_row_updates)
+                draw_cap = min(150, max(45, pending_cnt // 2 if pending_cnt > 90 else pending_cnt))
+                draw_keys = (pri_keys + norm_keys)[:draw_cap]
                 for wid_c in draw_keys:
                     c_d = self._pending_row_updates.pop(wid_c, None)
                     if not c_d:
@@ -13581,11 +13588,11 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     self._log_line_count += len(batched_logs)
                     
                     now_t = time.time()
-                    if self._log_line_count > 2500 and (now_t - getattr(self, "_last_log_trim_ts", 0.0) > 8.0):
+                    if self._log_line_count > 1500 and (now_t - getattr(self, "_last_log_trim_ts", 0.0) > 4.0):
                         self._last_log_trim_ts = now_t
                         try:
-                            self.txt_logs.delete("1.0", "801.0")
-                            self._log_line_count = max(0, self._log_line_count - 800)
+                            self.txt_logs.delete("1.0", "501.0")
+                            self._log_line_count = max(0, self._log_line_count - 500)
                         except Exception:
                             pass
                             
@@ -13610,13 +13617,13 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
             if hasattr(self, "root") and self.root.winfo_exists():
                 qsz_now = self.event_queue.qsize()
-                has_pending = bool(getattr(self, "_pending_row_updates", None))
-                if qsz_now > 100 or has_pending:
-                    next_delay = 75
-                elif qsz_now > 20:
-                    next_delay = 90
+                pending_cnt = len(getattr(self, "_pending_row_updates", {}))
+                if qsz_now > 100 or pending_cnt > 50:
+                    next_delay = 10
+                elif qsz_now > 20 or pending_cnt > 0:
+                    next_delay = 25
                 else:
-                    next_delay = 120
+                    next_delay = 50
                 self.root.after(next_delay, self.process_queue_events)
 
 
