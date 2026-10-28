@@ -2600,13 +2600,24 @@ class ProxyVNClient:
         host = parts[0].strip() if len(parts) > 0 else ""
         port = int(parts[1].strip()) if len(parts) > 1 and parts[1].strip().isdigit() else None
 
-        ttc = 0
-        m = re.search(r"(\d+)\s*(?:giây|giây|giay|s)", message, re.IGNORECASE)
-        if m:
-            try:
-                ttc = int(m.group(1))
-            except Exception:
-                pass
+        ttc = 60
+        if "die sau" in str(message).lower():
+            ttc = 60
+        else:
+            m = re.search(r"(?:còn|con|chờ|cho)\s*(\d+)\s*(?:giây|giay|s)", str(message), re.IGNORECASE)
+            if m:
+                try:
+                    ttc = min(int(m.group(1)), 65)
+                except Exception:
+                    pass
+            else:
+                m2 = re.search(r"(\d+)\s*(?:giây|giay|s)", str(message), re.IGNORECASE)
+                if m2:
+                    try:
+                        val = int(m2.group(1))
+                        ttc = val if val <= 65 else 60
+                    except Exception:
+                        pass
 
         return {
             "success": True,
@@ -2769,11 +2780,11 @@ class ProxyVNClient:
             elif status == 101:
                 msg = data.get("message", "Đang trong thời gian chờ đổi IP")
                 exp_date = data.get("Token expiration date", "")
-                ttc = 0
-                m = re.search(r"(\d+)\s*(?:giây|giây|giay|s)", msg, re.IGNORECASE)
+                ttc = 30
+                m = re.search(r"(?:còn|con|chờ|cho)?\s*(\d+)\s*(?:giây|giay|s)", str(msg), re.IGNORECASE)
                 if m:
                     try:
-                        ttc = int(m.group(1))
+                        ttc = min(int(m.group(1)), 65)
                     except Exception:
                         pass
 

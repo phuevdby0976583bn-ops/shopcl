@@ -11768,13 +11768,13 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     with _shared_ip_gate_lock:
                                         last_req = _shared_ip_last_submit.get(assigned_ip, 0.0)
                                         now_req = time.time()
-                                        base_time = max(now_req, min(last_req, now_req + 1.0))
-                                        safe_gap = random.uniform(0.04, 0.09)
+                                        base_time = max(now_req, min(last_req, now_req + 2.0))
+                                        safe_gap = random.uniform(1.2, 2.5)
                                         target_time = base_time + safe_gap
                                         stagger_wait = max(0.0, target_time - now_req)
                                         _shared_ip_last_submit[assigned_ip] = target_time
                                 if stagger_wait > 0:
-                                    time.sleep(min(stagger_wait, 0.25))
+                                    time.sleep(min(stagger_wait, 4.0))
 
                                 if k_state:
                                     with k_state["lock"]:
@@ -11992,13 +11992,45 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     rot_success = True
                                     break
 
+                                # TH 3.5: Mượn tạm IP sạch của key khác khi key nhà đang dính cooldown xoay IP (TUYỆT ĐỐI KHÔNG ĐỔI base_k!)
+                                if alloc_mode == "shared" and len(keys_pool) > 1 and (old_ip in burned_set or need_rot):
+                                    borrowed = False
+                                    shuffled_pool = list(keys_pool)
+                                    random.shuffle(shuffled_pool)
+                                    for cand_k in shuffled_pool:
+                                        if cand_k == base_k:
+                                            continue
+                                        c_st = shared_kiot_state.get(cand_k)
+                                        if c_st:
+                                            with c_st["lock"]:
+                                                c_p = c_st.get("proxy_obj")
+                                                c_ip = c_st.get("cur_ip", "")
+                                                c_burned = c_st.get("burned_ips", set())
+                                                c_act = c_st.get("active_sessions", 0)
+                                                if c_p and c_ip and c_ip != old_ip and c_ip not in c_burned and c_ip not in burned_set and c_act < 3:
+                                                    proxy_obj = copy.copy(c_p)
+                                                    assigned_ip = c_ip
+                                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                                    self._worker_proxy_map[worker_id] = display_ip
+                                                    if ip_registry:
+                                                        ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                                    self.event_queue.put(("log", {
+                                                        "message": f"[Luồng {worker_id}] ⚡ Mượn tạm IP ({self.mask_ip(assigned_ip)}) trong khi {base_key_label} đang chờ đổi IP mới ➔ Tiếp tục reg không chờ!",
+                                                        "tag": "info"
+                                                    }))
+                                                    rot_success = True
+                                                    borrowed = True
+                                                    break
+                                    if borrowed:
+                                        break
+
                                 # TH 4: Cần xoay sang IP mới cho key này
                                 rot_lock = k_state.setdefault("rot_lock", threading.Lock()) if k_state else None
                                 if (not rot_lock) or rot_lock.acquire(blocking=False):
                                     try:
                                         now_t = time.time()
                                         if now_t < next_rot:
-                                            wait_s = min(next_rot - now_t, 25.0)
+                                            wait_s = max(0.0, min(next_rot - now_t, 120.0))
                                             if wait_s > 0:
                                                 if not first_wait_logged:
                                                     first_wait_logged = True
@@ -12027,7 +12059,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                                 assigned_ip = new_ip
                                                 display_ip = f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_ip
                                                 self._worker_proxy_map[worker_id] = display_ip
-                                                real_ttc = max(30, int(rot_res.get("ttc") or rot_res.get("packageTtc") or 120))
+                                                real_ttc = min(max(30, int(rot_res.get("ttc") or rot_res.get("packageTtc") or 60)), 120)
                                                 if k_state:
                                                     with k_state["lock"]:
                                                         k_state["proxy_obj"] = new_p
@@ -12051,7 +12083,10 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                                 rot_success = True
                                                 break
                                         else:
-                                            ttc = max(10, int(rot_res.get("ttc") or rot_res.get("packageTtc") or 30))
+                                            raw_ttc = int(rot_res.get("ttc") or rot_res.get("packageTtc") or 30)
+                                            if raw_ttc > 120:
+                                                raw_ttc = 60
+                                            ttc = min(max(10, raw_ttc), 120)
                                             if k_state:
                                                 with k_state["lock"]:
                                                     k_state["next_rotate_allowed_at"] = time.time() + ttc
@@ -12380,13 +12415,45 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     rot_success = True
                                     break
 
+                                # TH 2.5: Mượn tạm IP sạch của key khác khi key nhà đang dính cooldown xoay IP (TUYỆT ĐỐI KHÔNG ĐỔI base_k!)
+                                if alloc_mode == "shared" and len(keys_pool) > 1 and (old_ip in burned_set or need_rot):
+                                    borrowed = False
+                                    shuffled_pool = list(keys_pool)
+                                    random.shuffle(shuffled_pool)
+                                    for cand_k in shuffled_pool:
+                                        if cand_k == base_k:
+                                            continue
+                                        c_st = shared_proxyvn_state.get(cand_k)
+                                        if c_st:
+                                            with c_st["lock"]:
+                                                c_p = c_st.get("proxy_obj")
+                                                c_ip = c_st.get("cur_ip", "")
+                                                c_burned = c_st.get("burned_ips", set())
+                                                c_act = c_st.get("active_sessions", 0)
+                                                if c_p and c_ip and c_ip != old_ip and c_ip not in c_burned and c_ip not in burned_set and c_act < 3:
+                                                    proxy_obj = copy.copy(c_p)
+                                                    assigned_ip = c_ip
+                                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                                    self._worker_proxy_map[worker_id] = display_ip
+                                                    if ip_registry:
+                                                        ip_registry.lease_ip(worker_id, assigned_ip, force=True)
+                                                    self.event_queue.put(("log", {
+                                                        "message": f"[Luồng {worker_id}] ⚡ Mượn tạm IP ({self.mask_ip(assigned_ip)}) trong khi {base_key_label} đang chờ đổi IP mới ➔ Tiếp tục reg không chờ!",
+                                                        "tag": "info"
+                                                    }))
+                                                    rot_success = True
+                                                    borrowed = True
+                                                    break
+                                    if borrowed:
+                                        break
+
                                 # TH 3: Cần xoay sang IP mới cho key này
                                 rot_lock = k_state.setdefault("rot_lock", threading.Lock()) if k_state else None
                                 if (not rot_lock) or rot_lock.acquire(blocking=False):
                                     try:
                                         now_t = time.time()
                                         if now_t < next_rot:
-                                            wait_s = min(next_rot - now_t, 25.0)
+                                            wait_s = max(0.0, min(next_rot - now_t, 65.0))
                                             if wait_s > 0:
                                                 if not first_wait_logged:
                                                     first_wait_logged = True
@@ -12415,7 +12482,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                                 assigned_ip = new_ip
                                                 display_ip = f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_ip
                                                 self._worker_proxy_map[worker_id] = display_ip
-                                                real_ttc = max(30, int(rot_res.get("ttc") or 60))
+                                                real_ttc = min(max(30, int(rot_res.get("ttc") or 60)), 65)
                                                 if k_state:
                                                     with k_state["lock"]:
                                                         k_state["proxy_obj"] = new_p
@@ -12440,7 +12507,10 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                                 rot_success = True
                                                 break
                                         else:
-                                            ttc = max(10, int(rot_res.get("ttc") or 30))
+                                            raw_ttc = int(rot_res.get("ttc") or 30)
+                                            if raw_ttc > 65:
+                                                raw_ttc = 60
+                                            ttc = min(max(10, raw_ttc), 65)
                                             if k_state:
                                                 with k_state["lock"]:
                                                     k_state["next_rotate_allowed_at"] = time.time() + ttc
