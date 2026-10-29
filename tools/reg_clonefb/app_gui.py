@@ -11513,9 +11513,11 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         p_item.country_code = normalize_country_code(loc) or "VN"
                         p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=cur_ip)
                         p_item.real_ip = cur_ip
+                    max_key_concur = 2 if curr_reg_mode == "verify_nvr" else 1
                     return cand_k, {
                         "lock": threading.Lock(),
                         "session_lock": threading.Lock(),
+                        "exec_semaphore": threading.BoundedSemaphore(value=max_key_concur),
                         "proxy_obj": p_item,
                         "cur_ip": cur_ip,
                         "last_working_proxy": copy.copy(p_item) if p_item else None,
@@ -11566,9 +11568,11 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         p_item.country_code = normalize_country_code(loc) or "VN"
                         p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=cur_ip)
                         p_item.real_ip = cur_ip
+                    max_key_concur = 2 if curr_reg_mode == "verify_nvr" else 1
                     return cand_k, {
                         "lock": threading.Lock(),
                         "session_lock": threading.Lock(),
+                        "exec_semaphore": threading.BoundedSemaphore(value=max_key_concur),
                         "proxy_obj": p_item,
                         "cur_ip": cur_ip,
                         "last_working_proxy": copy.copy(p_item) if p_item else None,
@@ -11968,6 +11972,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         shared_proxyvn_state[k] = {
                             "lock": threading.Lock(),
                             "session_lock": threading.Lock(),
+                            "exec_semaphore": threading.BoundedSemaphore(value=2 if curr_reg_mode == "verify_nvr" else 1),
                             "proxy_obj": None,
                             "cur_ip": "",
                             "last_working_proxy": None,
@@ -12720,32 +12725,55 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     "stop_event": self.stop_event,
                                 }
                             )
-                            stagger_wait = 0.0
-                            if alloc_mode == "shared" and assigned_ip and assigned_ip != "Direct":
-                                with _shared_ip_gate_lock:
-                                    last_req = _shared_ip_last_submit.get(assigned_ip, 0.0)
-                                    now_req = time.time()
-                                    elapsed_since = now_req - last_req
-                                    if elapsed_since < 0.3:
-                                        stagger_wait = max(0.0, min(1.0, random.uniform(0.1, 0.3) - elapsed_since))
-                                    _shared_ip_last_submit[assigned_ip] = now_req + stagger_wait
-                            if stagger_wait > 0:
-                                time.sleep(stagger_wait)
-
+                            key_sem = None
                             if k_state:
                                 with k_state["lock"]:
-                                    k_state["active_sessions"] = k_state.get("active_sessions", 0) + 1
+                                    if "exec_semaphore" not in k_state:
+                                        k_state["exec_semaphore"] = threading.BoundedSemaphore(value=2)
+                                    key_sem = k_state["exec_semaphore"]
+
+                            sem_acquired = False
+                            if key_sem:
+                                while not self.stop_event.is_set():
+                                    if key_sem.acquire(timeout=0.25):
+                                        sem_acquired = True
+                                        break
+                                if not sem_acquired and self.stop_event.is_set():
+                                    break
+
                             try:
-                                res = verify_single_nvr_account(
-                                    account_data=curr_acc_data,
-                                    email_provider=email_prov,
-                                    task_input=task_input,
-                                    emit_callback=lambda evt, data: self.handle_service_event(worker_id, evt, data)
-                                )
-                            finally:
+                                stagger_wait = 0.0
+                                if alloc_mode == "shared" and assigned_ip and assigned_ip != "Direct":
+                                    with _shared_ip_gate_lock:
+                                        last_req = _shared_ip_last_submit.get(assigned_ip, 0.0)
+                                        now_req = time.time()
+                                        elapsed_since = now_req - last_req
+                                        if elapsed_since < 0.5:
+                                            stagger_wait = max(0.0, min(1.0, random.uniform(0.3, 0.6) - elapsed_since))
+                                        _shared_ip_last_submit[assigned_ip] = now_req + stagger_wait
+                                if stagger_wait > 0:
+                                    time.sleep(stagger_wait)
+
                                 if k_state:
                                     with k_state["lock"]:
-                                        k_state["active_sessions"] = max(0, k_state.get("active_sessions", 1) - 1)
+                                        k_state["active_sessions"] = k_state.get("active_sessions", 0) + 1
+                                try:
+                                    res = verify_single_nvr_account(
+                                        account_data=curr_acc_data,
+                                        email_provider=email_prov,
+                                        task_input=task_input,
+                                        emit_callback=lambda evt, data: self.handle_service_event(worker_id, evt, data)
+                                    )
+                                finally:
+                                    if k_state:
+                                        with k_state["lock"]:
+                                            k_state["active_sessions"] = max(0, k_state.get("active_sessions", 1) - 1)
+                            finally:
+                                if sem_acquired:
+                                    try:
+                                        key_sem.release()
+                                    except Exception:
+                                        pass
                         except Exception as e:
                             res = RegistrationResult(
                                 success=False,
@@ -12833,33 +12861,57 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             )
 
                             def _exec_reg_action():
-                                stagger_wait = 0.0
-                                if assigned_ip and assigned_ip != "Direct":
-                                    with _shared_ip_gate_lock:
-                                        now_req = time.time()
-                                        last_req = _shared_ip_last_submit.get(assigned_ip, 0.0)
-                                        gap = random.uniform(1.8, 3.2)
-                                        sched_time = max(now_req, last_req) + gap
-                                        stagger_wait = max(0.0, sched_time - now_req)
-                                        if stagger_wait > 12.0:
-                                            sched_time = now_req + random.uniform(1.0, 3.0)
-                                            stagger_wait = max(0.0, sched_time - now_req)
-                                        _shared_ip_last_submit[assigned_ip] = sched_time
-
-                                if stagger_wait > 0.05:
-                                    t_wait_end = time.time() + stagger_wait
-                                    while time.time() < t_wait_end and not self.stop_event.is_set():
-                                        time.sleep(min(0.5, t_wait_end - time.time()))
-
+                                key_sem = None
                                 if k_state:
                                     with k_state["lock"]:
-                                        k_state["active_sessions"] = k_state.get("active_sessions", 0) + 1
+                                        if "exec_semaphore" not in k_state:
+                                            k_state["exec_semaphore"] = threading.BoundedSemaphore(value=1)
+                                        key_sem = k_state["exec_semaphore"]
+
+                                sem_acquired = False
+                                if key_sem:
+                                    while not self.stop_event.is_set():
+                                        if key_sem.acquire(timeout=0.25):
+                                            sem_acquired = True
+                                            break
+                                    if not sem_acquired and self.stop_event.is_set():
+                                        return RegistrationResult(
+                                            success=False,
+                                            status="aborted",
+                                            error_message="Đã dừng theo yêu cầu"
+                                        )
+
                                 try:
-                                    return reg_svc.register(task_input)
-                                finally:
+                                    stagger_wait = 0.0
+                                    if assigned_ip and assigned_ip != "Direct":
+                                        with _shared_ip_gate_lock:
+                                            now_req = time.time()
+                                            last_req = _shared_ip_last_submit.get(assigned_ip, 0.0)
+                                            elapsed = now_req - last_req
+                                            if elapsed < 2.0:
+                                                stagger_wait = max(0.0, random.uniform(1.5, 2.5) - elapsed)
+                                            _shared_ip_last_submit[assigned_ip] = now_req + stagger_wait
+
+                                    if stagger_wait > 0.05:
+                                        t_wait_end = time.time() + stagger_wait
+                                        while time.time() < t_wait_end and not self.stop_event.is_set():
+                                            time.sleep(min(0.2, t_wait_end - time.time()))
+
                                     if k_state:
                                         with k_state["lock"]:
-                                            k_state["active_sessions"] = max(0, k_state.get("active_sessions", 1) - 1)
+                                            k_state["active_sessions"] = k_state.get("active_sessions", 0) + 1
+                                    try:
+                                        return reg_svc.register(task_input)
+                                    finally:
+                                        if k_state:
+                                            with k_state["lock"]:
+                                                k_state["active_sessions"] = max(0, k_state.get("active_sessions", 1) - 1)
+                                finally:
+                                    if sem_acquired:
+                                        try:
+                                            key_sem.release()
+                                        except Exception:
+                                            pass
 
                             res = _exec_reg_action()
                         except Exception as e:
@@ -12967,10 +13019,20 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             "connection refused", "connection reset", "connection aborted", "closed by peer"
                         ))
                         if is_actual_proxy_down or provider_name == "proxy_list":
-                            self.event_queue.put(("log", {
-                                "message": f"[Luồng {worker_id}] ⚡ Proxy lỗi kết nối mạng / Không tạo được phiên ➔ Đổi sang Proxy khác ngay!",
-                                "tag": "info"
-                            }))
+                            _log_down = True
+                            if k_state:
+                                with k_state["lock"]:
+                                    _now_d = time.time()
+                                    _last_d = k_state.get("_last_down_log_ts", 0.0)
+                                    if _now_d - _last_d < 4.0:
+                                        _log_down = False
+                                    else:
+                                        k_state["_last_down_log_ts"] = _now_d
+                            if _log_down:
+                                self.event_queue.put(("log", {
+                                    "message": f"[{base_key_label}] ⚡ Proxy lỗi kết nối mạng / Không tạo được phiên ➔ Đổi sang Proxy khác ngay!",
+                                    "tag": "info"
+                                }))
                             if provider_name == "proxy_list" and proxy_obj:
                                 removed_key = proxy_manager.remove_bad_proxy(proxy_obj, reason=err_str[:80] or "Khởi tạo phiên thất bại")
                                 if removed_key:
@@ -13016,8 +13078,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     old_ip = assigned_ip or (proxy_obj.host if proxy_obj else "")
                     if k_state and old_ip:
                         with k_state["lock"]:
-                            if alloc_mode == "dedicated":
+                            if alloc_mode == "dedicated" or curr_reg_mode != "verify_nvr":
                                 k_state.setdefault("consumed_ips", set()).add(old_ip)
+                                k_state["need_rotate"] = True
                             if last_run_die or is_run_waf:
                                 k_state.setdefault("burned_ips", set()).add(old_ip)
                                 k_state["need_rotate"] = True
