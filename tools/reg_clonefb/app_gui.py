@@ -1489,20 +1489,44 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         """Trích xuất chuỗi IP/Host:Port trực quan, sạch sẽ thay vì raw repr của ProxyItem."""
         if not proxy or proxy in ("Direct", "(Chờ cấp IP)", "N/A", "(Không proxy)"):
             return str(proxy) if proxy else ""
-        if hasattr(proxy, "real_ip") and proxy.real_ip:
-            return str(proxy.real_ip)
+        if hasattr(proxy, "real_ip") and proxy.real_ip and str(proxy.real_ip).strip() not in ("None", "", "unknown"):
+            return str(proxy.real_ip).strip()
+        try:
+            from core.proxy_manager import ProxyVNClient
+            _cand_hp = f"{getattr(proxy, 'host', '')}:{getattr(proxy, 'port', '')}"
+            for _c_val in ProxyVNClient._read_last_known_disk().values():
+                if _c_val.get("ip") and (_c_val.get("http", "").endswith(_cand_hp) or f"{_c_val.get('host')}:{_c_val.get('port')}" == _cand_hp):
+                    return str(_c_val["ip"]).strip()
+        except Exception:
+            pass
         if hasattr(proxy, "host") and getattr(proxy, "port", None):
             return f"{proxy.host}:{proxy.port}"
         if hasattr(proxy, "host") and proxy.host:
             return str(proxy.host)
         s = str(proxy).strip()
         if "ProxyItem(" in s:
-            m_rip = re.search(r"real_ip='([^']+)'", s)
-            if m_rip and m_rip.group(1) not in ("None", ""):
+            m_rip = re.search(r"real_ip=['\"]([^'\"]+)['\"]", s)
+            if m_rip and m_rip.group(1) not in ("None", "", "unknown"):
                 return m_rip.group(1)
-            m_hp = re.search(r"host='([^']+)',\s*port=(\d+)", s)
+            m_hp = re.search(r"host=['\"]([^'\"]+)['\"],\s*port=(\d+)", s)
             if m_hp:
-                return f"{m_hp.group(1)}:{m_hp.group(2)}"
+                _cand_hp = f"{m_hp.group(1)}:{m_hp.group(2)}"
+                try:
+                    from core.proxy_manager import ProxyVNClient
+                    for _c_val in ProxyVNClient._read_last_known_disk().values():
+                        if _c_val.get("ip") and (_c_val.get("http", "").endswith(_cand_hp) or f"{_c_val.get('host')}:{_c_val.get('port')}" == _cand_hp):
+                            return str(_c_val["ip"]).strip()
+                except Exception:
+                    pass
+                return _cand_hp
+        if ":" in s and not s.startswith("http"):
+            try:
+                from core.proxy_manager import ProxyVNClient
+                for _c_val in ProxyVNClient._read_last_known_disk().values():
+                    if _c_val.get("ip") and (_c_val.get("http", "").endswith(s) or f"{_c_val.get('host')}:{_c_val.get('port')}" == s):
+                        return str(_c_val["ip"]).strip()
+            except Exception:
+                pass
         return s
 
     @classmethod
@@ -11323,6 +11347,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
             def single_worker(worker_id: int):
                 nonlocal total_attempts, successful_accs, nvr_idx
+                worker_account_turn = 0
                 # Cá nhân hóa từng luồng - bắt được proxy là chạy ngay lập tức, không để các luồng đợi nhau!
 
                 reg_svc = RegistrationService(
@@ -11425,7 +11450,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         p_item.real_ip = cur_ip
                         proxy_obj = p_item
                         assigned_ip = cur_ip
-                        display_ip = f"{p_item.host}:{p_item.port}" if getattr(p_item, "port", None) else cur_ip
+                        display_ip = getattr(p_item, "real_ip", None) or cur_ip or (f"{p_item.host}:{p_item.port}" if getattr(p_item, "port", None) else cur_ip)
                         self._worker_proxy_map[worker_id] = display_ip
                         share_tag = f" (Chia sẻ {key_label})" if need_alt_ip else ""
                         self.event_queue.put(("log", {
@@ -11530,7 +11555,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         p_item.real_ip = cur_ip
                         proxy_obj = p_item
                         assigned_ip = cur_ip
-                        display_ip = f"{p_item.host}:{p_item.port}" if getattr(p_item, "port", None) else cur_ip
+                        display_ip = getattr(p_item, "real_ip", None) or cur_ip or (f"{p_item.host}:{p_item.port}" if getattr(p_item, "port", None) else cur_ip)
                         self._worker_proxy_map[worker_id] = display_ip
                         share_tag = f" (Chia sẻ {key_label})" if need_alt_ip else ""
                         self.event_queue.put(("log", {
@@ -11608,7 +11633,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             ip_registry.lease_ip(worker_id, cur_ip, force=True)
                         proxy_obj = p_item
                         assigned_ip = cur_ip
-                        display_ip = f"{p_item.host}:{p_item.port}" if getattr(p_item, "port", None) else cur_ip
+                        display_ip = getattr(p_item, "real_ip", None) or cur_ip or (f"{p_item.host}:{p_item.port}" if getattr(p_item, "port", None) else cur_ip)
                         self._worker_proxy_map[worker_id] = display_ip
                         share_tag = f" (Chia sẻ {key_label})" if need_alt_ip else ""
                         self.event_queue.put(("log", {
@@ -11729,7 +11754,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             ip_registry.lease_ip(worker_id, cur_ip, force=True)
                         proxy_obj = p_item
                         assigned_ip = cur_ip
-                        display_ip = f"{p_item.host}:{p_item.port}" if getattr(p_item, "port", None) else cur_ip
+                        display_ip = getattr(p_item, "real_ip", None) or cur_ip or (f"{p_item.host}:{p_item.port}" if getattr(p_item, "port", None) else cur_ip)
                         self._worker_proxy_map[worker_id] = display_ip
                         share_tag = f" (Chia sẻ {key_label})" if need_alt_ip else ""
                         carrier_str = f" | {info.get('carrier')}" if info.get('carrier') else ""
@@ -11868,7 +11893,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 if p_src:
                                     proxy_obj = copy.copy(p_src)
                                     assigned_ip = ip_src or ""
-                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                    display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                     self._worker_proxy_map[worker_id] = display_ip
                                     if ip_registry:
                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -11912,7 +11937,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 if k_state.get("proxy_obj"):
                                     proxy_obj = copy.copy(k_state["proxy_obj"])
                                     assigned_ip = k_state.get("cur_ip", "")
-                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                    display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                     self._worker_proxy_map[worker_id] = display_ip
                                     if ip_registry:
                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -11954,7 +11979,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 if p_src:
                                     proxy_obj = copy.copy(p_src)
                                     assigned_ip = ip_src or getattr(proxy_obj, "real_ip", "") or proxy_obj.host
-                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                    display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                     self._worker_proxy_map[worker_id] = display_ip
                                     if ip_registry:
                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -11970,7 +11995,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=p_item.real_ip)
                                     proxy_obj = p_item
                                     assigned_ip = p_item.real_ip
-                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                    display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                     self._worker_proxy_map[worker_id] = display_ip
                                     if ip_registry:
                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -11997,7 +12022,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                             p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=p_item.real_ip)
                                             proxy_obj = p_item
                                             assigned_ip = p_item.real_ip
-                                            display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                            display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                             self._worker_proxy_map[worker_id] = display_ip
                                             if ip_registry:
                                                 ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -12037,7 +12062,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 if k_state.get("proxy_obj"):
                                     proxy_obj = copy.copy(k_state["proxy_obj"])
                                     assigned_ip = k_state.get("cur_ip", "")
-                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                    display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                     self._worker_proxy_map[worker_id] = display_ip
                                     if ip_registry:
                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -12103,7 +12128,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             if k_state.get("proxy_obj"):
                                 proxy_obj = copy.copy(k_state["proxy_obj"])
                                 assigned_ip = k_state.get("cur_ip") or proxy_obj.host
-                                display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                 self._worker_proxy_map[worker_id] = display_ip
                                 if ip_registry:
                                     ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -12159,6 +12184,81 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             total_attempts += 1
                             current_num = total_attempts
 
+                    worker_account_turn += 1
+                    # CẤP PHÁT & XOAY PROXY ĐỘNG: Đảm bảo sử dụng đủ 100% tất cả 40 Key Proxy.vn / KiotProxy / ProxySocks5 / mProxy
+                    if provider_name == "proxyvn" and (effective_proxyvn_keys or proxyvn_keys):
+                        keys_pool = effective_proxyvn_keys if effective_proxyvn_keys else proxyvn_keys
+                        if len(keys_pool) > 0:
+                            key_stride = actual_threads if len(keys_pool) > actual_threads else 1
+                            key_idx = (worker_id - 1 + (worker_account_turn - 1) * key_stride) % len(keys_pool)
+                            k = keys_pool[key_idx]
+                            key_label = f"Key #{key_idx + 1}"
+                            base_k = k
+                            base_key_idx = key_idx
+                            base_key_label = key_label
+                            k_state = shared_proxyvn_state.get(k)
+                            if k_state:
+                                pvn_client = k_state.get("client") or ProxyVNClient(k)
+                                with k_state["lock"]:
+                                    p_cand = k_state.get("proxy_obj") or k_state.get("last_working_proxy")
+                                    if p_cand:
+                                        proxy_obj = copy.copy(p_cand)
+                                        assigned_ip = k_state.get("cur_ip") or k_state.get("last_working_ip")
+                    elif provider_name in ("kiotproxy", "kiotproxy_current") and (effective_kiot_keys or kiot_keys):
+                        keys_pool = effective_kiot_keys if effective_kiot_keys else kiot_keys
+                        if len(keys_pool) > 0:
+                            key_stride = actual_threads if len(keys_pool) > actual_threads else 1
+                            key_idx = (worker_id - 1 + (worker_account_turn - 1) * key_stride) % len(keys_pool)
+                            k = keys_pool[key_idx]
+                            key_label = f"Key #{key_idx + 1}"
+                            base_k = k
+                            base_key_idx = key_idx
+                            base_key_label = key_label
+                            k_state = shared_kiot_state.get(k)
+                            if k_state:
+                                kiot_client = k_state.get("client") or KiotProxyClient(k)
+                                with k_state["lock"]:
+                                    p_cand = k_state.get("proxy_obj") or k_state.get("last_working_proxy")
+                                    if p_cand:
+                                        proxy_obj = copy.copy(p_cand)
+                                        assigned_ip = k_state.get("cur_ip") or k_state.get("last_working_ip")
+                    elif provider_name == "proxysocks5" and (effective_psocks5_keys or psocks5_keys):
+                        keys_pool = effective_psocks5_keys if effective_psocks5_keys else psocks5_keys
+                        if len(keys_pool) > 0:
+                            key_stride = actual_threads if len(keys_pool) > actual_threads else 1
+                            key_idx = (worker_id - 1 + (worker_account_turn - 1) * key_stride) % len(keys_pool)
+                            k = keys_pool[key_idx]
+                            key_label = f"Key #{key_idx + 1}"
+                            base_k = k
+                            base_key_idx = key_idx
+                            base_key_label = key_label
+                            k_state = shared_psocks5_state.get(k)
+                            if k_state:
+                                psocks5_client = k_state.get("client") or ProxySocks5Client(k)
+                                with k_state["lock"]:
+                                    p_cand = k_state.get("proxy_obj") or k_state.get("last_working_proxy")
+                                    if p_cand:
+                                        proxy_obj = copy.copy(p_cand)
+                                        assigned_ip = k_state.get("cur_ip") or k_state.get("last_working_ip")
+                    elif provider_name == "mproxy" and (effective_mproxy_keys or mproxy_keys):
+                        keys_pool = effective_mproxy_keys if effective_mproxy_keys else mproxy_keys
+                        if len(keys_pool) > 0:
+                            key_stride = actual_threads if len(keys_pool) > actual_threads else 1
+                            key_idx = (worker_id - 1 + (worker_account_turn - 1) * key_stride) % len(keys_pool)
+                            cand_k = keys_pool[key_idx]
+                            key_label = f"Key #{key_idx + 1}"
+                            base_k = cand_k
+                            base_key_idx = key_idx
+                            base_key_label = key_label
+                            k_state = shared_mproxy_state.get(cand_k)
+                            if k_state:
+                                mp_client = k_state.get("client") or MproxyClient(m_tok, key_code=cand_k if cand_k != m_tok else None)
+                                with k_state["lock"]:
+                                    p_cand = k_state.get("proxy_obj")
+                                    if p_cand:
+                                        proxy_obj = copy.copy(p_cand)
+                                        assigned_ip = k_state.get("cur_ip") or proxy_obj.host
+
                     target_uid = str(curr_acc_data.get("uid", "")).strip() if (curr_reg_mode == "verify_nvr" and curr_acc_data) else ""
                     if curr_reg_mode == "verify_nvr" and target_uid:
                         self.event_queue.put(("row_state_update", {
@@ -12176,7 +12276,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     else:
                         eff_proxy_str = proxy_obj.as_url() if proxy_obj else None
                         if proxy_obj:
-                            display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else (assigned_ip or proxy_obj.host)
+                            clean_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else proxy_obj.host)
+                            display_ip = clean_ip
                         else:
                             display_ip = assigned_ip or "Direct"
                     self._worker_proxy_map[worker_id] = display_ip
@@ -12444,7 +12545,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         display_ip = acc_custom_proxy
                     else:
                         if proxy_obj:
-                            display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else (assigned_ip or proxy_obj.host)
+                            clean_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else proxy_obj.host)
+                            display_ip = clean_ip
                         else:
                             display_ip = assigned_ip or "Direct"
                     self._worker_proxy_map[worker_id] = display_ip
@@ -12615,7 +12717,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     if cur_cached_p and cur_cached_ip:
                                         proxy_obj = copy.copy(cur_cached_p)
                                         assigned_ip = cur_cached_ip
-                                        display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                        display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                         self._worker_proxy_map[worker_id] = display_ip
                                         if ip_registry:
                                             ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -12626,7 +12728,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 if cur_cached_p and cur_cached_ip and cur_cached_ip != old_ip and cur_cached_ip not in burned_set:
                                     proxy_obj = copy.copy(cur_cached_p)
                                     assigned_ip = cur_cached_ip
-                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                    display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                     self._worker_proxy_map[worker_id] = display_ip
                                     if ip_registry:
                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -12641,7 +12743,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 if alloc_mode == "shared" and not need_rot and old_ip not in burned_set and cur_cached_p and cur_cached_ip and cur_cached_ip not in burned_set:
                                     proxy_obj = copy.copy(cur_cached_p)
                                     assigned_ip = cur_cached_ip
-                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                    display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                     self._worker_proxy_map[worker_id] = display_ip
                                     if ip_registry:
                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -12668,7 +12770,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                                 if c_p and c_ip and c_ip != old_ip and c_ip not in c_burned and c_ip not in burned_set and c_act < max_borrow_act:
                                                     proxy_obj = copy.copy(c_p)
                                                     assigned_ip = c_ip
-                                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                                    display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                                     self._worker_proxy_map[worker_id] = display_ip
                                                     if ip_registry:
                                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -12715,7 +12817,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                                 new_p.geo_profile = GeoTelephonyResolver.get_profile_for_country(new_p.country_code, ip=new_ip)
                                                 proxy_obj = new_p
                                                 assigned_ip = new_ip
-                                                display_ip = f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_ip
+                                                display_ip = getattr(new_p, "real_ip", None) or new_ip or (f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_ip)
                                                 self._worker_proxy_map[worker_id] = display_ip
                                                 real_ttc = min(max(30, int(rot_res.get("ttc") or rot_res.get("packageTtc") or 60)), 120)
                                                 if k_state:
@@ -12785,7 +12887,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     if cur_cached_p and cur_cached_ip and cur_cached_ip not in burned_set:
                                         proxy_obj = copy.copy(cur_cached_p)
                                         assigned_ip = cur_cached_ip
-                                        display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                        display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                         self._worker_proxy_map[worker_id] = display_ip
                                         if ip_registry:
                                             ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -12797,7 +12899,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                         proxy_obj = copy.copy(cur_cached_p)
                                         assigned_ip = cur_cached_ip
                                         consumed_set.add(cur_cached_ip)
-                                        display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                        display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                         self._worker_proxy_map[worker_id] = display_ip
                                         if ip_registry:
                                             ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -12824,7 +12926,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                                 new_p.geo_profile = GeoTelephonyResolver.get_profile_for_country(new_p.country_code, ip=new_ip)
                                                 proxy_obj = new_p
                                                 assigned_ip = new_ip
-                                                display_ip = f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_ip
+                                                display_ip = getattr(new_p, "real_ip", None) or new_ip or (f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_ip)
                                                 self._worker_proxy_map[worker_id] = display_ip
                                                 if k_state:
                                                     with k_state["lock"]:
@@ -12863,7 +12965,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                         if can_reuse:
                                             proxy_obj = copy.copy(cur_cached_p)
                                             assigned_ip = cur_cached_ip
-                                            display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                            display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                             self._worker_proxy_map[worker_id] = display_ip
                                             if ip_registry:
                                                 ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -12916,7 +13018,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     if cur_cached_p and cur_cached_ip and cur_cached_ip not in burned_set:
                                         proxy_obj = copy.copy(cur_cached_p)
                                         assigned_ip = cur_cached_ip
-                                        display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                        display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                         self._worker_proxy_map[worker_id] = display_ip
                                         if ip_registry:
                                             ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -12928,7 +13030,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                         proxy_obj = copy.copy(cur_cached_p)
                                         assigned_ip = cur_cached_ip
                                         consumed_set.add(cur_cached_ip)
-                                        display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                        display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                         self._worker_proxy_map[worker_id] = display_ip
                                         if ip_registry:
                                             ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -12955,7 +13057,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                                 new_p.geo_profile = GeoTelephonyResolver.get_profile_for_country(new_p.country_code, ip=new_ip)
                                                 proxy_obj = new_p
                                                 assigned_ip = new_ip
-                                                display_ip = f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_ip
+                                                display_ip = getattr(new_p, "real_ip", None) or new_ip or (f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_ip)
                                                 self._worker_proxy_map[worker_id] = display_ip
                                                 if k_state:
                                                     with k_state["lock"]:
@@ -12994,7 +13096,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                         if can_reuse:
                                             proxy_obj = copy.copy(cur_cached_p)
                                             assigned_ip = cur_cached_ip
-                                            display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                            display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                             self._worker_proxy_map[worker_id] = display_ip
                                             if ip_registry:
                                                 ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -13050,7 +13152,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 if cur_cached_p and cur_cached_ip and cur_cached_ip != old_ip and cur_cached_ip not in burned_set:
                                     proxy_obj = copy.copy(cur_cached_p)
                                     assigned_ip = cur_cached_ip
-                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                    display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                     self._worker_proxy_map[worker_id] = display_ip
                                     if ip_registry:
                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -13065,7 +13167,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 if alloc_mode == "shared" and not need_rot and old_ip not in burned_set and cur_cached_p and cur_cached_ip and cur_cached_ip not in burned_set:
                                     proxy_obj = copy.copy(cur_cached_p)
                                     assigned_ip = cur_cached_ip
-                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                    display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                     self._worker_proxy_map[worker_id] = display_ip
                                     if ip_registry:
                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -13092,7 +13194,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                                 if c_p and c_ip and c_ip != old_ip and c_ip not in c_burned and c_ip not in burned_set and c_act < max_borrow_act:
                                                     proxy_obj = copy.copy(c_p)
                                                     assigned_ip = c_ip
-                                                    display_ip = f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip
+                                                    display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
                                                     self._worker_proxy_map[worker_id] = display_ip
                                                     if ip_registry:
                                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
@@ -13138,7 +13240,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                                 new_p.geo_profile = GeoTelephonyResolver.get_profile_for_country(new_p.country_code, ip=new_ip)
                                                 proxy_obj = new_p
                                                 assigned_ip = new_ip
-                                                display_ip = f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_ip
+                                                display_ip = getattr(new_p, "real_ip", None) or new_ip or (f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_ip)
                                                 self._worker_proxy_map[worker_id] = display_ip
                                                 real_ttc = min(max(30, int(rot_res.get("ttc") or 60)), 65)
                                                 if k_state:
@@ -13225,7 +13327,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                         pass
                                 proxy_obj = new_p
                                 assigned_ip = new_p.host
-                                display_ip = f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_p.host
+                                display_ip = getattr(new_p, "real_ip", None) or new_p.host or (f"{new_p.host}:{new_p.port}" if getattr(new_p, "port", None) else new_p.host)
                                 self._worker_proxy_map[worker_id] = display_ip
                                 if ip_registry:
                                     ip_registry.lease_ip(worker_id, new_p.real_ip or new_p.host, force=True)
