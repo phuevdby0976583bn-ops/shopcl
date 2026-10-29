@@ -10858,7 +10858,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         try:
             now_sc = time.perf_counter()
             if getattr(self, "_auto_scroll_logs", True):
-                if (now_sc - getattr(self, "_last_log_scroll_ts", 0.0)) > 0.15:
+                if (now_sc - getattr(self, "_last_log_scroll_ts", 0.0)) > 0.40:
                     self._last_log_scroll_ts = now_sc
                     y_pos = self.txt_logs.yview()
                     if len(y_pos) >= 2 and y_pos[1] >= 0.980:
@@ -11514,7 +11514,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=cur_ip)
                         p_item.real_ip = cur_ip
                     _k_cnt = max(1, len(kiot_p_keys if "kiot_p_keys" in locals() and kiot_p_keys else [1]))
-                    max_key_concur = max(32, int(actual_threads / _k_cnt) + 8) if actual_threads >= 100 else max(10, actual_threads)
+                    max_key_concur = min(8, max(4, int(actual_threads / _k_cnt))) if actual_threads >= 100 else 6
                     return cand_k, {
                         "lock": threading.Lock(),
                         "session_lock": threading.Lock(),
@@ -11570,7 +11570,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=cur_ip)
                         p_item.real_ip = cur_ip
                     _k_cnt = max(1, len(proxyvn_p_keys if "proxyvn_p_keys" in locals() and proxyvn_p_keys else [1]))
-                    max_key_concur = max(32, int(actual_threads / _k_cnt) + 8) if actual_threads >= 100 else max(10, actual_threads)
+                    max_key_concur = min(8, max(4, int(actual_threads / _k_cnt))) if actual_threads >= 100 else 6
                     return cand_k, {
                         "lock": threading.Lock(),
                         "session_lock": threading.Lock(),
@@ -11974,7 +11974,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         shared_proxyvn_state[k] = {
                             "lock": threading.Lock(),
                             "session_lock": threading.Lock(),
-                            "exec_semaphore": threading.BoundedSemaphore(value=max(32, int(actual_threads / max(1, len(keys_pool if "keys_pool" in locals() and keys_pool else [1]))) + 8) if actual_threads >= 100 else max(10, actual_threads)),
+                            "exec_semaphore": threading.BoundedSemaphore(value=min(8, max(4, int(actual_threads / max(1, len(keys_pool if "keys_pool" in locals() and keys_pool else [1]))))) if actual_threads >= 100 else 6),
                             "proxy_obj": None,
                             "cur_ip": "",
                             "last_working_proxy": None,
@@ -12731,7 +12731,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             if k_state:
                                 with k_state["lock"]:
                                     if "exec_semaphore" not in k_state:
-                                        k_state["exec_semaphore"] = threading.BoundedSemaphore(value=max(32, int(actual_threads / max(1, len(keys_pool if "keys_pool" in locals() and keys_pool else [1]))) + 8) if actual_threads >= 100 else max(10, actual_threads))
+                                        k_state["exec_semaphore"] = threading.BoundedSemaphore(value=min(8, max(4, int(actual_threads / max(1, len(keys_pool if "keys_pool" in locals() and keys_pool else [1]))))) if actual_threads >= 100 else 6)
                                     key_sem = k_state["exec_semaphore"]
 
                             sem_acquired = False
@@ -12867,7 +12867,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 if k_state:
                                     with k_state["lock"]:
                                         if "exec_semaphore" not in k_state:
-                                            k_state["exec_semaphore"] = threading.BoundedSemaphore(value=max(32, int(actual_threads / max(1, len(keys_pool if "keys_pool" in locals() and keys_pool else [1]))) + 8) if actual_threads >= 100 else max(10, actual_threads))
+                                            k_state["exec_semaphore"] = threading.BoundedSemaphore(value=min(8, max(4, int(actual_threads / max(1, len(keys_pool if "keys_pool" in locals() and keys_pool else [1]))))) if actual_threads >= 100 else 6)
                                         key_sem = k_state["exec_semaphore"]
 
                                 sem_acquired = False
@@ -14236,8 +14236,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             # Tối ưu xả hàng đợi thông minh: tự động tăng lưu lượng khi backlog nhiều để giao diện không lag
             qsz = self.event_queue.qsize()
             cached_threads = getattr(self, "_cached_num_threads", 1)
-            max_drain = 1000 if qsz > 500 else (500 if qsz > 200 else 250)
-            max_time = 0.030
+            max_drain = 400 if qsz > 500 else (200 if qsz > 200 else 100)
+            max_time = 0.012
             while processed < max_drain and (time.perf_counter() - start_t) < max_time:
                 try:
                     msg_type, data = self.event_queue.get_nowait()
@@ -14691,8 +14691,10 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         }
                     self.save_result_by_category(res, proxy)
                     stats_changed = True
-                    self.save_table_session()
                     now_ts = time.time()
+                    if not hasattr(self, "_last_tbl_save_ts") or (now_ts - self._last_tbl_save_ts > 30.0):
+                        self._last_tbl_save_ts = now_ts
+                        self.save_table_session()
                     if not hasattr(self, '_last_hotmail_refresh_ts') or (now_ts - self._last_hotmail_refresh_ts > 5.0):
                         self._last_hotmail_refresh_ts = now_ts
                         self.refresh_hotmail_count()
@@ -14758,7 +14760,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         norm_keys.append(wid_k)
 
                 pending_cnt = len(self._pending_row_updates)
-                draw_cap = min(150, max(45, pending_cnt // 2 if pending_cnt > 90 else pending_cnt))
+                draw_cap = min(25, pending_cnt) if cached_threads >= 50 else min(50, pending_cnt)
                 draw_keys = (pri_keys + norm_keys)[:draw_cap]
                 for wid_c in draw_keys:
                     c_d = self._pending_row_updates.pop(wid_c, None)
@@ -14809,6 +14811,14 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             # 2. Xả nhật ký log theo khối gộp với 1 lệnh insert duy nhất (tăng tốc gấp 8-10 lần, giảm 95% reflow Text Widget)
             if batched_logs and hasattr(self, "txt_logs"):
                 try:
+                    if cached_threads >= 50:
+                        filtered_logs = []
+                        for l_msg, l_tag in batched_logs:
+                            l_low = l_msg.lower()
+                            if l_tag in ("success", "error", "warning") or any(k in l_low for k in ("live", "die", "checkpoint", "đổi sang ip", "đã đổi", "nvr", "bắt otp", "bắt được")):
+                                filtered_logs.append((l_msg, l_tag))
+                        batched_logs = filtered_logs
+
                     import itertools
                     flat_args = []
                     for tag_k, grp_items in itertools.groupby(batched_logs, key=lambda x: x[1]):
@@ -14831,7 +14841,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             
                     now_sc = time.perf_counter()
                     if getattr(self, "_auto_scroll_logs", True):
-                        if (now_sc - getattr(self, "_last_log_scroll_ts", 0.0)) > 0.15:
+                        if (now_sc - getattr(self, "_last_log_scroll_ts", 0.0)) > 0.40:
                             self._last_log_scroll_ts = now_sc
                             try:
                                 y_pos = self.txt_logs.yview()
@@ -16346,21 +16356,18 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 target_sub = data.get('subcategory_name', subcat_name)
                 self.stat_bot_uploaded = getattr(self, 'stat_bot_uploaded', 0) + up_cnt
 
-                if hasattr(self, 'lbl_bot_upload_stat'):
+                def _safe_update_ui():
                     try:
-                        self.lbl_bot_upload_stat.configure(text=f'Đã up trong phiên: {self.stat_bot_uploaded} acc')
+                        if hasattr(self, 'lbl_bot_upload_stat'):
+                            self.lbl_bot_upload_stat.configure(text=f'Đã up trong phiên: {self.stat_bot_uploaded} acc')
+                        if hasattr(self, 'lbl_stat_bot_uploaded'):
+                            self.lbl_stat_bot_uploaded.configure(text=f'🤖 UP BOT: {self.stat_bot_uploaded}')
+                        if hasattr(self, 'lbl_dash_bot_status'):
+                            self.lbl_dash_bot_status.configure(text=f'[{target_sub[:12]}] ({self.stat_bot_uploaded} up)', fg=AppTheme.SUCCESS)
                     except Exception:
                         pass
-                if hasattr(self, 'lbl_stat_bot_uploaded'):
-                    try:
-                        self.lbl_stat_bot_uploaded.configure(text=f'🤖 UP BOT: {self.stat_bot_uploaded}')
-                    except Exception:
-                        pass
-                if hasattr(self, 'lbl_dash_bot_status'):
-                    try:
-                        self.lbl_dash_bot_status.configure(text=f'[{target_sub[:12]}] ({self.stat_bot_uploaded} up)', fg=AppTheme.SUCCESS)
-                    except Exception:
-                        pass
+                if hasattr(self, 'root') and self.root.winfo_exists():
+                    self.root.after(0, _safe_update_ui)
 
                 msg = f'🤖 [Bot Shop] ✅ Đã tự up thành công {up_cnt} nick (uid|pass|cookie) vào [{target_sub}] (Media ID: {media_id[:12]}...)!'
                 if batch_label:

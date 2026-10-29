@@ -445,11 +445,9 @@ class HttpClient:
         elif isinstance(req_timeout, (int, float)):
             val = float(req_timeout)
             if has_proxy:
-                # Moi ket noi qua Proxy (KiotProxy 4G, mProxy, ProxySocks5, Private):
-                # Khi chay da luong dong thoi, qua trinh TCP Handshake + 4G Tunnel + TLS
-                # can connect timeout tu 20s - 30s de tuyet doi tranh loi timeout gia tao curl (28)
-                c_timeout = min(30.0, max(20.0, val * 0.7))
-                r_timeout = min(60.0, max(val, 35.0))
+                # Toi uu connect timeout nhe nhang (8s - 12s) de fail-fast va xoay IP nhanh khi proxy nghen
+                c_timeout = min(12.0, max(8.0, val * 0.4))
+                r_timeout = min(25.0, max(15.0, val * 0.8))
             elif val <= 8.0:
                 c_timeout = min(5.0, val)
                 r_timeout = val
