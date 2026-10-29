@@ -371,9 +371,16 @@ def verify_single_nvr_account(
             mat_s = parse_maturation_delay_seconds(raw_mat, default=90.0)
             created_at = float(account_data.get("created_at") or 0.0)
             now_t = time.time()
-            if created_at > 0 and (now_t - created_at) < mat_s:
-                wait_rem = mat_s - (now_t - created_at)
-                emit("info", {"message": f"⏳ [Chờ ngấu] Nick UID {uid} mới tạo cách đây {int(now_t - created_at)}s ➔ Đợi ngấu thêm {int(wait_rem)}s để Meta kích hoạt session..."})
+            if created_at > 0:
+                elapsed_created = now_t - created_at
+                wait_rem = max(0.0, mat_s - elapsed_created)
+                msg_rem = f"Nick UID {uid} mới tạo cách đây {int(elapsed_created)}s ➔ Đợi ngấu thêm {int(wait_rem)}s"
+            else:
+                wait_rem = mat_s
+                msg_rem = f"Đợi ngấu {int(wait_rem)}s"
+
+            if wait_rem > 1.0:
+                emit("info", {"message": f"⏳ [Chờ ngấu] {msg_rem} để Meta kích hoạt session ổn định trước khi nhận OTP (Chống 282)...", "uid": uid})
                 emit("step", {"step": 2, "name": f"Chờ ngấu tài khoản ({int(wait_rem)}s)...", "uid": uid})
                 t_end = time.time() + wait_rem
                 stop_evt = task_input.extra.get("stop_event")
@@ -646,6 +653,7 @@ def verify_single_nvr_account(
                     pacing_min=float(task_input.extra.get("otp_pacing_min", 2.0)),
                     pacing_max=float(task_input.extra.get("otp_pacing_max", 3.5)),
                     proxy_ip=task_input.extra.get("proxy_ip"),
+                    emit_callback=emit,
                 )
                 if ok_confirm:
                     time.sleep(random.uniform(2.5, 3.8))
@@ -1026,6 +1034,7 @@ def verify_single_nvr_account(
                         pacing_min=float(task_input.extra.get("otp_pacing_min", 2.0)),
                         pacing_max=float(task_input.extra.get("otp_pacing_max", 3.5)),
                         proxy_ip=task_input.extra.get("proxy_ip"),
+                    emit_callback=emit,
                     )
                     if ok_confirm:
                         time.sleep(random.uniform(1.8, 2.8))

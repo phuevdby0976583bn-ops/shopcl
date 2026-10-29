@@ -3636,6 +3636,12 @@ def submit_facebook_web_email_otp(
             waited = OtpSubmitPacingLimiter.wait_pacing(proxy_key=ip_k, min_delay=p_min, max_delay=p_max)
             if waited > 0.05:
                 logger.debug(f"[OTP Pacing] Đã giãn cách {waited:.2f}s trước khi gửi OTP cho UID {uid or email}")
+                emit_fn = kwargs.get("emit_callback")
+                if callable(emit_fn):
+                    try:
+                        emit_fn("info", {"message": f"⏱️ [OTP Pacing] Đã giãn cách {waited:.1f}s giữa các lượt submit OTP chống Meta chặn dồn dập (UID: {uid or email})"})
+                    except Exception:
+                        pass
         except Exception as ex_pacing:
             logger.debug(f"[OTP Pacing] Lỗi pacing rate: {ex_pacing}")
 

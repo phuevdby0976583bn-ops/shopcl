@@ -657,7 +657,7 @@ class StandaloneVerryEngine:
                 self.log(f"🎉 [Pipeline Verry] ✅ XÁC MINH LIVE THÀNH CÔNG UID: {uid} -> Đã lưu accounts_live.txt (Verry)!", "success")
                 # Tự động up lên Bot nếu cấu hình Bot trong verry bật
                 if verry_cfg.get("bot_auto_upload"):
-                    self._upload_account_to_bot(res, verry_cfg)
+                    self._upload_account_to_bot(res, verry_cfg, acc)
             else:
                 err_msg = res.error_message or "Checkpoint"
                 mark_account_result(uid, success=False, result_line=acc.get("raw_line", uid), verry_dir=self.verry_dir, error=err_msg, is_checkpoint=True)
@@ -666,7 +666,7 @@ class StandaloneVerryEngine:
             mark_account_result(uid, success=False, verry_dir=self.verry_dir, error=str(e))
             self.log(f"❌ [Pipeline Verry] Lỗi xác minh UID [{uid}]: {e}", "error")
 
-    def _upload_account_to_bot(self, result, verry_cfg: dict):
+    def _upload_account_to_bot(self, result, verry_cfg: dict, acc: Optional[dict] = None):
         """Đẩy nick LIVE lên Bot Shop nếu cấu hình verry có bật bot_auto_upload."""
         try:
             import urllib.request
@@ -677,7 +677,7 @@ class StandaloneVerryEngine:
                 return
 
             uid = str(getattr(result, "uid", "")).strip()
-            pwd = str(getattr(result, "password", "")).strip() or str(acc.get("password", "")).strip() or str(verry_cfg.get("default_password", "")).strip() or "FacebookPassword123"
+            pwd = str(getattr(result, "password", "")).strip() or (str(acc.get("password", "")).strip() if (acc and isinstance(acc, dict)) else "") or str(verry_cfg.get("default_password", "")).strip() or "FacebookPassword123"
             cookie = str(getattr(result, "cookie_string", "")).strip()
             if not cookie and hasattr(result, "cookies") and result.cookies:
                 if isinstance(result.cookies, dict):
@@ -710,11 +710,12 @@ class StandaloneVerryEngine:
             payload = {
                 "media_id": media_id,
                 "category_name": cat_name,
-                "subcategory_name": "Clone Facebook (Auto Verry)",
-                "price": 0.02,
+                "subcategory_name": subcat_name,
+                "price": price,
+                "description": "Tài khoản Clone Facebook reg tự động từ Tool",
                 "items": [f"{uid}|{pwd}|{cookie}"],
                 "check_live": False,
-                "is_facebook": True
+                "is_facebook": False
             }
             req = urllib.request.Request(
                 f"{api_url}/api/items/bulk-upload",
@@ -723,6 +724,6 @@ class StandaloneVerryEngine:
                 method="POST"
             )
             with urllib.request.urlopen(req, timeout=15) as resp:
-                self.log(f"🤖 [Bot Shop] Đã tự động up UID [{uid}] lên Bot Shop thành công!", "success")
+                self.log(f"🤖 [Bot Shop] ✅ Đã tự up thành công UID [{uid}] (uid|pass|cookie) vào thư mục [{subcat_name}] (Media ID: {media_id[:12]}...)!", "success")
         except Exception as e:
             logger.warning(f"Failed to upload account to bot: {e}")

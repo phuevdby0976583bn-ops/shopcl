@@ -2494,6 +2494,26 @@ class RegistrationService:
                     emit("unverified", {"result": res, "message": f"[Legacy NV] 🟡 TẠO PHIÊN NVR THÀNH CÔNG: UID {uid} | Tên: {full_name} ➔ Đã lưu accounts_unverified.txt"})
                     return res
                 elif legacy_verify_mode in ("email", "setting", "verify", "xm_setting", "true", "1"):
+                    # 0. CHẾ ĐỘ CHỜ NGẤU TỰ ĐỘNG (SESSION MATURATION DELAY)
+                    if task_input.extra.get("enable_account_maturation", False):
+                        raw_mat = task_input.extra.get("account_maturation_delay", "60-120s (Ngẫu nhiên)")
+                        mat_s = parse_maturation_delay_seconds(raw_mat, default=90.0)
+                        emit("info", {
+                            "message": f"⏳ [Chờ ngấu] Tạo phiên thành công UID {uid}. Đang chờ ngấu {int(mat_s)}s để phiên ổn định trên hệ thống Meta trước khi gắn mail (Chống Checkpoint 282)...",
+                            "uid": uid
+                        })
+                        emit("step", {
+                            "step": 4,
+                            "name": f"Chờ ngấu tài khoản ({int(mat_s)}s)...",
+                            "uid": uid,
+                            "proxy": task_input.proxy
+                        })
+                        t_end = time.time() + mat_s
+                        stop_evt = task_input.extra.get("stop_event")
+                        while time.time() < t_end:
+                            if stop_evt and stop_evt.is_set():
+                                break
+                            _safe_sleep(min(1.0, t_end - time.time()))
                     emit("info", {"message": f"[Legacy NV] ?? Mr-SxR ?? t?o xong t?i kho?n NVR! UID: {uid}. ?ang chuy?n ti?p sang b? m?y X?c Minh Acc NVR chu?n c?a tool...", "uid": uid, "target": submit_target})
 
                     # 1. L?U NGAY PHI?N T?I KHO?N NVR V?O accounts_unverified.txt & accounts.txt
@@ -2587,6 +2607,7 @@ class RegistrationService:
                         "birthday": f"{identity.get('b_day')}/{identity.get('b_month')}/{identity.get('b_year')}",
                         "raw_line": unver_record,
                         "detected_format": "UID|PASS|COOKIE",
+                        "created_at": time.time(),
                     }
 
                     # 4. CHUY?N TASK INPUT SANG CH? ?? VERIFY_NVR CHU?N
@@ -3085,6 +3106,7 @@ class RegistrationService:
                 pacing_min=float(task_input.extra.get("otp_pacing_min", 2.0)),
                 pacing_max=float(task_input.extra.get("otp_pacing_max", 3.5)),
                 proxy_ip=task_input.extra.get("proxy_ip"),
+                emit_callback=emit,
             )
             if ok_confirm:
                 _safe_sleep(random.uniform(0.8, 1.4))

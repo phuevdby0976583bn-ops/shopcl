@@ -8916,9 +8916,17 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             or (uid_to_check and uid_to_check.isdigit() and len(uid_to_check) >= 8 and not is_checkpoint and (getattr(result, "cookie_string", "") or getattr(result, "cookies", None)))
         )
         # Tự động up lên Bot Shop nếu tính năng được bật (Hỗ trợ UID|PASS|COOKIE tự động nạp theo Media ID)
+        is_bot_on = False
+        try:
+            if hasattr(self, "var_bot_auto_upload"):
+                is_bot_on = bool(self.var_bot_auto_upload.get())
+            else:
+                is_bot_on = bool(self.config.get("bot_auto_upload", False))
+        except Exception:
+            is_bot_on = bool(self.config.get("bot_auto_upload", False))
+
         should_upload_to_bot = bool(
-            hasattr(self, "var_bot_auto_upload")
-            and self.var_bot_auto_upload.get()
+            is_bot_on
             and uid_to_check
             and uid_to_check != "N/A"
             and not is_checkpoint
@@ -8927,8 +8935,13 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         if should_upload_to_bot:
             if not hasattr(self, "_bot_uploaded_uids"):
                 self._bot_uploaded_uids = set()
-            if uid_to_check not in self._bot_uploaded_uids:
-                self._bot_uploaded_uids.add(uid_to_check)
+            if not hasattr(self, "_bot_upload_lock"):
+                self._bot_upload_lock = threading.Lock()
+            with self._bot_upload_lock:
+                already_in = uid_to_check in self._bot_uploaded_uids
+                if not already_in:
+                    self._bot_uploaded_uids.add(uid_to_check)
+            if not already_in:
                 if hasattr(self, "_bot_upload_executor"):
                     self._bot_upload_executor.submit(self.upload_single_account_to_bot, result)
                 else:
@@ -12898,6 +12911,35 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         is_genuinely_success = bool(res.success and res.uid)
 
                     if is_genuinely_success:
+                        # Tự động up lên Bot Shop ngay lập tức nếu tính năng được bật
+                        try:
+                            _is_bot_enabled = False
+                            try:
+                                if hasattr(self, "var_bot_auto_upload"):
+                                    _is_bot_enabled = bool(self.var_bot_auto_upload.get())
+                                else:
+                                    _is_bot_enabled = bool(self.config.get("bot_auto_upload", False))
+                            except Exception:
+                                _is_bot_enabled = bool(self.config.get("bot_auto_upload", False))
+
+                            if _is_bot_enabled and res.uid and str(res.uid).strip().isdigit() and len(str(res.uid).strip()) >= 8 and not getattr(res, "is_checkpoint", False):
+                                _u_str = str(res.uid).strip()
+                                if not hasattr(self, "_bot_uploaded_uids"):
+                                    self._bot_uploaded_uids = set()
+                                if not hasattr(self, "_bot_upload_lock"):
+                                    self._bot_upload_lock = threading.Lock()
+                                with self._bot_upload_lock:
+                                    _already_up = _u_str in self._bot_uploaded_uids
+                                    if not _already_up:
+                                        self._bot_uploaded_uids.add(_u_str)
+                                if not _already_up:
+                                    if hasattr(self, "_bot_upload_executor"):
+                                        self._bot_upload_executor.submit(self.upload_single_account_to_bot, res)
+                                    else:
+                                        threading.Thread(target=self.upload_single_account_to_bot, args=(res,), daemon=True).start()
+                        except Exception as _ex_up:
+                            logger.debug(f"Direct bot upload trigger error: {_ex_up}")
+
                         with success_lock:
                             successful_accs += 1
                             if max_accs > 0 and successful_accs >= max_accs:
@@ -13063,6 +13105,15 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
                                 # TH 4: Cần xoay sang IP mới cho key này
                                 if curr_enable_account_ip_stickiness and k_state and k_state.get("active_sessions", 0) > 0:
+                                    if not hasattr(self, "_last_ip_stickiness_log_ts"):
+                                        self._last_ip_stickiness_log_ts = {}
+                                    _now_st = time.time()
+                                    if _now_st - self._last_ip_stickiness_log_ts.get(base_k, 0) > 10.0:
+                                        self._last_ip_stickiness_log_ts[base_k] = _now_st
+                                        self.event_queue.put(("log", {
+                                            "message": f"[{provider_name.upper()}] 🛡️ [Cố định IP] {base_key_label} ({assigned_ip}) đang có phiên chưa hoàn tất -> Tạm hoãn xoay IP mới để bảo vệ nick!",
+                                            "tag": "info"
+                                        }))
                                     time.sleep(1.0)
                                     continue
                                 rot_lock = k_state.setdefault("rot_lock", threading.Lock()) if k_state else None
@@ -15953,39 +16004,43 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 self.btn_toggle_bot_api_key.configure(text='👁 Hiện Key')
 
     def _get_bot_config(self):
-        """Lấy bộ 3 cấu hình: (media_id, api_url, api_key)."""
-        mid = ''
+        """Lấy bộ 3 cấu hình: (media_id, api_url, api_key) an toàn tuyệt đối từ config và GUI."""
+        mid = str(self.config.get('bot_media_id', '')).strip()
         if hasattr(self, 'entry_dash_bot_media_id'):
             try:
-                mid = self.entry_dash_bot_media_id.get().strip()
+                val = self.entry_dash_bot_media_id.get().strip()
+                if val:
+                    mid = val
             except Exception:
                 pass
         if not mid and hasattr(self, 'entry_bot_media_id'):
             try:
-                mid = self.entry_bot_media_id.get().strip()
+                val = self.entry_bot_media_id.get().strip()
+                if val:
+                    mid = val
             except Exception:
                 pass
         if not mid:
-            mid = str(self.config.get('bot_media_id', '')).strip()
+            mid = "0AgACAgUAAxUAAWrdTEFel8nwqyfqdm-JW5tDEZQ-AAJmE2sbA8fhVvptkVWyk7XSAQADAgADYwADPQQ"
 
-        api_url = ''
+        api_url = str(self.config.get('bot_api_url', 'https://shopcl.onrender.com')).strip()
         if hasattr(self, 'entry_bot_api_url'):
             try:
-                api_url = self.entry_bot_api_url.get().strip()
+                val = self.entry_bot_api_url.get().strip()
+                if val:
+                    api_url = val
             except Exception:
                 pass
-        if not api_url:
-            api_url = str(self.config.get('bot_api_url', 'https://shopcl.onrender.com')).strip()
         api_url = api_url.rstrip('/')
 
-        api_key = ''
+        api_key = str(self.config.get('bot_api_key', 'MatKhauAdminCuaBan123')).strip()
         if hasattr(self, 'entry_bot_api_key'):
             try:
-                api_key = self.entry_bot_api_key.get().strip()
+                val = self.entry_bot_api_key.get().strip()
+                if val:
+                    api_key = val
             except Exception:
                 pass
-        if not api_key:
-            api_key = str(self.config.get('bot_api_key', 'MatKhauAdminCuaBan123')).strip()
 
         return mid, api_url, api_key
 
@@ -16109,6 +16164,10 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             pwd = str(getattr(result, 'password', '') or '').strip()
             if not pwd and hasattr(result, 'metadata') and isinstance(result.metadata, dict):
                 pwd = str(result.metadata.get('password', '')).strip()
+                if not pwd:
+                    _ident = result.metadata.get('identity', {})
+                    if isinstance(_ident, dict):
+                        pwd = str(_ident.get('password', '')).strip()
             if not pwd:
                 pwd = str(self.config.get('default_password', '')).strip()
             if not pwd and hasattr(self, 'entry_pass'):
@@ -16175,7 +16234,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             'description': 'Tài khoản Clone Facebook reg tự động từ Tool',
             'items': account_lines,
             'check_live': False,
-            'is_facebook': True
+            'is_facebook': False
         }
 
         upload_url = f'{api_url}/api/items/bulk-upload'
@@ -16228,7 +16287,10 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 err_detail = edata.get('detail', str(he))
             except Exception:
                 err_detail = err_body or str(he)
-            self.log(f'❌ [Bot Shop] Upload thất bại (Mã {he.code}): {err_detail}', 'error')
+            if he.code == 400 and any(w in err_detail.lower() for w in ('trùng uid', 'trùng', 'duplicate', 'đã tồn tại')):
+                self.log(f'🤖 [Bot Shop] ℹ️ {batch_label or "Nick"} đã có sẵn trong thư mục [{target_sub}] trên Bot Shop (Trùng UID)', 'info')
+            else:
+                self.log(f'❌ [Bot Shop] Upload thất bại (Mã {he.code}): {err_detail}', 'error')
 
         except Exception as ex:
             self.log(f'❌ [Bot Shop] Lỗi gửi request upload: {ex}', 'error')
