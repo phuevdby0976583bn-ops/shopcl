@@ -5045,20 +5045,19 @@ class TenMinuteMailNetProvider(BaseEmailProvider):
         if worker_p_dict:
             candidate_proxies.append(worker_p_dict)
 
-        # Lấy tối đa 1 proxy backup từ Proxy.vn cache nếu worker proxy rỗng
-        if not candidate_proxies:
-            try:
-                from core.proxy_manager import _PROXYVN_CACHE, _PROXYVN_CACHE_LOCK
-                with _PROXYVN_CACHE_LOCK:
-                    for p_info in list(_PROXYVN_CACHE.values()):
-                        h = p_info.get("http")
-                        if h:
-                            b_dict = self._get_proxies(h)
-                            if b_dict:
-                                candidate_proxies.append(b_dict)
-                                break
-            except Exception:
-                pass
+        # Lấy thêm 1 proxy backup từ Proxy.vn cache để đảm bảo tỷ lệ cấp mail cao nhất
+        try:
+            from core.proxy_manager import _PROXYVN_CACHE, _PROXYVN_CACHE_LOCK
+            with _PROXYVN_CACHE_LOCK:
+                for p_info in list(_PROXYVN_CACHE.values()):
+                    h = p_info.get("http")
+                    if h:
+                        b_dict = self._get_proxies(h)
+                        if b_dict and b_dict not in candidate_proxies:
+                            candidate_proxies.append(b_dict)
+                            break
+        except Exception:
+            pass
 
         if not candidate_proxies:
             candidate_proxies.append(None)

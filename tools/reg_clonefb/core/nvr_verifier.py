@@ -366,6 +366,7 @@ def verify_single_nvr_account(
                 logger.debug(f"Login error: {e}")
 
         # 4. Xác định hòm thư email để nhận OTP
+        active_provider = email_provider
         use_existing_acc_email = (
             bool(account_data.get("is_registered_email"))
             or task_input.extra.get("email_service") in ("account_email", None, "")
