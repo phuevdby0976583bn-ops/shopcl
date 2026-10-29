@@ -1605,21 +1605,20 @@ class RegistrationService:
             if "iphone" in dev_name or "ios" in dev_name:
                 legacy_ua = get_iphone_app_ua(carrier=c_name, locale=loc_name)
                 legacy_impersonate = "safari15_3"
-            elif "androidapp" in dev_name or "katana" in dev_name or "fb4a" in dev_name:
+            elif any(k in dev_name for k in ("katana", "fb4a", "app", "s21", "s22", "s23", "mr_sxr", "android", "default")):
+                # Sử dụng User-Agent Facebook Katana FB4A chính hãng (Samsung Galaxy S21 Ultra, S22, S23, Pixel, Xiaomi...)
+                # Khớp 100% User-Agent app Meta hiển thị 'was logged in on Samsung Galaxy S21 Ultra 5G'
                 legacy_ua = get_android_app_ua(carrier=c_name, locale=loc_name)[0]
-                legacy_impersonate = "chrome107"
-            elif "android" in dev_name:
-                legacy_ua = get_android_browser_ua()[0]
-                legacy_impersonate = "chrome107"
+                legacy_impersonate = "chrome124"
             else:
-                legacy_ua = get_android_browser_ua()[0]
-                legacy_impersonate = "chrome107"
+                legacy_ua = get_android_app_ua(carrier=c_name, locale=loc_name)[0]
+                legacy_impersonate = "chrome124"
 
             base_type = device_type.split("_")[0] if "_" in device_type else device_type
             if base_type in ("IphoneApp", "iOS"):
                 legacy_impersonate = "safari15_3"
             else:
-                legacy_impersonate = "chrome107"
+                legacy_impersonate = "chrome124"
             profile.impersonate = legacy_impersonate
             profile.user_agent = legacy_ua
 

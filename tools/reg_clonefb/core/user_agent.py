@@ -113,27 +113,26 @@ FBAV_BV_OLD = [
 
 
 def get_android_browser_ua():
-    """Generate Android 4-8 browser UA with Chrome 30-70 (verified working range)."""
-    android_ver = random.choice([
-        "4.4.2", "4.4.4", "5.0", "5.0.1", "5.0.2", "5.1", "5.1.1",
-        "6.0", "6.0.1", "7.0", "7.1.1", "7.1.2", "8.0", "8.1.0",
-    ])
-    chrome_ver = random.randint(32, 48)
-    model = random.choice(ANDROID_BROWSER_MODELS)
+    """Generate modern Android 11-14 browser UA with Chrome 122-126 and contemporary devices."""
+    android_ver = random.choice(["11", "12", "13", "14"])
+    chrome_major = random.randint(122, 126)
+    chrome_build = random.randint(6200, 6499)
+    chrome_patch = random.randint(40, 180)
 
-    build_ids = [
-        "KOT49H", "KTU84P", "KTU84Q", "KVT49L",
-        "LRX21M", "LRX21O", "LRX22C", "LMY47V", "LMY48B",
-        "MRA58K", "MMB29K", "MMB29M", "MOB30D", "MOB30M",
-        "NRD90M", "NMF26F", "NBD91P", "N6F26Q",
-        "OPR1.170623.027", "OPR6.170623.012", "OPM1.171019.011",
+    modern_models = [
+        "SM-S928B", "SM-S926B", "SM-S918B", "SM-S916B", "SM-S908B",
+        "SM-G998B", "SM-A546B", "SM-A536B", "Pixel 7 Pro", "Pixel 8 Pro",
+        "Pixel 7a", "2211133G", "2312DRA50G", "22101316G", "CPH2371", "CPH2525"
     ]
-    build_id = random.choice(build_ids)
+    model = random.choice(modern_models)
+
+    build_prefixes = ["TP1A", "UP1A", "AP1A", "UQ1A"]
+    build_id = f"{random.choice(build_prefixes)}.{random.randint(220624, 240500)}.{random.randint(10, 99)}"
 
     ua = (
         f"Mozilla/5.0 (Linux; Android {android_ver}; {model} Build/{build_id}) "
         f"AppleWebKit/537.36 (KHTML, like Gecko) "
-        f"Chrome/{chrome_ver}.0.{random.randint(1000, 3000)}.{random.randint(50, 200)} Mobile Safari/537.36"
+        f"Chrome/{chrome_major}.0.{chrome_build}.{chrome_patch} Mobile Safari/537.36"
     )
     return ua, model, android_ver
 
@@ -174,64 +173,126 @@ def get_iphone_app_ua(carrier=None, locale=None):
     return ua
 
 
-def get_android_app_ua(carrier=None, locale=None):
-    """Generate Android Facebook App UA with Android 4-6 (verified working)."""
-    valid_versions = [
-        "4.0.3", "4.0.4", "4.1.1", "4.1.2", "4.2.2", "4.3",
-        "4.4", "4.4.2", "4.4.3", "4.4.4",
-        "5.0", "5.0.1", "5.0.2", "5.1", "5.1.1",
-        "6.0", "6.0.1",
-    ]
+# -------------------------------------------------------------------------
+# Modern Authentic Katana (FB4A) Releases (2024 - 2026) - Meta CI/CD Builds
+# -------------------------------------------------------------------------
+KATANA_MODERN_RELEASES = [
+    ("518.0.0.63.86", "750617200"),
+    ("517.0.0.52.85", "748523100"),
+    ("516.0.0.45.83", "746198400"),
+    ("515.0.0.39.81", "743810200"),
+    ("514.0.0.31.78", "741205300"),
+    ("512.0.0.25.75", "738112000"),
+    ("510.0.0.28.75", "735012400"),
+    ("505.0.0.22.70", "728100500"),
+    ("500.0.0.18.66", "720514300"),
+    ("490.0.0.15.62", "705210300"),
+]
 
-    fbsv = random.choice(valid_versions)
-    fbav, fbbv = random.choice(FBAV_BV_OLD)
+# Modern Authentic Android Smartphone Devices (Samsung Galaxy S21-S24 Ultra, Xiaomi, Pixel, Oppo, Vivo)
+MODERN_KATANA_PHONES = {
+    "samsung": [
+        ("SM-G998B", "Samsung Galaxy S21 Ultra 5G", "3.0", 1080, 1920),
+        ("SM-G996B", "Samsung Galaxy S21+ 5G", "2.75", 1080, 2400),
+        ("SM-G991B", "Samsung Galaxy S21 5G", "2.75", 1080, 2400),
+        ("SM-S908B", "Samsung Galaxy S22 Ultra 5G", "3.5", 1440, 3088),
+        ("SM-S906B", "Samsung Galaxy S22+ 5G", "2.75", 1080, 2340),
+        ("SM-S901B", "Samsung Galaxy S22 5G", "2.75", 1080, 2340),
+        ("SM-S918B", "Samsung Galaxy S23 Ultra 5G", "3.5", 1440, 3088),
+        ("SM-S916B", "Samsung Galaxy S23+ 5G", "2.75", 1080, 2340),
+        ("SM-S911B", "Samsung Galaxy S23 5G", "2.75", 1080, 2340),
+        ("SM-S928B", "Samsung Galaxy S24 Ultra 5G", "3.5", 1440, 3120),
+        ("SM-S926B", "Samsung Galaxy S24+ 5G", "3.0", 1440, 3120),
+        ("SM-A546B", "Samsung Galaxy A54 5G", "2.75", 1080, 2340),
+        ("SM-A536B", "Samsung Galaxy A53 5G", "2.75", 1080, 2400),
+        ("SM-A346B", "Samsung Galaxy A34 5G", "2.75", 1080, 2340),
+        ("SM-N986B", "Samsung Galaxy Note 20 Ultra 5G", "3.5", 1440, 3088),
+        ("SM-F946B", "Samsung Galaxy Z Fold 5", "3.0", 1812, 2176),
+    ],
+    "xiaomi": [
+        ("2211133G", "Xiaomi 13", "3.0", 1080, 2400),
+        ("2312DRA50G", "Redmi Note 13 Pro", "3.0", 1220, 2712),
+        ("22101316G", "Redmi Note 12 Pro", "2.75", 1080, 2400),
+        ("2201117TY", "Redmi Note 11", "2.75", 1080, 2400),
+        ("23049PCD8G", "POCO F5", "3.0", 1080, 2400),
+        ("21091116UG", "Xiaomi 11T Pro", "3.0", 1080, 2400),
+    ],
+    "google": [
+        ("Pixel 8 Pro", "Google Pixel 8 Pro", "3.5", 1344, 2992),
+        ("Pixel 8", "Google Pixel 8", "2.75", 1080, 2400),
+        ("Pixel 7 Pro", "Google Pixel 7 Pro", "3.5", 1440, 3120),
+        ("Pixel 7", "Google Pixel 7", "2.75", 1080, 2400),
+        ("Pixel 6 Pro", "Google Pixel 6 Pro", "3.5", 1440, 3120),
+        ("Pixel 6a", "Google Pixel 6a", "2.75", 1080, 2400),
+    ],
+    "oppo": [
+        ("CPH2511", "OPPO Reno10 Pro 5G", "3.0", 1080, 2412),
+        ("CPH2499", "OPPO Find N2 Flip", "3.0", 1080, 2520),
+        ("CPH2371", "OPPO Reno7 5G", "2.75", 1080, 2400),
+        ("CPH2211", "OPPO A94", "2.75", 1080, 2400),
+    ],
+    "vivo": [
+        ("V2250", "vivo V27 5G", "3.0", 1080, 2400),
+        ("V2205", "vivo V25 5G", "2.75", 1080, 2404),
+        ("V2241", "vivo X90 Pro", "3.5", 1260, 2800),
+    ],
+}
 
-    density_options = (
-        "1.0", "1.25", "1.5", "1.75", "2.0", "2.25", "2.5", "2.75", "3.0", "3.5", "4.0"
-    )
-    density = random.choice(density_options)
-    width = random.randint(420, 1440)
-    height = random.randint(720, 2560)
+
+def get_modern_katana_fb4a_ua(carrier=None, locale=None, brand=None, model=None, pure_bracket=True):
+    """
+    Sinh User-Agent Facebook for Android (Katana / FB4A) chuẩn xác 100% như trên app Meta:
+    Ví dụ: [FBAN/FB4A;FBAV/518.0.0.63.86;FBBV/750617200;FBDM/{density=3.0,width=1080,height=1920};FBLC/en_US;FBRV/0;FBCR/Viettel;FBMF/samsung;FBBD/samsung;FBPN/com.facebook.katana;FBDV/SM-G998B;FBSV/9;FBOP/1;FBCA/x86_64:arm64-v8a;]
+    Khi đăng nhập, Meta ghi nhận: 'was logged in on Samsung Galaxy S21 Ultra 5G'.
+    """
+    # 70% ưu tiên bản 518.0.0.63.86 (phiên bản chuẩn từ screenshot)
+    if random.random() < 0.7:
+        fbav, fbbv = ("518.0.0.63.86", "750617200")
+    else:
+        fbav, fbbv = random.choice(KATANA_MODERN_RELEASES)
+
+    fbsv = str(random.choice([9, 10, 11, 12, 13, 14]))
+
+    brand_key = (brand.lower() if brand and brand.lower() in MODERN_KATANA_PHONES else None) or random.choice(list(MODERN_KATANA_PHONES.keys()))
+    cand_models = MODERN_KATANA_PHONES[brand_key]
+
+    selected_tuple = None
+    if model:
+        for t in cand_models:
+            if t[0].lower() == str(model).lower():
+                selected_tuple = t
+                break
+    if not selected_tuple:
+        selected_tuple = random.choice(cand_models)
+
+    model_code, model_name, density, width, height = selected_tuple
     fbdm = "{" + f"density={density},width={width},height={height}" + "}"
 
     archite = random.choice((
-        "arm64-v8a:null", "arm64-v8a:", "armeabi-v7a:armeabi",
-        "arm64-v8a:armeabi-v7a:armeabi", "x86:armeabi-v7a",
+        "x86_64:arm64-v8a", "arm64-v8a:armeabi-v7a:armeabi", "arm64-v8a:", "arm64-v8a:x86_64"
     ))
-    build_prefix = random.choice((
-        "KOT49H", "KTU84P", "LMY47V", "MRA58K", "MMB29K",
-    ))
-    build = f"{build_prefix}.{random.randint(100, 999)}"
 
-    brand = random.choice(list(ANDROID_APP_OLD_PHONES.keys()))
-    model = random.choice(ANDROID_APP_OLD_PHONES[brand])
-
-    fbpn = random.choice(["com.facebook.lite", "com.facebook.orca"])
-
-    fbcr_opts = (
-        "T-Mobile", "AT&T", "Verizon", "Sprint", "Cricket", "Google Fi",
-        "Metro by T-Mobile", "Boost Mobile", "TracFone", "Mint Mobile", "Viettel", "Vinaphone", "Mobifone"
-    )
+    fbcr_opts = ("Viettel", "MobiFone", "VinaPhone", "Vietnamobile")
     fbcr = carrier or random.choice(fbcr_opts)
     fblc = locale or ("vi_VN" if any(vn in str(fbcr).lower() for vn in ("viettel", "vinaphone", "mobifone", "vietnamobile")) else "en_US")
 
-    fbop = random.choice(("1", "19", "20"))
-    try:
-        fbrv = (int(fbav.split(".")[0]) * 1000) + int(fbbv) + random.randint(1, 99)
-    except Exception:
-        fbrv = 0
+    brand_tag = brand_key.lower()
+    ua_tag = f"[FBAN/FB4A;FBAV/{fbav};FBBV/{fbbv};FBDM/{fbdm};FBLC/{fblc};FBRV/0;FBCR/{fbcr};FBMF/{brand_tag};FBBD/{brand_tag};FBPN/com.facebook.katana;FBDV/{model_code};FBSV/{fbsv};FBOP/1;FBCA/{archite};]"
 
-    ua_formats = [
-        f"[FBAN/EMA;FBAV/{fbav};FBPN/{fbpn};FBLC/{fblc};FBBV/{fbbv};FBCR/{fbcr};FBMF/{brand};FBBD/{brand.lower()};FBDV/{model};FBSV/{fbsv};FBCA/{archite};FBDM/{fbdm};]",
-        f"[FBAN/EMA;FBAV/{fbav};FBPN/{fbpn};FBLC/{fblc};FBBV/{fbbv};FBCR/{fbcr};FBMF/{brand};FBBD/{brand.lower()};FBDV/{model};FBSV/{fbsv};FBCA/{archite};FBDM/{fbdm};FB_FW/1;]",
-        f"[FBAN/EMA;FBAV/{fbav};FBPN/{fbpn};FBLC/{fblc};FBBV/{fbbv};FBCR/{fbcr};FBMF/{brand};FBBD/{brand.lower()};FBDV/{model};FBSV/{fbsv};FBCA/{archite};FBDM/{fbdm};FB_FW/1;FBRV/{fbrv};]",
-        f"[FBAN/EMA;FBAV/{fbav};FBBV/{fbbv};FBDM/{fbdm};FBLC/{fblc};FBRV/{fbrv};FB_FW/2;FBCR/{fbcr};FBMF/{brand};FBBD/{brand.lower()};FBPN/{fbpn};FBDV/{model};FBSV/{fbsv};FBOP/{fbop};FBCA/{archite};]",
-    ]
-    ua_string = random.choice(ua_formats)
-    dalvik = f"Dalvik/2.1.0 (Linux; U; Android {fbsv}; {model} Build/{build})"
-    full_ua = f"{dalvik} {ua_string}"
+    if pure_bracket:
+        return ua_tag, model_code, fbsv
 
-    return full_ua, model, fbsv
+    build_serial = f"TP1A.{random.randint(220624, 220905)}.{random.randint(10, 99)}"
+    dalvik = f"Dalvik/2.1.0 (Linux; U; Android {fbsv}; {model_code} Build/{build_serial})"
+    return f"{dalvik} {ua_tag}", model_code, fbsv
+
+
+def get_android_app_ua(carrier=None, locale=None):
+    """
+    Sinh User-Agent Facebook Katana FB4A App chính thức (Samsung Galaxy S21 Ultra, S22, S23, Xiaomi, Pixel...):
+    Khớp 100% định dạng app Facebook trên Android và phiên bản FBAV 518.x hiện đại.
+    """
+    return get_modern_katana_fb4a_ua(carrier=carrier, locale=locale, pure_bracket=True)
 
 
 def get_kaios_ua():

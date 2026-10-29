@@ -12735,7 +12735,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             sem_acquired = False
                             if key_sem:
                                 while not self.stop_event.is_set():
-                                    if key_sem.acquire(timeout=0.25):
+                                    if key_sem.acquire(timeout=0.5):
                                         sem_acquired = True
                                         break
                                 if not sem_acquired and self.stop_event.is_set():
@@ -12865,13 +12865,13 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 if k_state:
                                     with k_state["lock"]:
                                         if "exec_semaphore" not in k_state:
-                                            k_state["exec_semaphore"] = threading.BoundedSemaphore(value=1)
+                                            k_state["exec_semaphore"] = threading.BoundedSemaphore(value=2)
                                         key_sem = k_state["exec_semaphore"]
 
                                 sem_acquired = False
                                 if key_sem:
                                     while not self.stop_event.is_set():
-                                        if key_sem.acquire(timeout=0.25):
+                                        if key_sem.acquire(timeout=0.5):
                                             sem_acquired = True
                                             break
                                     if not sem_acquired and self.stop_event.is_set():
@@ -12888,8 +12888,15 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                             now_req = time.time()
                                             last_req = _shared_ip_last_submit.get(assigned_ip, 0.0)
                                             elapsed = now_req - last_req
-                                            if elapsed < 2.0:
-                                                stagger_wait = max(0.0, random.uniform(1.5, 2.5) - elapsed)
+                                            if curr_enable_otp_pacing:
+                                                min_p = float(curr_otp_pacing_min)
+                                                max_p = max(min_p, float(curr_otp_pacing_max))
+                                                target_gap = random.uniform(min_p, max_p)
+                                                if elapsed < target_gap:
+                                                    stagger_wait = max(0.0, target_gap - elapsed)
+                                            else:
+                                                if elapsed < 0.2:
+                                                    stagger_wait = max(0.0, random.uniform(0.1, 0.25) - elapsed)
                                             _shared_ip_last_submit[assigned_ip] = now_req + stagger_wait
 
                                     if stagger_wait > 0.05:
