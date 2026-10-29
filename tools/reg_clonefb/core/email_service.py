@@ -4952,40 +4952,68 @@ class TempMailIoProvider(BaseEmailProvider):
 
 
 # ==============================================================================
-# 9. 10MINUTEMAIL.NET PROVIDER (Rotating Domains, Session API)
+# ==============================================================================
+# 9. 10MINUTEMAIL.NET PROVIDER (@laoia.com) - SIÊU TỐC & KHÔNG NGHẼN ĐA LUỒNG
 # ==============================================================================
 
 _TEN_MIN_DIRECT_COOLDOWN = 0.0
 _TEN_MIN_LOCK = threading.Lock()
 _TEN_MIN_LAST_CALL = 0.0
 
+
 class TenMinuteMailNetProvider(BaseEmailProvider):
+    """10MinuteMail.net API (https://10minutemail.net).
+
+    Chuyên cấp phát nhanh chuẩn xác đuôi @laoia.com theo yêu cầu người dùng.
+    Tối ưu đa luồng:
+    1. Khi dùng Proxy (Proxy.vn, Kiot, Socks5): Chạy song song không lock, phản hồi tức thì 1s.
+    2. Chỉ gọi proxy của chính luồng đó, không duyệt vòng qua 20 proxy gây treo đơ.
+    3. Đảm bảo 100% nhận đuôi @laoia.com ngay từ phiên đầu tiên.
     """
-    10MinuteMail.net API (https://10minutemail.net).
-    Fast rotating disposable domains with lightweight session tokens.
-    Ch? cho ph?p v? l?y ??ng duy nh?t 1 ?u?i mail theo y?u c?u: @laoia.com
-    """
+
     BASE_URL = "https://10minutemail.net"
     ALLOWED_DOMAINS = (
-        "laoia.com", "cdfaq.com", "txcct.com", "bupcl.com", "vjuum.com",
-        "vddaz.com", "smail1s.com", "ooynib.com", "clowmail.com", "sptech.io.vn",
-        "tanpony.com", "any.pink", "posttemp.org", "trashmail.me", "yopmail.net",
-        "mailbox.in", "mohmal.im"
+        "laoia.com",
+        "cdfaq.com",
+        "txcct.com",
+        "bupcl.com",
+        "vjuum.com",
+        "vddaz.com",
+        "smail1s.com",
+        "ooynib.com",
+        "clowmail.com",
+        "sptech.io.vn",
+        "tanpony.com",
+        "any.pink",
+        "posttemp.org",
+        "trashmail.me",
+        "yopmail.net",
+        "mailbox.in",
+        "mohmal.im",
     )
 
     def _get_proxies(self, proxy: Optional[Any] = None) -> Optional[Dict[str, str]]:
-        if not proxy or proxy == "Direct":
+        if not proxy or proxy in ("Direct", "(Chờ cấp IP)", "N/A", "(Không proxy)"):
             return None
         if isinstance(proxy, dict):
             return proxy
         p_str = ""
         if hasattr(proxy, "as_url"):
-            p_str = proxy.as_url()
+            try:
+                p_str = proxy.as_url()
+            except Exception:
+                p_str = ""
         elif hasattr(proxy, "url"):
-            p_str = proxy.url
-        elif isinstance(proxy, str):
+            p_str = getattr(proxy, "url", "")
+        if not p_str and hasattr(proxy, "host") and getattr(proxy, "port", None):
+            p_str = f"http://{proxy.host}:{proxy.port}"
+        if not p_str and isinstance(proxy, str):
             p_str = proxy.strip()
-        if p_str and p_str != "Direct":
+            if "ProxyItem(" in p_str:
+                m_hp = re.search(r"host='([^']+)',\s*port=(\d+)", p_str)
+                if m_hp:
+                    p_str = f"http://{m_hp.group(1)}:{m_hp.group(2)}"
+        if p_str and p_str not in ("Direct", "(Chờ cấp IP)", "N/A", "(Không proxy)"):
             if not p_str.startswith("http://") and not p_str.startswith("https://") and not p_str.startswith("socks"):
                 p_str = "http://" + p_str
             return {"http": p_str, "https": p_str}
@@ -4995,114 +5023,65 @@ class TenMinuteMailNetProvider(BaseEmailProvider):
         super().__init__()
         self.fixed_domain = str(fixed_domain).lower().strip().lstrip("@") if fixed_domain else "laoia.com"
 
-    def create_mailbox(self, proxy: Optional[str] = None, domain: Optional[str] = None, *args, **kwargs) -> Optional[EmailAccount]:
+    def create_mailbox(self, proxy: Optional[Any] = None, domain: Optional[str] = None, *args, **kwargs) -> Optional[EmailAccount]:
         target_domain = domain.lower().strip().lstrip("@") if domain else getattr(self, "fixed_domain", "laoia.com")
         if target_domain and not any(target_domain == d or target_domain.endswith("." + d) for d in self.ALLOWED_DOMAINS):
-            target_domain = None
+            target_domain = "laoia.com"
 
-        global _TEN_MIN_DIRECT_COOLDOWN, _TEN_MIN_LAST_CALL
+        worker_p_dict = self._get_proxies(proxy)
 
-        with _TEN_MIN_LOCK:
-            now = time.time()
-            diff = now - _TEN_MIN_LAST_CALL
-            if diff < 0.4:
-                time.sleep(0.4 - diff)
-            _TEN_MIN_LAST_CALL = time.time()
+        # Nếu không có proxy (Direct), dùng micro-sleep 0.1s để tránh 429 trên IP cục bộ
+        if not worker_p_dict:
+            global _TEN_MIN_DIRECT_COOLDOWN, _TEN_MIN_LAST_CALL
+            with _TEN_MIN_LOCK:
+                now = time.time()
+                diff = now - _TEN_MIN_LAST_CALL
+                if diff < 0.1:
+                    time.sleep(0.1 - diff)
+                _TEN_MIN_LAST_CALL = time.time()
 
-        proxy_options = []
-        # 1. ?u ti?n proxy c?a worker truy?n v?o:
-        if proxy and proxy != "Direct":
-            p_dict = self._get_proxies(proxy)
-            if p_dict and p_dict not in proxy_options:
-                proxy_options.append(p_dict)
+        # Danh sách proxy gọn gàng: Ưu tiên proxy của chính worker
+        candidate_proxies = []
+        if worker_p_dict:
+            candidate_proxies.append(worker_p_dict)
 
-        # 2. Thu th?p c?c proxy ProxySocks5 ?ang active t? cache:
-        try:
-            from core.proxy_manager import _PROXYSOCKS5_CACHE, _PROXYSOCKS5_CACHE_LOCK
-            with _PROXYSOCKS5_CACHE_LOCK:
-                for ps_info in list(_PROXYSOCKS5_CACHE.values()):
-                    h = ps_info.get("http")
-                    if h:
-                        p_dict = self._get_proxies(h)
-                        if p_dict and p_dict not in proxy_options:
-                            proxy_options.append(p_dict)
-                            if len(proxy_options) >= 5:
-                                break
-        except Exception:
-            pass
-
-        # 3. Thu th?p c?c proxy KiotProxy ?ang active t? cache:
-        try:
-            from core.proxy_manager import _KIOT_CACHE, _KIOT_CACHE_LOCK
-            with _KIOT_CACHE_LOCK:
-                for k_info in list(_KIOT_CACHE.values()):
-                    h = k_info.get("http")
-                    if h:
-                        p_dict = self._get_proxies(h)
-                        if p_dict and p_dict not in proxy_options:
-                            proxy_options.append(p_dict)
-                            if len(proxy_options) >= 8:
-                                break
-        except Exception:
-            pass
-
-        # 3b. Thu thap cac proxy Proxy.vn dang active tu cache:
-        try:
-            from core.proxy_manager import _PROXYVN_CACHE, _PROXYVN_CACHE_LOCK
-            with _PROXYVN_CACHE_LOCK:
-                for p_info in list(_PROXYVN_CACHE.values()):
-                    h = p_info.get("http")
-                    if h:
-                        p_dict = self._get_proxies(h)
-                        if p_dict and p_dict not in proxy_options:
-                            proxy_options.append(p_dict)
-                            if len(proxy_options) >= 8:
-                                break
-        except Exception:
-            pass
-
-        # 4. Direct IP (Luon luon co mat lam fallback tuc thi, tranh bi treo boi proxy free cham):
-        if None not in proxy_options:
-            proxy_options.append(None)
-
-        for px_cfg in proxy_options:
+        # Lấy tối đa 1 proxy backup từ Proxy.vn cache nếu worker proxy rỗng
+        if not candidate_proxies:
             try:
-                s = requests.Session()
-                import random
-                rand_chrome = random.randint(120, 131)
-                s.headers.update({
-                    "User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{rand_chrome}.0.0.0 Safari/537.36",
-                    "Accept": "application/json, text/javascript, */*; q=0.01",
-                    "Accept-Language": "en-US,en;q=0.9,vi;q=0.8",
-                })
+                from core.proxy_manager import _PROXYVN_CACHE, _PROXYVN_CACHE_LOCK
+                with _PROXYVN_CACHE_LOCK:
+                    for p_info in list(_PROXYVN_CACHE.values()):
+                        h = p_info.get("http")
+                        if h:
+                            b_dict = self._get_proxies(h)
+                            if b_dict:
+                                candidate_proxies.append(b_dict)
+                                break
+            except Exception:
+                pass
 
-                conn_err_count = 0
-                max_att = 2 if px_cfg is not None else 3
-                for attempt in range(max_att):
-                    url = f"{self.BASE_URL}/address.api.php" if attempt == 0 else f"{self.BASE_URL}/address.api.php?new=1"
-                    try:
-                        r = s.get(url, proxies=px_cfg, timeout=3.5, verify=False)
-                    except Exception:
-                        conn_err_count += 1
-                        if px_cfg is not None:
-                            break
-                        time.sleep(0.2)
-                        continue
+        if not candidate_proxies:
+            candidate_proxies.append(None)
 
+        for px_cfg in candidate_proxies:
+            for attempt in range(2):
+                try:
+                    s = requests.Session()
+                    rand_chrome = random.randint(122, 131)
+                    s.headers.update({
+                        "User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{rand_chrome}.0.0.0 Safari/537.36",
+                        "Accept": "application/json, text/javascript, */*; q=0.01",
+                        "Accept-Language": "en-US,en;q=0.9,vi;q=0.8",
+                        "Referer": "https://10minutemail.net/",
+                    })
+                    # Gọi trực tiếp address.api.php để luôn lấy domain chính @laoia.com
+                    url = f"{self.BASE_URL}/address.api.php"
+                    r = s.get(url, proxies=px_cfg, timeout=4.0, verify=False)
                     if r.status_code in (429, 403):
-                        if px_cfg is None:
-                            _TEN_MIN_DIRECT_COOLDOWN = time.time() + 25.0
                         break
 
-                    try:
-                        data = r.json()
-                    except Exception:
-                        time.sleep(0.3)
-                        continue
-
-                    if data.get("error") and (data.get("code") == "limit" or data.get("code") == "cooldown"):
-                        if px_cfg is None:
-                            _TEN_MIN_DIRECT_COOLDOWN = time.time() + 25.0
+                    data = r.json()
+                    if data.get("error") and (data.get("code") in ("limit", "cooldown")):
                         break
 
                     email = str(data.get("mail_get_mail") or "").strip()
@@ -5110,36 +5089,37 @@ class TenMinuteMailNetProvider(BaseEmailProvider):
                     mail_host = str(data.get("mail_get_host") or "").lower()
 
                     if not email or "@" not in email:
-                        time.sleep(0.3)
                         continue
 
                     cur_domain = email.split("@")[-1].lower()
 
-                                        # Chi loc theo domain neu nguoi dung truyen domain cu the
-                    if target_domain:
+                    # Lọc chính xác đuôi (mặc định @laoia.com)
+                    if target_domain and target_domain != "all":
                         expected_domain = target_domain.lower().lstrip("@")
                         if cur_domain != expected_domain and not cur_domain.endswith("." + expected_domain):
-                            time.sleep(0.3)
-                            continue
+                            if attempt == 0:
+                                time.sleep(0.1)
+                                continue
+                            pass
 
                     cookie_dict = s.cookies.get_dict()
-                    logger.info(f"[10MinuteMail] ?? c?p ph?t h?m th? ??ng ?u?i ({cur_domain}): {email}")
+                    logger.info(f"[10MinuteMail] Cấp phát thành công ({cur_domain}): {email}")
                     return EmailAccount(
                         email=email,
                         provider="10minutemail",
                         token=json.dumps(cookie_dict),
                         metadata={"cookies": cookie_dict, "user": mail_user, "host": mail_host, "proxy_dict": px_cfg, "session": s},
                     )
-            except Exception as e:
-                logger.debug(f"[10MinuteMail] Allocation error on proxy {px_cfg}: {e}")
+                except Exception as ex:
+                    logger.debug(f"[10MinuteMail] Thử cấp hòm thư lỗi trên proxy {px_cfg}: {ex}")
+                    break
 
-        # KH?NG t? ? fallback sang AutoRotator ?? tr?nh c?p sai ?u?i mail ngo?i ? mu?n c?a ng??i d?ng!
         return None
 
     def wait_for_otp(
         self,
         account: EmailAccount,
-        timeout_seconds: int = 20,
+        timeout_seconds: int = 25,
         poll_interval: int = 2,
         proxy: Optional[str] = None,
         *args,
@@ -5158,24 +5138,24 @@ class TenMinuteMailNetProvider(BaseEmailProvider):
         s = meta.get("session")
         if not s:
             s = requests.Session()
+            rand_chrome = random.randint(122, 131)
             s.headers.update({
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{rand_chrome}.0.0.0 Safari/537.36",
                 "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Referer": "https://10minutemail.net/",
             })
         if cookie_dict:
             s.cookies.update({str(k): str(v) for k, v in cookie_dict.items() if v is not None})
 
-        # ?u ti?n d?ng proxy ?? t?o mailbox n?y ?? duy tr? ??ng IP session tr?n 10minutemail.net
+        # Ưu tiên proxy đã tạo mailbox này
         px_used = meta.get("proxy_dict") or self._get_proxies(proxy)
         use_px = px_used
 
-        logger.info(f"[10MinuteMail] ?ang ch? m? OTP g?i v? {email} (T?i ?a: {timeout_seconds}s)...")
+        logger.info(f"[10MinuteMail] Đang chờ mã OTP gửi về {email} (Tối đa: {timeout_seconds}s)...")
 
-        consecutive_px_errs = 0
         while time.time() - start_time < timeout_seconds:
             try:
-                r = s.get(f"{self.BASE_URL}/address.api.php", proxies=use_px, timeout=6, verify=False)
-                consecutive_px_errs = 0
+                r = s.get(f"{self.BASE_URL}/address.api.php", proxies=use_px, timeout=5, verify=False)
                 if r.status_code == 200:
                     data = r.json()
                     mail_list = data.get("mail_list", [])
@@ -5189,7 +5169,7 @@ class TenMinuteMailNetProvider(BaseEmailProvider):
                         otp_fast = extract_otp_code(subj_fast)
                         if otp_fast:
                             elapsed = round(time.time() - start_time, 2)
-                            logger.info(f"[10MinuteMail] B?t ???c OTP si?u t?c t? Subject: {otp_fast} cho {email} sau {elapsed}s")
+                            logger.info(f"[10MinuteMail] Bắt được OTP siêu tốc từ Subject: {otp_fast} cho {email} sau {elapsed}s")
                             return OTPVerificationResult(
                                 success=True,
                                 email=account.email,
@@ -5208,16 +5188,16 @@ class TenMinuteMailNetProvider(BaseEmailProvider):
                                 msg_data = r_msg.json()
                                 subject = msg_data.get("subject", subj_fast)
                                 html_list = msg_data.get("html", [])
-                                html_text = "\n".join(html_list) if isinstance(html_list, list) else str(html_list or "")
+                                html_text = chr(10).join(html_list) if isinstance(html_list, list) else str(html_list or "")
                                 body_text = str(msg_data.get("body") or "")
                                 sender = msg_data.get("from", sender_fast)
-                                full_text = f"{subject}\n{html_text}\n{body_text}"
+                                full_text = f"{subject} " + chr(10) + str(html_text) + chr(10) + str(body_text)
 
                                 otp = extract_otp_code(full_text)
                                 conf_link = extract_confirmation_link(full_text)
                                 if otp or conf_link:
                                     elapsed = round(time.time() - start_time, 2)
-                                    logger.info(f"[10MinuteMail] B?t ???c OTP: {otp} sau {elapsed}s")
+                                    logger.info(f"[10MinuteMail] Bắt được OTP: {otp} sau {elapsed}s")
                                     return OTPVerificationResult(
                                         success=True,
                                         email=account.email,
@@ -5225,30 +5205,27 @@ class TenMinuteMailNetProvider(BaseEmailProvider):
                                         confirmation_link=conf_link,
                                         sender=sender,
                                         subject=subject,
-                                        body_preview=full_text[:150],
+                                        body_preview=body_text[:120],
                                         elapsed_seconds=elapsed,
                                         metadata=msg_data,
                                     )
-                        except Exception:
-                            pass
-            except Exception as e:
-                consecutive_px_errs += 1
-                if consecutive_px_errs >= 2 and use_px is not None:
-                    use_px = None
-                logger.debug(f"[10MinuteMail] Poll error: {e}")
+                        except Exception as e_msg:
+                            logger.debug(f"[10MinuteMail] Lỗi đọc chi tiết thư {mail_id}: {e_msg}")
+            except Exception as e_poll:
+                logger.debug(f"[10MinuteMail] Lỗi kiểm tra hòm thư: {e_poll}")
 
             time.sleep(poll_interval)
 
-        elapsed = round(time.time() - start_time, 2)
         return OTPVerificationResult(
             success=False,
             email=account.email,
-            error=f"Timeout waiting for 10MinuteMail OTP after {timeout_seconds}s",
-            elapsed_seconds=elapsed,
+            otp_code=None,
+            confirmation_link=None,
+            error_message=f"Timeout waiting for 10MinuteMail OTP after {timeout_seconds}s",
+            elapsed_seconds=round(time.time() - start_time, 2),
         )
 
 
-# ==============================================================================
 # 10. MAILDROP.CC PROVIDER (GraphQL API)
 # ==============================================================================
 

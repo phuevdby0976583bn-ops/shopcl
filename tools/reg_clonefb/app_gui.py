@@ -1485,10 +1485,31 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         return k[:4] + ("*" * (len(k) - 8)) + k[-4:]
 
     @staticmethod
-    def mask_ip(text: str) -> str:
+    def format_proxy_display(proxy: Any) -> str:
+        """Trích xuất chuỗi IP/Host:Port trực quan, sạch sẽ thay vì raw repr của ProxyItem."""
+        if not proxy or proxy in ("Direct", "(Chờ cấp IP)", "N/A", "(Không proxy)"):
+            return str(proxy) if proxy else ""
+        if hasattr(proxy, "real_ip") and proxy.real_ip:
+            return str(proxy.real_ip)
+        if hasattr(proxy, "host") and getattr(proxy, "port", None):
+            return f"{proxy.host}:{proxy.port}"
+        if hasattr(proxy, "host") and proxy.host:
+            return str(proxy.host)
+        s = str(proxy).strip()
+        if "ProxyItem(" in s:
+            m_rip = re.search(r"real_ip='([^']+)'", s)
+            if m_rip and m_rip.group(1) not in ("None", ""):
+                return m_rip.group(1)
+            m_hp = re.search(r"host='([^']+)',\s*port=(\d+)", s)
+            if m_hp:
+                return f"{m_hp.group(1)}:{m_hp.group(2)}"
+        return s
+
+    @classmethod
+    def mask_ip(cls, text: Any) -> str:
         if not text or text in ("Direct", "(Chờ cấp IP)", "N/A", "(Không proxy)"):
-            return text
-        s = str(text)
+            return str(text) if text else ""
+        s = cls.format_proxy_display(text)
         cached = _MASK_IP_CACHE.get(s)
         if cached is not None:
             return cached
@@ -1496,18 +1517,6 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         res = s
         if "://" in res and "@" in res:
             res = _RE_URL_AUTH.sub(r"://***:***@", res)
-        if "." in res:
-            def _repl(m):
-                prefix = m.group(1)
-                port = m.group(2) or ""
-                return f"{prefix}.***.***{port}"
-            res = _RE_IPV4.sub(_repl, res)
-        if len(res) >= 28:
-            def _repl_key(m):
-                k = m.group(0)
-                return k[:4] + "*" * (len(k) - 8) + k[-4:]
-            res = _RE_API_KEY.sub(_repl_key, res)
-
         if len(_MASK_IP_CACHE) >= _MASK_IP_CACHE_MAX:
             _MASK_IP_CACHE.clear()
         _MASK_IP_CACHE[s] = res
@@ -13430,7 +13439,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             if m_u:
                 uid = m_u.group(1).strip()
         email = data.get("email", "")
-        p_ip = data.get("proxy") or data.get("proxy_ip") or getattr(self, "_worker_proxy_map", {}).get(wid, "")
+        p_raw = data.get("proxy") or data.get("proxy_ip") or getattr(self, "_worker_proxy_map", {}).get(wid, "")
+        p_ip = self.format_proxy_display(p_raw)
         p_tag = f"[{self.mask_ip(p_ip)}] " if (p_ip and p_ip != "Direct" and p_ip != "(Chờ cấp IP)") else ""
         pfx = f"[Luồng {wid}] {p_tag}" if not msg.startswith(f"[Luồng {wid}]") else ""
 
@@ -13855,9 +13865,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             if pwd_val:
                                 old_v[4] = str(pwd_val)
                             if p_val and str(p_val) not in ("Direct", "(Chờ cấp IP)"):
-                                old_v[8] = self.mask_ip(str(p_val))
+                                old_v[8] = self.format_proxy_display(p_val)
                             elif p_val and (not old_v[8] or old_v[8] in ("Direct", "(Chờ cấp IP)")):
-                                old_v[8] = self.mask_ip(str(p_val))
+                                old_v[8] = self.format_proxy_display(p_val)
                             if s_val:
                                 old_v[9] = str(s_val)
                             old_v[10] = now_str
@@ -13867,7 +13877,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         self.row_counter += 1
                         uid_disp = t_uid if (t_uid and len(t_uid) >= 8 and t_uid.isdigit()) else (f"(L{wid}: Đang tạo...)" if wid is not None else "(Đang tạo...)")
                         target_disp = str(target_val) if (target_val and str(target_val) != "N/A") else (f"(L{wid}: Đang khởi tạo...)" if wid is not None else "(Đang khởi tạo...)")
-                        proxy_disp = self.mask_ip(str(p_val or "Direct"))
+                        proxy_disp = self.format_proxy_display(p_val or "Direct")
                         status_disp = str(s_val or (f"🔄 Luồng {wid}: Bắt đầu..." if wid is not None else "Đang xử lý..."))
 
                         row_vals = (
@@ -13897,7 +13907,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     res: RegistrationResult = data["result"]
                     wid = data["worker_id"]
                     proxy = data["proxy"]
-                    proxy_display = self.mask_ip(proxy)
+                    proxy_display = self.format_proxy_display(proxy)
                     now_str = datetime.now().strftime("%H:%M:%S")
 
                     # Tìm xem dòng này đã có trên bảng chưa

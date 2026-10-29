@@ -261,7 +261,8 @@ def verify_single_nvr_account(
             if "email" not in payload and "new_email" in locals() and new_email:
                 payload["email"] = new_email
             if "proxy" not in payload and getattr(task_input, "proxy", None):
-                payload["proxy"] = task_input.proxy
+                px = task_input.proxy
+                payload["proxy"] = getattr(px, "real_ip", None) or (f"{px.host}:{px.port}" if hasattr(px, "host") and getattr(px, "port", None) else str(px))
             emit_callback(event, payload)
     pwd = str(account_data.get("password", "")).strip() or str(task_input.password or "").strip()
     if not pwd:
@@ -426,6 +427,20 @@ def verify_single_nvr_account(
                     )
                     emit("unverified", {"result": res, "message": f"{err_m} (Tài khoản vẫn NVR - Không DIE)"})
                     return res
+
+            if not mailbox or not getattr(mailbox, "email", None):
+                is_strict_laoia = "laoia" in str(getattr(active_provider, "fixed_domain", "")).lower() or "laoia" in str(task_input.extra.get("email_service", "")).lower()
+                if not is_strict_laoia:
+                    try:
+                        from core.email_service import TempMailPlusProvider
+                        fallback_prov = TempMailPlusProvider()
+                        mailbox = fallback_prov.create_mailbox(proxy=task_input.proxy)
+                        if mailbox and getattr(mailbox, "email", None):
+                            active_provider = fallback_prov
+                            new_email = mailbox.email
+                            emit("info", {"message": f"⚡ [Cứu Nguy Tự Động] Hòm thư chính nghẽn ➔ Cấp hòm thư dự phòng: {mailbox.email}"})
+                    except Exception:
+                        pass
 
             if not mailbox or not getattr(mailbox, "email", None):
                 elapsed = time.time() - start_time
@@ -911,6 +926,19 @@ def verify_single_nvr_account(
                         prov_label = "Mail Ảo Free (Random Toàn Bộ Nguồn)"
                         try:
                             new_box = cur_prov.create_mailbox(proxy=task_input.proxy, worker_id=wid_val)
+                        except Exception:
+                            pass
+
+                if not new_box or not getattr(new_box, "email", None):
+                    is_strict_laoia = "laoia" in str(getattr(cur_prov, "fixed_domain", "")).lower() or "laoia" in str(retry_email_srv).lower()
+                    if not is_strict_laoia:
+                        try:
+                            from core.email_service import TempMailPlusProvider
+                            fallback_prov = TempMailPlusProvider()
+                            new_box = fallback_prov.create_mailbox(proxy=task_input.proxy)
+                            if new_box and getattr(new_box, "email", None):
+                                cur_prov = fallback_prov
+                                prov_label = "TempMail.Plus (Đa đuôi sạch tức thì)"
                         except Exception:
                             pass
 
