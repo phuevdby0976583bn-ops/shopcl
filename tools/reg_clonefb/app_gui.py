@@ -1484,58 +1484,75 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             return "*" * len(k)
         return k[:4] + ("*" * (len(k) - 8)) + k[-4:]
 
-    @staticmethod
-    def format_proxy_display(proxy: Any) -> str:
-        """Trích xuất chuỗi IP/Host:Port trực quan, sạch sẽ thay vì raw repr của ProxyItem."""
+    _FORMAT_PROXY_CACHE: Dict[str, str] = {}
+    _FORMAT_PROXY_CACHE_MAX: int = 5000
+
+    @classmethod
+    def format_proxy_display(cls, proxy: Any) -> str:
+        """Trích xuất chuỗi IP/Host:Port trực quan, sạch sẽ thay vì raw repr của ProxyItem (100% In-Memory Cache)."""
         if not proxy or proxy in ("Direct", "(Chờ cấp IP)", "N/A", "(Không proxy)"):
             return str(proxy) if proxy else ""
         if hasattr(proxy, "real_ip") and proxy.real_ip and str(proxy.real_ip).strip() not in ("None", "", "unknown"):
             return str(proxy.real_ip).strip()
-        try:
-            from core.proxy_manager import ProxyVNClient
-            _cand_hp = f"{getattr(proxy, 'host', '')}:{getattr(proxy, 'port', '')}"
-            for _c_val in ProxyVNClient._read_last_known_disk().values():
-                if _c_val.get("ip") and (_c_val.get("http", "").endswith(_cand_hp) or f"{_c_val.get('host')}:{_c_val.get('port')}" == _cand_hp):
-                    return str(_c_val["ip"]).strip()
-        except Exception:
-            pass
+
+        raw_key = str(proxy).strip()
+        cached = cls._FORMAT_PROXY_CACHE.get(raw_key)
+        if cached is not None:
+            return cached
+
+        cand_hp = None
         if hasattr(proxy, "host") and getattr(proxy, "port", None):
-            return f"{proxy.host}:{proxy.port}"
-        if hasattr(proxy, "host") and proxy.host:
-            return str(proxy.host)
-        s = str(proxy).strip()
-        if "ProxyItem(" in s:
-            m_rip = re.search(r"real_ip=['\"]([^'\"]+)['\"]", s)
+            cand_hp = f"{proxy.host}:{proxy.port}"
+        elif "ProxyItem(" in raw_key:
+            m_rip = re.search(r"real_ip=['\"]([^'\"]+)['\"]", raw_key) if 'real_ip=' in raw_key else None
             if m_rip and m_rip.group(1) not in ("None", "", "unknown"):
+                if len(cls._FORMAT_PROXY_CACHE) >= cls._FORMAT_PROXY_CACHE_MAX:
+                    cls._FORMAT_PROXY_CACHE.clear()
+                cls._FORMAT_PROXY_CACHE[raw_key] = m_rip.group(1)
                 return m_rip.group(1)
-            m_hp = re.search(r"host=['\"]([^'\"]+)['\"],\s*port=(\d+)", s)
+            m_hp = re.search(r"host=['\"]([^'\"]+)['\"],\s*port=(\d+)", raw_key) if 'port=' in raw_key else None
             if m_hp:
-                _cand_hp = f"{m_hp.group(1)}:{m_hp.group(2)}"
-                try:
-                    from core.proxy_manager import ProxyVNClient
-                    for _c_val in ProxyVNClient._read_last_known_disk().values():
-                        if _c_val.get("ip") and (_c_val.get("http", "").endswith(_cand_hp) or f"{_c_val.get('host')}:{_c_val.get('port')}" == _cand_hp):
-                            return str(_c_val["ip"]).strip()
-                except Exception:
-                    pass
-                return _cand_hp
-        if ":" in s and not s.startswith("http"):
+                cand_hp = f"{m_hp.group(1)}:{m_hp.group(2)}"
+        elif ":" in raw_key and not raw_key.startswith("http"):
+            cand_hp = raw_key
+
+        if cand_hp:
             try:
-                from core.proxy_manager import ProxyVNClient
-                for _c_val in ProxyVNClient._read_last_known_disk().values():
-                    if _c_val.get("ip") and (_c_val.get("http", "").endswith(s) or f"{_c_val.get('host')}:{_c_val.get('port')}" == s):
-                        return str(_c_val["ip"]).strip()
+                from core.proxy_manager import ProxyVNClient, KiotProxyClient
+                exit_ip = ProxyVNClient.lookup_exit_ip(cand_hp) or KiotProxyClient.lookup_exit_ip(cand_hp)
+                if exit_ip:
+                    if len(cls._FORMAT_PROXY_CACHE) >= cls._FORMAT_PROXY_CACHE_MAX:
+                        cls._FORMAT_PROXY_CACHE.clear()
+                    cls._FORMAT_PROXY_CACHE[raw_key] = exit_ip
+                    cls._FORMAT_PROXY_CACHE[cand_hp] = exit_ip
+                    return exit_ip
             except Exception:
                 pass
-        return s
+            if len(cls._FORMAT_PROXY_CACHE) >= cls._FORMAT_PROXY_CACHE_MAX:
+                cls._FORMAT_PROXY_CACHE.clear()
+            cls._FORMAT_PROXY_CACHE[raw_key] = cand_hp
+            return cand_hp
+
+        res = getattr(proxy, "host", None) or raw_key
+        res_str = str(res)
+        if len(cls._FORMAT_PROXY_CACHE) >= cls._FORMAT_PROXY_CACHE_MAX:
+            cls._FORMAT_PROXY_CACHE.clear()
+        cls._FORMAT_PROXY_CACHE[raw_key] = res_str
+        return res_str
 
     @classmethod
     def mask_ip(cls, text: Any) -> str:
         if not text or text in ("Direct", "(Chờ cấp IP)", "N/A", "(Không proxy)"):
             return str(text) if text else ""
+        text_str = str(text).strip()
+        cached = _MASK_IP_CACHE.get(text_str)
+        if cached is not None:
+            return cached
+
         s = cls.format_proxy_display(text)
         cached = _MASK_IP_CACHE.get(s)
         if cached is not None:
+            _MASK_IP_CACHE[text_str] = cached
             return cached
 
         res = s
@@ -1543,6 +1560,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             res = _RE_URL_AUTH.sub(r"://***:***@", res)
         if len(_MASK_IP_CACHE) >= _MASK_IP_CACHE_MAX:
             _MASK_IP_CACHE.clear()
+        _MASK_IP_CACHE[text_str] = res
         _MASK_IP_CACHE[s] = res
         return res
 
@@ -13508,32 +13526,6 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         if not hasattr(self, "_last_worker_row_state"):
             self._last_worker_row_state = {}
 
-        def _push_row_state(st_msg: str, tg_name: str = "running"):
-            if wid is not None:
-                prev = self._last_worker_row_state.get(wid)
-                curr = (st_msg, str(eff_target or ""), str(uid or ""), str(p_ip or ""), tg_name)
-                if prev == curr:
-                    return
-                now_push = time.perf_counter()
-                if not hasattr(self, "_last_worker_push_ts"):
-                    self._last_worker_push_ts = {}
-                last_push = self._last_worker_push_ts.get(wid, 0.0)
-                cached_threads = getattr(self, "_cached_num_threads", 1)
-                throttle_interval = 1.5 if cached_threads >= 100 else (1.0 if cached_threads >= 50 else (0.4 if cached_threads >= 20 else 0.20))
-                is_terminal = tg_name in ("live", "die", "unver", "checkpoint", "failed") or (uid and str(uid).isdigit())
-                if not is_terminal and (now_push - last_push < throttle_interval):
-                    return
-                self._last_worker_push_ts[wid] = now_push
-                self._last_worker_row_state[wid] = curr
-            self.event_queue.put(("row_state_update", {
-                "uid": uid or None,
-                "worker_id": wid,
-                "proxy": p_ip,
-                "status": st_msg,
-                "target": eff_target,
-                "tag": tg_name
-            }))
-
         msg = data.get("message", "")
         uid = str(data.get("uid", "")).strip()
         if not uid and msg:
@@ -13541,10 +13533,25 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             if m_u:
                 uid = m_u.group(1).strip()
         email = data.get("email", "")
-        p_raw = data.get("proxy") or data.get("proxy_ip") or getattr(self, "_worker_proxy_map", {}).get(wid, "")
-        p_ip = self.format_proxy_display(p_raw)
-        p_tag = f"[{self.mask_ip(p_ip)}] " if (p_ip and p_ip != "Direct" and p_ip != "(Chờ cấp IP)") else ""
-        pfx = f"[Luồng {wid}] {p_tag}" if not msg.startswith(f"[Luồng {wid}]") else ""
+
+        cached_threads = getattr(self, "_cached_num_threads", 1)
+        is_high_concurrency = cached_threads >= 30
+
+        p_raw = None
+        p_ip = None
+        p_tag = None
+
+        def _get_proxy_info():
+            nonlocal p_raw, p_ip, p_tag
+            if p_ip is None:
+                p_raw = data.get("proxy") or data.get("proxy_ip") or getattr(self, "_worker_proxy_map", {}).get(wid, "")
+                p_ip = self.format_proxy_display(p_raw)
+                p_tag = f"[{self.mask_ip(p_ip)}] " if (p_ip and p_ip != "Direct" and p_ip != "(Chờ cấp IP)") else ""
+            return p_ip, p_tag
+
+        def _get_pfx():
+            _, eff_tag = _get_proxy_info()
+            return f"[Luồng {wid}] {eff_tag}" if not msg.startswith(f"[Luồng {wid}]") else ""
 
         target_candidate = email or data.get("target") or data.get("phone")
         eff_target = None
@@ -13554,6 +13561,43 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 self._worker_target_map[wid] = eff_target
         elif wid is not None and wid in getattr(self, "_worker_target_map", {}):
             eff_target = self._worker_target_map[wid]
+
+        def _push_row_state(st_msg: str, tg_name: str = "running"):
+            eff_pip, _ = _get_proxy_info()
+            if wid is not None:
+                prev = self._last_worker_row_state.get(wid)
+                curr = (st_msg, str(eff_target or ""), str(uid or ""), str(eff_pip or ""), tg_name)
+                if prev == curr:
+                    return
+                now_push = time.perf_counter()
+                if not hasattr(self, "_last_worker_push_ts"):
+                    self._last_worker_push_ts = {}
+                last_push = self._last_worker_push_ts.get(wid, 0.0)
+                if cached_threads >= 500:
+                    throttle_interval = 2.5
+                elif cached_threads >= 200:
+                    throttle_interval = 2.0
+                elif cached_threads >= 100:
+                    throttle_interval = 1.5
+                elif cached_threads >= 50:
+                    throttle_interval = 1.0
+                elif cached_threads >= 20:
+                    throttle_interval = 0.40
+                else:
+                    throttle_interval = 0.20
+                is_terminal = tg_name in ("live", "die", "unver", "checkpoint", "failed")
+                if not is_terminal and (now_push - last_push < throttle_interval):
+                    return
+                self._last_worker_push_ts[wid] = now_push
+                self._last_worker_row_state[wid] = curr
+            self.event_queue.put(("row_state_update", {
+                "uid": uid or None,
+                "worker_id": wid,
+                "proxy": eff_pip,
+                "status": st_msg,
+                "target": eff_target,
+                "tag": tg_name
+            }))
 
         if evt == "step":
             name = data.get("name", "")
@@ -13567,10 +13611,11 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
             is_step_milestone = any(k in name_l for k in ("bắt được", "otp", "sinh uid", "thành công"))
             if not is_high_concurrency or is_step_milestone:
+                _, eff_tag = _get_proxy_info()
                 if target and str(target) not in str(name):
-                    step_msg = f"[Luồng {wid}] {p_tag}Bước: {name} ({target})"
+                    step_msg = f"[Luồng {wid}] {eff_tag}Bước: {name} ({target})"
                 else:
-                    step_msg = f"[Luồng {wid}] {p_tag}Bước: {name}"
+                    step_msg = f"[Luồng {wid}] {eff_tag}Bước: {name}"
                 self.event_queue.put(("log", {
                     "message": step_msg,
                     "tag": "info"
@@ -13630,7 +13675,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         elif evt == "verified":
             self.event_queue.put(("refresh_hotmail", {}))
             self.event_queue.put(("log", {
-                "message": f"{pfx}🔑 {msg or 'Đã xác minh OTP'}",
+                "message": f"{_get_pfx()}🔑 {msg or 'Đã xác minh OTP'}",
                 "tag": "success"
             }))
             m_otp = re.search(r"'(\d{4,8})'", msg) or re.search(r"(\d{5,8})", msg)
@@ -13651,7 +13696,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             ))
             if not is_high_concurrency or is_info_milestone:
                 self.event_queue.put(("log", {
-                    "message": f"{pfx}{msg}",
+                    "message": f"{_get_pfx()}{msg}",
                     "tag": "info"
                 }))
             msg_l = msg.lower()
@@ -13699,7 +13744,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
         elif evt == "warning":
             self.event_queue.put(("log", {
-                "message": f"{pfx}⚠️ {msg}",
+                "message": f"{_get_pfx()}⚠️ {msg}",
                 "tag": "warning"
             }))
             msg_l = msg.lower()
@@ -13719,14 +13764,14 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
         elif evt == "unverified":
             self.event_queue.put(("log", {
-                "message": f"{pfx}🟡 {msg or 'Tài khoản chưa xác minh OTP (Vẫn NVR - Không DIE)'}",
+                "message": f"{_get_pfx()}🟡 {msg or 'Tài khoản chưa xác minh OTP (Vẫn NVR - Không DIE)'}",
                 "tag": "warning"
             }))
             _push_row_state(f"🟡 L{wid}: Vẫn NVR (Chờ xác minh)", "unver")
 
         elif evt == "success":
             self.event_queue.put(("log", {
-                "message": f"{pfx}🎉 {msg}",
+                "message": f"{_get_pfx()}🎉 {msg}",
                 "tag": "success"
             }))
             _push_row_state(f"🟢 L{wid}: Tạo nick thành công!", "live")
@@ -13763,7 +13808,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 }))
             else:
                 self.event_queue.put(("log", {
-                    "message": f"{pfx}⚠️ {msg}",
+                    "message": f"{_get_pfx()}⚠️ {msg}",
                     "tag": "warning"
                 }))
                 self.event_queue.put(("row_state_update", {
@@ -13816,8 +13861,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         try:
             # Tối ưu xả hàng đợi thông minh: tự động tăng lưu lượng khi backlog nhiều để giao diện không lag
             qsz = self.event_queue.qsize()
-            max_drain = 1000 if qsz > 500 else (500 if qsz > 200 else (250 if qsz > 50 else 100))
-            max_time = 0.035 if qsz > 200 else 0.020
+            cached_threads = getattr(self, "_cached_num_threads", 1)
+            max_drain = 2500 if qsz > 1000 else (1200 if qsz > 500 else (500 if qsz > 200 else (250 if qsz > 50 else 100)))
+            max_time = 0.050 if qsz > 500 else (0.035 if qsz > 200 else 0.020)
             while processed < max_drain and (time.perf_counter() - start_t) < max_time:
                 try:
                     msg_type, data = self.event_queue.get_nowait()
@@ -14349,7 +14395,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         norm_keys.append(wid_k)
 
                 pending_cnt = len(self._pending_row_updates)
-                draw_cap = min(150, max(45, pending_cnt // 2 if pending_cnt > 90 else pending_cnt))
+                cached_threads = getattr(self, "_cached_num_threads", 1)
+                max_draw = 250 if cached_threads >= 500 else (180 if cached_threads >= 200 else 150)
+                draw_cap = min(max_draw, max(45, pending_cnt // 2 if pending_cnt > 90 else pending_cnt))
                 draw_keys = (pri_keys + norm_keys)[:draw_cap]
                 for wid_c in draw_keys:
                     c_d = self._pending_row_updates.pop(wid_c, None)
@@ -14412,11 +14460,14 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     self._log_line_count += len(batched_logs)
                     
                     now_t = time.time()
-                    if self._log_line_count > 1500 and (now_t - getattr(self, "_last_log_trim_ts", 0.0) > 4.0):
+                    cached_threads = getattr(self, "_cached_num_threads", 1)
+                    max_lines = 800 if cached_threads >= 500 else (1200 if cached_threads >= 100 else 1500)
+                    trim_chunk = 400 if cached_threads >= 500 else 500
+                    if self._log_line_count > max_lines and (now_t - getattr(self, "_last_log_trim_ts", 0.0) > 3.0):
                         self._last_log_trim_ts = now_t
                         try:
-                            self.txt_logs.delete("1.0", "501.0")
-                            self._log_line_count = max(0, self._log_line_count - 500)
+                            self.txt_logs.delete("1.0", f"{trim_chunk + 1}.0")
+                            self._log_line_count = max(0, self._log_line_count - trim_chunk)
                         except Exception:
                             pass
                             

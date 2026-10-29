@@ -1305,6 +1305,8 @@ class ActiveIpRegistry:
 _KIOT_CACHE_LOCK = threading.RLock()
 _KIOT_CACHE: Dict[str, Dict[str, Any]] = {}
 _KIOT_LAST_KNOWN: Dict[str, Dict[str, Any]] = {}
+_KIOT_PORT_TO_IP: Dict[str, str] = {}
+_KIOT_DISK_LOADED: bool = False
 
 class KiotProxyClient:
     """Client for KiotProxy API (https://api.kiotproxy.com)."""
@@ -1356,6 +1358,42 @@ class KiotProxyClient:
         self.next_change_at: float = 0.0
 
     @classmethod
+    def lookup_exit_ip(cls, cand_hp: str) -> Optional[str]:
+        if not cand_hp:
+            return None
+        cand_clean = cand_hp.strip()
+        with _KIOT_CACHE_LOCK:
+            if cand_clean in _KIOT_PORT_TO_IP:
+                return _KIOT_PORT_TO_IP[cand_clean]
+            cls._ensure_disk_loaded()
+            return _KIOT_PORT_TO_IP.get(cand_clean)
+
+    @classmethod
+    def _ensure_disk_loaded(cls) -> None:
+        global _KIOT_DISK_LOADED
+        if _KIOT_DISK_LOADED:
+            return
+        with _KIOT_CACHE_LOCK:
+            if _KIOT_DISK_LOADED:
+                return
+            disk_data = cls._read_last_known_disk()
+            for k, val in disk_data.items():
+                if isinstance(val, dict):
+                    if k not in _KIOT_LAST_KNOWN:
+                        _KIOT_LAST_KNOWN[k] = val
+                    ip = val.get("ip") or val.get("real_ip")
+                    if ip:
+                        http = val.get("http", "")
+                        host = val.get("host", "")
+                        port = val.get("port", "")
+                        if host and port:
+                            _KIOT_PORT_TO_IP[f"{host}:{port}"] = str(ip).strip()
+                        if http:
+                            hp = http.split("@")[-1] if "@" in http else http.replace("http://", "").replace("https://", "")
+                            _KIOT_PORT_TO_IP[hp] = str(ip).strip()
+            _KIOT_DISK_LOADED = True
+
+    @classmethod
     def get_cached_proxy(cls, api_key: str, max_age: Optional[float] = 120.0) -> Optional[Dict[str, Any]]:
         k = api_key.strip()
         eff_max_age = 300.0 if max_age is None else max_age
@@ -1388,14 +1426,28 @@ class KiotProxyClient:
             cached["cached_at"] = time.time()
             _KIOT_CACHE[k] = cached
             _KIOT_LAST_KNOWN[k] = cached
+            ip = cached.get("ip") or cached.get("real_ip")
+            if ip:
+                http = cached.get("http", "")
+                host = cached.get("host", "")
+                port = cached.get("port", "")
+                if host and port:
+                    _KIOT_PORT_TO_IP[f"{host}:{port}"] = str(ip).strip()
+                if http:
+                    hp = http.split("@")[-1] if "@" in http else http.replace("http://", "").replace("https://", "")
+                    _KIOT_PORT_TO_IP[hp] = str(ip).strip()
 
-            disk_cache = cls._read_disk_cache()
-            disk_cache[k] = cached
-            cls._write_disk_cache(disk_cache)
-
-            disk_last = cls._read_last_known_disk()
-            disk_last[k] = cached
-            cls._write_last_known_disk(disk_last)
+        def _bg_save_kiot():
+            try:
+                disk_cache = cls._read_disk_cache()
+                disk_cache[k] = cached
+                cls._write_disk_cache(disk_cache)
+                disk_last = cls._read_last_known_disk()
+                disk_last[k] = cached
+                cls._write_last_known_disk(disk_last)
+            except Exception:
+                pass
+        threading.Thread(target=_bg_save_kiot, daemon=True, name="KiotCacheWriter").start()
 
     @classmethod
     def get_last_known(cls, api_key: str, max_age: Optional[float] = 300.0) -> Optional[Dict[str, Any]]:
@@ -2427,7 +2479,9 @@ class MproxyClient:
 
 _PROXYVN_CACHE: Dict[str, Dict[str, Any]] = {}
 _PROXYVN_LAST_KNOWN: Dict[str, Dict[str, Any]] = {}
+_PROXYVN_PORT_TO_IP: Dict[str, str] = {}
 _PROXYVN_CACHE_LOCK = threading.RLock()
+_PROXYVN_DISK_LOADED: bool = False
 
 
 class ProxyVNClient:
@@ -2522,6 +2576,42 @@ class ProxyVNClient:
                 pass
 
     @classmethod
+    def lookup_exit_ip(cls, cand_hp: str) -> Optional[str]:
+        if not cand_hp:
+            return None
+        cand_clean = cand_hp.strip()
+        with _PROXYVN_CACHE_LOCK:
+            if cand_clean in _PROXYVN_PORT_TO_IP:
+                return _PROXYVN_PORT_TO_IP[cand_clean]
+            cls._ensure_disk_loaded()
+            return _PROXYVN_PORT_TO_IP.get(cand_clean)
+
+    @classmethod
+    def _ensure_disk_loaded(cls) -> None:
+        global _PROXYVN_DISK_LOADED
+        if _PROXYVN_DISK_LOADED:
+            return
+        with _PROXYVN_CACHE_LOCK:
+            if _PROXYVN_DISK_LOADED:
+                return
+            disk_data = cls._read_last_known_disk()
+            for k, val in disk_data.items():
+                if isinstance(val, dict):
+                    if k not in _PROXYVN_LAST_KNOWN:
+                        _PROXYVN_LAST_KNOWN[k] = val
+                    ip = val.get("ip") or val.get("real_ip")
+                    if ip:
+                        host = val.get("host", "")
+                        port = val.get("port", "")
+                        http = val.get("http", "")
+                        if host and port:
+                            _PROXYVN_PORT_TO_IP[f"{host}:{port}"] = str(ip).strip()
+                        if http:
+                            hp = http.split("@")[-1] if "@" in http else http.replace("http://", "").replace("https://", "")
+                            _PROXYVN_PORT_TO_IP[hp] = str(ip).strip()
+            _PROXYVN_DISK_LOADED = True
+
+    @classmethod
     def get_cached_proxy(cls, api_key: str, max_age: Optional[float] = 120.0) -> Optional[Dict[str, Any]]:
         k = api_key.strip()
         eff_max_age = 86400.0 if max_age is None else max_age
@@ -2558,14 +2648,28 @@ class ProxyVNClient:
             cached["cached_at"] = time.time()
             _PROXYVN_CACHE[k] = cached
             _PROXYVN_LAST_KNOWN[k] = cached
+            ip = cached.get("ip") or cached.get("real_ip")
+            if ip:
+                host = cached.get("host", "")
+                port = cached.get("port", "")
+                http = cached.get("http", "")
+                if host and port:
+                    _PROXYVN_PORT_TO_IP[f"{host}:{port}"] = str(ip).strip()
+                if http:
+                    hp = http.split("@")[-1] if "@" in http else http.replace("http://", "").replace("https://", "")
+                    _PROXYVN_PORT_TO_IP[hp] = str(ip).strip()
 
-            disk_cache = cls._read_disk_cache()
-            disk_cache[k] = cached
-            cls._write_disk_cache(disk_cache)
-
-            disk_last = cls._read_last_known_disk()
-            disk_last[k] = cached
-            cls._write_last_known_disk(disk_last)
+        def _bg_save_pvn():
+            try:
+                disk_cache = cls._read_disk_cache()
+                disk_cache[k] = cached
+                cls._write_disk_cache(disk_cache)
+                disk_last = cls._read_last_known_disk()
+                disk_last[k] = cached
+                cls._write_last_known_disk(disk_last)
+            except Exception:
+                pass
+        threading.Thread(target=_bg_save_pvn, daemon=True, name="ProxyVNCacheWriter").start()
 
     @classmethod
     def get_last_known(cls, api_key: str, max_age: Optional[float] = None) -> Optional[Dict[str, Any]]:
@@ -2580,11 +2684,10 @@ class ProxyVNClient:
                     res["success"] = True
                     res["from_cache"] = True
                     return res
-            disk_last = cls._read_last_known_disk()
-            cand = disk_last.get(k)
+            cls._ensure_disk_loaded()
+            cand = _PROXYVN_LAST_KNOWN.get(k)
             if cand and cand.get("http"):
                 if (now - cand.get("cached_at", 0)) < eff_max_age:
-                    _PROXYVN_LAST_KNOWN[k] = dict(cand)
                     res = dict(cand)
                     res["success"] = True
                     res["from_cache"] = True
