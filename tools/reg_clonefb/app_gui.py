@@ -12836,15 +12836,20 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 stagger_wait = 0.0
                                 if assigned_ip and assigned_ip != "Direct":
                                     with _shared_ip_gate_lock:
-                                        last_req = _shared_ip_last_submit.get(assigned_ip, 0.0)
                                         now_req = time.time()
-                                        base_time = max(now_req, min(last_req, now_req + 2.0))
-                                        safe_gap = random.uniform(1.2, 2.5)
-                                        target_time = base_time + safe_gap
-                                        stagger_wait = max(0.0, target_time - now_req)
-                                        _shared_ip_last_submit[assigned_ip] = target_time
-                                if stagger_wait > 0:
-                                    time.sleep(min(stagger_wait, 4.0))
+                                        last_req = _shared_ip_last_submit.get(assigned_ip, 0.0)
+                                        gap = random.uniform(1.8, 3.2)
+                                        sched_time = max(now_req, last_req) + gap
+                                        stagger_wait = max(0.0, sched_time - now_req)
+                                        if stagger_wait > 12.0:
+                                            sched_time = now_req + random.uniform(1.0, 3.0)
+                                            stagger_wait = max(0.0, sched_time - now_req)
+                                        _shared_ip_last_submit[assigned_ip] = sched_time
+
+                                if stagger_wait > 0.05:
+                                    t_wait_end = time.time() + stagger_wait
+                                    while time.time() < t_wait_end and not self.stop_event.is_set():
+                                        time.sleep(min(0.5, t_wait_end - time.time()))
 
                                 if k_state:
                                     with k_state["lock"]:
@@ -13493,10 +13498,19 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     self._worker_proxy_map[worker_id] = display_ip
                                     if ip_registry:
                                         ip_registry.lease_ip(worker_id, assigned_ip, force=True)
-                                    self.event_queue.put(("log", {
-                                        "message": f"[Luồng {worker_id}] 🟢 Đã tự động đổi sang IP MỚI từ luồng khác ({base_key_label}): {self.mask_ip(assigned_ip)} ({proxy_obj.country}) ➔ Tiếp tục reg!",
-                                        "tag": "success"
-                                    }))
+                                    _should_log_sw = True
+                                    if k_state:
+                                        with k_state["lock"]:
+                                            _last_sw = k_state.get("_last_logged_sw_ip")
+                                            if _last_sw == assigned_ip:
+                                                _should_log_sw = False
+                                            else:
+                                                k_state["_last_logged_sw_ip"] = assigned_ip
+                                    if _should_log_sw:
+                                        self.event_queue.put(("log", {
+                                            "message": f"[{base_key_label}] 🟢 Các luồng dùng chung chuyển sang IP MỚI: {self.mask_ip(assigned_ip)} ({proxy_obj.country}) ➔ Tiếp tục reg!",
+                                            "tag": "success"
+                                        }))
                                     rot_success = True
                                     break
 
