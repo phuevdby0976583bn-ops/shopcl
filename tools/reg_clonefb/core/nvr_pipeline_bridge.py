@@ -261,6 +261,28 @@ def enqueue_nvr_account(
     return True
 
 
+def reset_stuck_processing_accounts(verry_dir: str = DEFAULT_VERRY_DIR, max_age_seconds: float = 60.0) -> int:
+    """Reset các tài khoản đang ở trạng thái processing mà chưa hoàn tất về lại waiting."""
+    v_dir = verry_dir if os.path.exists(verry_dir) else DEFAULT_VERRY_DIR
+    q_data = NVRPipelineStorage.load_queue(v_dir)
+    items = q_data.get("items", {})
+    if not items:
+        return 0
+    now_ts = time.time()
+    reset_cnt = 0
+    for uid, item in items.items():
+        if item.get("status") == "processing" and not item.get("verified_at"):
+            claimed_at = float(item.get("claimed_at") or 0.0)
+            if (now_ts - claimed_at) >= max_age_seconds or claimed_at <= 0:
+                item["status"] = "waiting"
+                item.pop("claimed_by", None)
+                item.pop("claimed_at", None)
+                reset_cnt += 1
+    if reset_cnt > 0:
+        NVRPipelineStorage.save_queue(q_data, v_dir)
+    return reset_cnt
+
+
 def claim_ready_accounts(
     verry_dir: str = DEFAULT_VERRY_DIR,
     max_count: int = 50,
@@ -282,7 +304,7 @@ def claim_ready_accounts(
         st = item.get("status")
         # Hoặc đang chờ và đã đến hạn, hoặc bị treo quá 15 phút (timeout reset)
         is_ready = (st == "waiting" and now_ts >= item.get("ready_at", 0.0))
-        is_stuck = (st == "processing" and (now_ts - item.get("claimed_at", 0.0) > 900.0))
+        is_stuck = (st == "processing" and (now_ts - float(item.get("claimed_at") or 0.0) > 90.0) and not item.get("verified_at"))
 
         if is_ready or is_stuck:
             item["status"] = "processing"

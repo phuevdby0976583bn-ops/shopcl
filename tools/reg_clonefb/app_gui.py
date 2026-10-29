@@ -2910,12 +2910,19 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         vals = vals[:6] + ["", ""] + vals[6:]
                     if len(vals) >= 11:
                         vals[8] = self.mask_ip(vals[8])
+                        uid_str = str(vals[2]).strip()
+                        if uid_str and uid_str != "N/A" and hasattr(self, "_tree_items_by_uid") and uid_str in self._tree_items_by_uid:
+                            existing_id = self._tree_items_by_uid[uid_str]
+                            if self.tree.exists(existing_id):
+                                st_new = str(vals[9]).lower()
+                                if "die" in st_new or "live" in st_new:
+                                    self._update_tree_item(existing_id, values=vals, tags=tuple(tags))
+                                continue
                         item_id = self.tree.insert("", "end", values=vals, tags=tuple(tags))
                         if hasattr(self, "_tree_item_values"):
                             self._tree_item_values[item_id] = list(vals)
                         if hasattr(self, "_tree_item_tags"):
                             self._tree_item_tags[item_id] = tuple(tags)
-                        uid_str = str(vals[2]).strip()
                         if hasattr(self, "_tree_items_by_uid") and uid_str and uid_str != "N/A":
                             self._tree_items_by_uid[uid_str] = item_id
                         self._row_full_lines[item_id] = full_l or f"{vals[2]}|{vals[4]}|{vals[7]}|{vals[6]}"
@@ -7904,10 +7911,15 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         self.recalculate_stats()
         self.save_table_session()
 
-        # Đồng bộ số lượng trên giao diện
+        # Đồng bộ số lượng trên giao diện (mặc định 0 = chạy hết / liên tục)
         if hasattr(self, "spn_accounts"):
-            self.spn_accounts.delete(0, tk.END)
-            self.spn_accounts.insert(0, str(len(accs)))
+            try:
+                curr_spn_v = int(str(self.spn_accounts.get()).strip())
+            except Exception:
+                curr_spn_v = 0
+            if curr_spn_v <= 0:
+                self.spn_accounts.delete(0, tk.END)
+                self.spn_accounts.insert(0, "0")
 
         if hasattr(self, "lbl_nvr_count"):
             self.lbl_nvr_count.config(
@@ -10612,24 +10624,57 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         nvr_list_to_run = []
         is_continuous = bool(getattr(self, "var_verry_auto_continuous", None) and self.var_verry_auto_continuous.get()) and (curr_reg_mode == "verify_nvr")
         if curr_reg_mode == "verify_nvr":
+            try:
+                from core.nvr_pipeline_bridge import reset_stuck_processing_accounts
+                v_dir = self.var_verry_pipeline_dir.get().strip() if hasattr(self, "var_verry_pipeline_dir") else os.getcwd()
+                reset_stuck_processing_accounts(v_dir, max_age_seconds=60.0)
+            except Exception:
+                pass
+
             checked_items = self.get_checked_items()
             acc_map = getattr(self, "_row_acc_data", {})
+            existing_uids = set()
+
+            def _is_unverified_row(itm_id):
+                vals = self._get_tree_values(itm_id)
+                st_txt = str(vals[9] if len(vals) > 9 else "").lower()
+                tags = self.tree.item(itm_id, "tags") if hasattr(self, "tree") else ()
+                if "die" in tags or "live" in tags or "die" in st_txt or "live" in st_txt or "checkpoint" in st_txt:
+                    return False
+                return True
+
             if checked_items and len(checked_items) < len(self.tree.get_children()):
                 for citm in checked_items:
-                    if citm in acc_map:
-                        nvr_list_to_run.append(acc_map[citm])
+                    if _is_unverified_row(citm):
+                        acc_obj = acc_map.get(citm)
+                        if not acc_obj:
+                            vals = self._get_tree_values(citm)
+                            if len(vals) >= 11:
+                                acc_obj = {
+                                    "uid": str(vals[2]).strip(),
+                                    "password": str(vals[4]).strip(),
+                                    "two_factor_secret": str(vals[5]).strip(),
+                                    "cookie": str(vals[6]).strip(),
+                                    "token": str(vals[7]).strip(),
+                                    "email": str(vals[3]).strip() if "@" in str(vals[3]) else "",
+                                }
+                        if acc_obj:
+                            u = str(acc_obj.get("uid", "")).strip()
+                            if u and u not in existing_uids:
+                                existing_uids.add(u)
+                                nvr_list_to_run.append(acc_obj)
             else:
-                existing_uids = set()
                 for a in getattr(self, "nvr_accounts_queue", []):
-                    u = str(a.get("uid", "")).strip()
-                    if u:
-                        existing_uids.add(u)
-                        nvr_list_to_run.append(a)
-                for itm, a in acc_map.items():
                     u = str(a.get("uid", "")).strip()
                     if u and u not in existing_uids:
                         existing_uids.add(u)
                         nvr_list_to_run.append(a)
+                for itm, a in acc_map.items():
+                    if _is_unverified_row(itm):
+                        u = str(a.get("uid", "")).strip()
+                        if u and u not in existing_uids:
+                            existing_uids.add(u)
+                            nvr_list_to_run.append(a)
 
         try:
             num_threads = max(1, int(str(self.spn_threads.get()).strip()))
@@ -11076,7 +11121,13 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
                     while not self.stop_event.is_set() and not pipeline_stop_event.is_set():
                         try:
-                            ready_accs = claim_ready_accounts(v_dir, max_count=50, worker_tag="verry_gui")
+                            with nvr_lock:
+                                queue_backlog = len(nvr_list) - nvr_idx
+                            if queue_backlog > actual_threads * 2:
+                                pipeline_stop_event.wait(timeout=1.0)
+                                continue
+
+                            ready_accs = claim_ready_accounts(v_dir, max_count=min(actual_threads, 50), worker_tag="verry_gui")
                             if ready_accs:
                                 new_ones = []
                                 with nvr_lock:
@@ -12054,12 +12105,14 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         while not self.stop_event.is_set():
                             with nvr_lock:
                                 if nvr_idx < len(nvr_list):
-                                    if max_accs > 0 and nvr_idx >= max_accs:
+                                    if not is_continuous and max_accs > 0 and nvr_idx >= max_accs:
                                         break
                                     now_ts = time.time()
                                     chosen_idx = -1
                                     for scan_i in range(nvr_idx, len(nvr_list)):
                                         cand = nvr_list[scan_i]
+                                        if cand.get("status") in ("die", "live", "success", "completed", "checkpoint"):
+                                            continue
                                         cand_ready = float(cand.get("ready_at") or 0.0)
                                         if cand_ready <= 0 or now_ts >= cand_ready:
                                             chosen_idx = scan_i
@@ -13778,7 +13831,14 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             if wid is not None:
                                 self._worker_item_map[wid] = itm
                         else:
-                            self._tree_items_by_uid.pop(t_uid, None)
+                            for child in self.tree.get_children():
+                                cv = self._get_tree_values(child)
+                                if cv and len(cv) > 2 and str(cv[2]).strip() == t_uid:
+                                    itm = child
+                                    self._tree_items_by_uid[t_uid] = child
+                                    if wid is not None:
+                                        self._worker_item_map[wid] = itm
+                                    break
 
                     now_str = datetime.now().strftime("%H:%M:%S")
 
@@ -13851,6 +13911,13 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         cand = getattr(self, "_tree_items_by_uid", {}).get(t_uid_str)
                         if cand and self.tree.exists(cand):
                             existing_item = cand
+                        else:
+                            for child in self.tree.get_children():
+                                cv = self._get_tree_values(child)
+                                if cv and len(cv) > 2 and str(cv[2]).strip() == t_uid_str:
+                                    existing_item = child
+                                    self._tree_items_by_uid[t_uid_str] = child
+                                    break
 
                     cookie_val = (res.cookie_string or getattr(res, "cookie", "") or "")
                     token_val = (res.token or "")
