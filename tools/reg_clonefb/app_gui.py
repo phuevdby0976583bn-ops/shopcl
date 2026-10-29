@@ -11513,7 +11513,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         p_item.country_code = normalize_country_code(loc) or "VN"
                         p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=cur_ip)
                         p_item.real_ip = cur_ip
-                    max_key_concur = 2 if curr_reg_mode == "verify_nvr" else 1
+                    max_key_concur = (6 if curr_reg_mode == "verify_nvr" else 4) if actual_threads >= 200 else (3 if curr_reg_mode == "verify_nvr" else 2)
                     return cand_k, {
                         "lock": threading.Lock(),
                         "session_lock": threading.Lock(),
@@ -11568,7 +11568,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         p_item.country_code = normalize_country_code(loc) or "VN"
                         p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=cur_ip)
                         p_item.real_ip = cur_ip
-                    max_key_concur = 2 if curr_reg_mode == "verify_nvr" else 1
+                    max_key_concur = (6 if curr_reg_mode == "verify_nvr" else 4) if actual_threads >= 200 else (3 if curr_reg_mode == "verify_nvr" else 2)
                     return cand_k, {
                         "lock": threading.Lock(),
                         "session_lock": threading.Lock(),
@@ -11972,7 +11972,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         shared_proxyvn_state[k] = {
                             "lock": threading.Lock(),
                             "session_lock": threading.Lock(),
-                            "exec_semaphore": threading.BoundedSemaphore(value=2 if curr_reg_mode == "verify_nvr" else 1),
+                            "exec_semaphore": threading.BoundedSemaphore(value=(6 if curr_reg_mode == "verify_nvr" else 4) if actual_threads >= 200 else (3 if curr_reg_mode == "verify_nvr" else 2)),
                             "proxy_obj": None,
                             "cur_ip": "",
                             "last_working_proxy": None,
@@ -12729,7 +12729,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             if k_state:
                                 with k_state["lock"]:
                                     if "exec_semaphore" not in k_state:
-                                        k_state["exec_semaphore"] = threading.BoundedSemaphore(value=2)
+                                        k_state["exec_semaphore"] = threading.BoundedSemaphore(value=(6 if curr_reg_mode == "verify_nvr" else 4) if actual_threads >= 200 else 3)
                                     key_sem = k_state["exec_semaphore"]
 
                             sem_acquired = False
@@ -12865,7 +12865,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 if k_state:
                                     with k_state["lock"]:
                                         if "exec_semaphore" not in k_state:
-                                            k_state["exec_semaphore"] = threading.BoundedSemaphore(value=2)
+                                            k_state["exec_semaphore"] = threading.BoundedSemaphore(value=(6 if curr_reg_mode == "verify_nvr" else 4) if actual_threads >= 200 else 3)
                                         key_sem = k_state["exec_semaphore"]
 
                                 sem_acquired = False
@@ -13085,12 +13085,21 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     old_ip = assigned_ip or (proxy_obj.host if proxy_obj else "")
                     if k_state and old_ip:
                         with k_state["lock"]:
-                            if alloc_mode == "dedicated" or curr_reg_mode != "verify_nvr":
+                            if alloc_mode == "dedicated":
                                 k_state.setdefault("consumed_ips", set()).add(old_ip)
                                 k_state["need_rotate"] = True
+                            elif alloc_mode == "shared":
+                                acc_cnt = k_state.get("acc_count_on_cur_ip", 0) + 1
+                                k_state["acc_count_on_cur_ip"] = acc_cnt
+                                rot_time = k_state.get("rot_time", 0.0)
+                                now_t = time.time()
+                                if (now_t - rot_time) >= 60.0 or acc_cnt >= 5:
+                                    k_state["need_rotate"] = True
+                                    k_state["acc_count_on_cur_ip"] = 0
                             if last_run_die or is_run_waf:
                                 k_state.setdefault("burned_ips", set()).add(old_ip)
                                 k_state["need_rotate"] = True
+                                k_state["acc_count_on_cur_ip"] = 0
                             if is_proxy_down:
                                 fc = k_state.get("fail_count", 0) + 1
                                 k_state["fail_count"] = fc
@@ -13777,7 +13786,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
             if provider_name in ("proxysocks5", "kiotproxy", "kiotproxy_current", "mproxy", "proxyvn") and actual_threads > 1:
                 # Tránh các luồng đâm vào port proxy cùng 1 microsecond gây timeout 5004ms
-                ramp_delay = 0.05 if actual_threads >= 100 else (0.1 if actual_threads >= 30 else (0.2 if actual_threads > 5 else 0.5))
+                ramp_delay = 0.001 if actual_threads >= 500 else (0.01 if actual_threads >= 100 else (0.03 if actual_threads >= 30 else 0.05))
             else:
                 ramp_delay = 0.005 if actual_threads >= 200 else (0.01 if actual_threads >= 50 else 0.02)
             for i in range(1, actual_threads + 1):
