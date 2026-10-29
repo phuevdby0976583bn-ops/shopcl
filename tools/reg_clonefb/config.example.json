@@ -17,5 +17,11 @@
   "enable_verry_pipeline": true,
   "verry_pipeline_delay": "2 phút (Khuyến nghị)",
   "verry_pipeline_threads": 50,
-  "verry_pipeline_dir": "C:\\Users\\truon\\Downloads\\verry"
+  "verry_pipeline_dir": "C:\\Users\\truon\\Downloads\\verry",
+  "enable_account_maturation": false,
+  "account_maturation_delay": "60-120s (Ngẫu nhiên)",
+  "enable_otp_pacing": true,
+  "otp_pacing_min": 2.0,
+  "otp_pacing_max": 3.5,
+  "enable_account_ip_stickiness": true
 }

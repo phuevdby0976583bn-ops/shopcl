@@ -3558,6 +3558,40 @@ def is_facebook_onboarding_redirect(url_or_target: str) -> bool:
         return True
     return False
 
+class OtpSubmitPacingLimiter:
+    """
+    Điều tiết tần suất gửi OTP (Pacing Rate) chống Facebook WAF và chống nghẽn dịch vụ OTP.
+    - Giãn cách ngẫu nhiên từ min_delay đến max_delay giữa các request OTP trên cùng một IP/Key.
+    - Đảm bảo các luồng không gửi dồn dập trong cùng một tích tắc.
+    """
+    _master_lock = threading.Lock()
+    _ip_next_allowed_time = {}
+    _global_next_allowed_time = 0.0
+
+    @classmethod
+    def wait_pacing(cls, proxy_key=None, min_delay=2.0, max_delay=3.5, max_wait=30.0):
+        if min_delay <= 0 and max_delay <= 0:
+            return 0.0
+        clean_key = str(proxy_key or "direct").strip().lower()
+        now = time.time()
+        with cls._master_lock:
+            last_ip_t = cls._ip_next_allowed_time.get(clean_key, 0.0)
+            base_ip = max(now, last_ip_t)
+            stagger = random.uniform(min(min_delay, max_delay), max(min_delay, max_delay))
+            target_ip_t = base_ip + stagger
+            cls._ip_next_allowed_time[clean_key] = target_ip_t
+
+            base_g = max(now, cls._global_next_allowed_time)
+            target_g_t = max(target_ip_t, base_g + 0.05)
+            cls._global_next_allowed_time = target_g_t
+
+            wait_s = max(0.0, target_ip_t - now)
+
+        if wait_s > 0:
+            time.sleep(min(wait_s, max_wait))
+        return wait_s
+
+
 def submit_facebook_web_email_otp(
     session: Any,
     server: str = "m.facebook.com",
@@ -3569,6 +3603,11 @@ def submit_facebook_web_email_otp(
     lsd: Optional[str] = None,
     uid: Optional[str] = None,
     timeout: int = 10,
+    enable_otp_pacing: Optional[bool] = None,
+    pacing_min: Optional[float] = None,
+    pacing_max: Optional[float] = None,
+    proxy_ip: Optional[str] = None,
+    **kwargs: Any,
 ) -> Tuple[bool, str]:
     """
     Submits OTP verification to Facebook using robust mechanisms:
@@ -3584,6 +3623,21 @@ def submit_facebook_web_email_otp(
     clean_code = (otp_code or "").strip()
     if not clean_code and not confirmation_link:
         return False, "Thiếu mã OTP và liên kết xác nhận"
+
+    # Giãn cách nhịp gửi OTP (Pacing Rate) nếu được bật
+    if enable_otp_pacing or kwargs.get("enable_otp_pacing"):
+        try:
+            p_min = float(pacing_min if pacing_min is not None else kwargs.get("otp_pacing_min", 2.0))
+            p_max = float(pacing_max if pacing_max is not None else kwargs.get("otp_pacing_max", 3.5))
+            ip_k = proxy_ip or kwargs.get("proxy_ip")
+            if not ip_k and hasattr(session, "proxy"):
+                px = getattr(session, "proxy", None)
+                ip_k = getattr(px, "real_ip", None) or getattr(px, "host", None) if px else None
+            waited = OtpSubmitPacingLimiter.wait_pacing(proxy_key=ip_k, min_delay=p_min, max_delay=p_max)
+            if waited > 0.05:
+                logger.debug(f"[OTP Pacing] Đã giãn cách {waited:.2f}s trước khi gửi OTP cho UID {uid or email}")
+        except Exception as ex_pacing:
+            logger.debug(f"[OTP Pacing] Lỗi pacing rate: {ex_pacing}")
 
     def _confirm_success(msg: str) -> Tuple[bool, str]:
         if email:

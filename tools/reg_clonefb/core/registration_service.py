@@ -45,6 +45,33 @@ from core.two_factor_service import enable_facebook_2fa
 from core.proxy_manager import FreeProxyManager
 
 
+def parse_maturation_delay_seconds(delay_val: Any, default: float = 90.0) -> float:
+    """Chuyển đổi chuỗi cấu hình thời gian ngấu (giây, phút, hoặc khoảng ngẫu nhiên) sang float giây."""
+    if delay_val is None:
+        return default
+    if isinstance(delay_val, (int, float)):
+        return max(5.0, float(delay_val))
+    s = str(delay_val).strip().lower()
+    m_range = re.search(r'(\d+)\s*[-~–]\s*(\d+)', s)
+    if m_range:
+        low = float(m_range.group(1))
+        high = float(m_range.group(2))
+        return random.uniform(min(low, high), max(low, high))
+    m_min = re.search(r'([\d.]+)\s*(?:phút|min|m\b)', s)
+    if m_min:
+        try:
+            return float(m_min.group(1)) * 60.0
+        except Exception:
+            pass
+    m_sec = re.search(r'([\d.]+)', s)
+    if m_sec:
+        try:
+            return max(5.0, float(m_sec.group(1)))
+        except Exception:
+            pass
+    return default
+
+
 class ProxySubmitRateLimiter:
     """
     Điều tiết tần suất submit /reg/submit/ theo từng IP Proxy riêng biệt.
@@ -3054,6 +3081,10 @@ class RegistrationService:
                 fb_dtsg=fb_dtsg,
                 lsd=lsd,
                 uid=cur_uid,
+                enable_otp_pacing=task_input.extra.get("enable_otp_pacing", True),
+                pacing_min=float(task_input.extra.get("otp_pacing_min", 2.0)),
+                pacing_max=float(task_input.extra.get("otp_pacing_max", 3.5)),
+                proxy_ip=task_input.extra.get("proxy_ip"),
             )
             if ok_confirm:
                 _safe_sleep(random.uniform(0.8, 1.4))
@@ -3438,6 +3469,10 @@ class RegistrationService:
                         fb_dtsg=fb_dtsg,
                         lsd=lsd,
                         uid=cur_uid,
+                        enable_otp_pacing=task_input.extra.get("enable_otp_pacing", True),
+                        pacing_min=float(task_input.extra.get("otp_pacing_min", 2.0)),
+                        pacing_max=float(task_input.extra.get("otp_pacing_max", 3.5)),
+                        proxy_ip=task_input.extra.get("proxy_ip"),
                     )
                     if ok_confirm:
                         _safe_sleep(random.uniform(0.8, 1.4))
@@ -5023,7 +5058,19 @@ class RegistrationService:
             email_attached = False
 
             if is_vr and submit_target != target and cookies and any(k in cookies for k in ("c_user", "xs")):
-                emit("info", {"message": f"[VR OTP] Tạo phiên thành công (UID {cookies.get('c_user')}). Đang gắn hòm thư thật {target} qua GraphQL (useCAAFBConfirmationAddContactPointMutation)..."})
+                uid_cur = cookies.get("c_user", "")
+                if task_input.extra.get("enable_account_maturation", False):
+                    raw_mat = task_input.extra.get("account_maturation_delay", "60-120s (Ngẫu nhiên)")
+                    mat_s = parse_maturation_delay_seconds(raw_mat, default=90.0)
+                    emit("info", {"message": f"⏳ [Chờ ngấu] Tạo phiên thành công UID {uid_cur}. Đang chờ ngấu {int(mat_s)}s để phiên ổn định trên hệ thống Meta trước khi gắn mail...", "uid": uid_cur})
+                    emit("step", {"step": 4, "name": f"Chờ ngấu tài khoản ({int(mat_s)}s)...", "uid": uid_cur, "email": target, "proxy": proxy})
+                    t_end = time.time() + mat_s
+                    stop_evt = task_input.extra.get("stop_event")
+                    while time.time() < t_end:
+                        if stop_evt and stop_evt.is_set():
+                            break
+                        _safe_sleep(min(1.0, t_end - time.time()))
+                emit("info", {"message": f"[VR OTP] Tạo phiên thành công (UID {uid_cur}). Đang gắn hòm thư thật {target} qua GraphQL (useCAAFBConfirmationAddContactPointMutation)..."})
                 from core.email_service import add_facebook_confirmation_contactpoint
                 ok_add, msg_add = add_facebook_confirmation_contactpoint(
                     session=client,

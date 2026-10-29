@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Tuple, Any, Union, Callable
 from core.models import RegistrationInput, RegistrationResult
 from core.http_client import HttpClient
 from core.session_builder import get_random_device_profile, setup_session_cookies, build_request_context
-from core.registration_service import _sync_response_cookies
+from core.registration_service import _sync_response_cookies, parse_maturation_delay_seconds
 from core.email_service import (
     BaseEmailProvider,
     get_email_provider,
@@ -365,6 +365,23 @@ def verify_single_nvr_account(
             except Exception as e:
                 logger.debug(f"Login error: {e}")
 
+        # 3.5. Kiểm tra thời gian chờ ngấu của nick (nếu bật chế độ Chờ ngấu)
+        if task_input.extra.get("enable_account_maturation", False):
+            raw_mat = task_input.extra.get("account_maturation_delay", "60-120s (Ngẫu nhiên)")
+            mat_s = parse_maturation_delay_seconds(raw_mat, default=90.0)
+            created_at = float(account_data.get("created_at") or 0.0)
+            now_t = time.time()
+            if created_at > 0 and (now_t - created_at) < mat_s:
+                wait_rem = mat_s - (now_t - created_at)
+                emit("info", {"message": f"⏳ [Chờ ngấu] Nick UID {uid} mới tạo cách đây {int(now_t - created_at)}s ➔ Đợi ngấu thêm {int(wait_rem)}s để Meta kích hoạt session..."})
+                emit("step", {"step": 2, "name": f"Chờ ngấu tài khoản ({int(wait_rem)}s)...", "uid": uid})
+                t_end = time.time() + wait_rem
+                stop_evt = task_input.extra.get("stop_event")
+                while time.time() < t_end:
+                    if stop_evt and stop_evt.is_set():
+                        break
+                    time.sleep(min(1.0, t_end - time.time()))
+
         # 4. Xác định hòm thư email để nhận OTP
         active_provider = email_provider
         use_existing_acc_email = (
@@ -625,6 +642,10 @@ def verify_single_nvr_account(
                     email=new_email,
                     fb_dtsg=fb_dtsg,
                     uid=uid,
+                    enable_otp_pacing=task_input.extra.get("enable_otp_pacing", True),
+                    pacing_min=float(task_input.extra.get("otp_pacing_min", 2.0)),
+                    pacing_max=float(task_input.extra.get("otp_pacing_max", 3.5)),
+                    proxy_ip=task_input.extra.get("proxy_ip"),
                 )
                 if ok_confirm:
                     time.sleep(random.uniform(2.5, 3.8))
@@ -1001,6 +1022,10 @@ def verify_single_nvr_account(
                         email=new_email,
                         fb_dtsg=fb_dtsg,
                         uid=uid,
+                        enable_otp_pacing=task_input.extra.get("enable_otp_pacing", True),
+                        pacing_min=float(task_input.extra.get("otp_pacing_min", 2.0)),
+                        pacing_max=float(task_input.extra.get("otp_pacing_max", 3.5)),
+                        proxy_ip=task_input.extra.get("proxy_ip"),
                     )
                     if ok_confirm:
                         time.sleep(random.uniform(1.8, 2.8))

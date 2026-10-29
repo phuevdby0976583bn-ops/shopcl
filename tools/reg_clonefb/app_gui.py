@@ -35,7 +35,7 @@ from tkinter import ttk, messagebox, filedialog, scrolledtext
 from core.models import RegistrationInput, RegistrationResult, ProxyItem
 from core.proxy_manager import ProxyManager, KiotProxyClient, ProxySocks5Client, MproxyClient, ProxyVNClient, ActiveIpRegistry, get_subnet_24, FreeProxyManager
 from core.email_service import get_email_provider, Smail1sHotmailProvider, DongVanHotmailProvider, reset_hotmail_pool
-from core.registration_service import RegistrationService
+from core.registration_service import RegistrationService, parse_maturation_delay_seconds
 from core.name_manager import NameManager
 from core.geo_manager import GeoTelephonyResolver, normalize_country_code
 from ui.theme import AppTheme
@@ -1352,6 +1352,12 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         self.var_verry_pipeline_delay = tk.StringVar(value=str(self.config.get("verry_pipeline_delay", "2 phút (Khuyến nghị)")))
         self.var_verry_pipeline_threads = tk.StringVar(value=str(self.config.get("verry_pipeline_threads", 50)))
         self.var_verry_pipeline_dir = tk.StringVar(value=str(self.config.get("verry_pipeline_dir", r"C:\Users\truon\Downloads\verry")))
+        self.var_enable_account_maturation = tk.BooleanVar(value=bool(self.config.get("enable_account_maturation", False)))
+        self.var_account_maturation_delay = tk.StringVar(value=str(self.config.get("account_maturation_delay", "60-120s (Ngẫu nhiên)")))
+        self.var_enable_otp_pacing = tk.BooleanVar(value=bool(self.config.get("enable_otp_pacing", True)))
+        self.var_otp_pacing_min = tk.StringVar(value=str(self.config.get("otp_pacing_min", 2.0)))
+        self.var_otp_pacing_max = tk.StringVar(value=str(self.config.get("otp_pacing_max", 3.5)))
+        self.var_enable_account_ip_stickiness = tk.BooleanVar(value=bool(self.config.get("enable_account_ip_stickiness", True)))
         self.stat_bot_uploaded = 0
         self._cached_subcat_info = None
         self._bot_uploaded_uids = set()
@@ -1423,6 +1429,12 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             "verry_pipeline_delay": "2 phút (Khuyến nghị)",
             "verry_pipeline_threads": 50,
             "verry_pipeline_dir": r"C:\Users\truon\Downloads\verry",
+            "enable_account_maturation": False,
+            "account_maturation_delay": "60-120s (Ngẫu nhiên)",
+            "enable_otp_pacing": True,
+            "otp_pacing_min": 2.0,
+            "otp_pacing_max": 3.5,
+            "enable_account_ip_stickiness": True,
         }
         if os.path.exists(self.config_path):
             try:
@@ -2728,6 +2740,26 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             self.config["verry_pipeline_threads"] = str(self.var_verry_pipeline_threads.get()).strip()
         if hasattr(self, "var_verry_pipeline_dir"):
             self.config["verry_pipeline_dir"] = str(self.var_verry_pipeline_dir.get()).strip()
+        if hasattr(self, "var_enable_account_maturation"):
+            self.config["enable_account_maturation"] = bool(self.var_enable_account_maturation.get())
+        if hasattr(self, "var_account_maturation_delay"):
+            self.config["account_maturation_delay"] = str(self.var_account_maturation_delay.get()).strip()
+        elif hasattr(self, "cb_maturation_delay"):
+            self.config["account_maturation_delay"] = str(self.cb_maturation_delay.get()).strip()
+        if hasattr(self, "var_enable_otp_pacing"):
+            self.config["enable_otp_pacing"] = bool(self.var_enable_otp_pacing.get())
+        if hasattr(self, "var_otp_pacing_min"):
+            try:
+                self.config["otp_pacing_min"] = max(0.2, float(str(self.var_otp_pacing_min.get()).replace(",", ".")))
+            except Exception:
+                self.config["otp_pacing_min"] = 2.0
+        if hasattr(self, "var_otp_pacing_max"):
+            try:
+                self.config["otp_pacing_max"] = max(0.5, float(str(self.var_otp_pacing_max.get()).replace(",", ".")))
+            except Exception:
+                self.config["otp_pacing_max"] = 3.5
+        if hasattr(self, "var_enable_account_ip_stickiness"):
+            self.config["enable_account_ip_stickiness"] = bool(self.var_enable_account_ip_stickiness.get())
 
         try:
             with open(self.config_path, "w", encoding="utf-8") as f:
@@ -6025,6 +6057,192 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         )
         btn_refresh_verry.pack(side=tk.RIGHT)
 
+        # Card 5.3: Tối Ưu Tỷ Lệ LIVE & Chống Quét Checkpoint 282 (Cơ Chế Khi Bấm Dừng)
+        card_live_boost = tk.LabelFrame(
+            parent,
+            text=" 🛡️ 5.3. Tối Ưu Tỷ Lệ LIVE & Chống Checkpoint 282 (Cơ Chế Khi Bấm Dừng) ",
+            font=AppTheme.FONT_HEADER,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.ACCENT,
+            bd=1,
+            relief="solid",
+            padx=10,
+            pady=8
+        )
+        card_live_boost.pack(fill=tk.X, pady=(0, 8))
+
+        lbl_desc_live = tk.Label(
+            card_live_boost,
+            text="💡 Cơ chế mô phỏng trạng thái khi Bấm Dừng: Cho nick nghỉ ngơi ngấu phiên, cố định IP không để đổi giữa chừng, và giãn cách nhịp gửi OTP tránh bị Facebook kích hoạt WAF chống bão request.",
+            font=AppTheme.FONT_SMALL,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.TEXT_MUTED,
+            anchor="w",
+            justify=tk.LEFT
+        )
+        lbl_desc_live.pack(fill=tk.X, pady=(0, 6))
+
+        # 1. Hàng Chế độ "Chờ ngấu" tự động
+        row_maturation = tk.Frame(card_live_boost, bg=AppTheme.BG_CARD)
+        row_maturation.pack(fill=tk.X, pady=(2, 4))
+
+        is_mat_on = bool(self.config.get("enable_account_maturation", False))
+        self.chk_maturation = tk.Checkbutton(
+            row_maturation,
+            text="⚡ BẬT CHẾ ĐỘ 'CHỜ NGẤU' TỰ ĐỘNG [Chờ nick ổn định rồi mới gắn Mail/OTP]",
+            variable=self.var_enable_account_maturation,
+            font=AppTheme.FONT_BODY_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.SUCCESS if is_mat_on else AppTheme.TEXT_MUTED,
+            selectcolor=AppTheme.BG_INPUT,
+            activebackground=AppTheme.BG_CARD,
+            activeforeground=AppTheme.SUCCESS,
+            command=self._on_account_maturation_toggled
+        )
+        self.chk_maturation.pack(side=tk.LEFT)
+
+        row_mat_opts = tk.Frame(card_live_boost, bg=AppTheme.BG_CARD)
+        row_mat_opts.pack(fill=tk.X, pady=(2, 6), padx=(24, 0))
+
+        tk.Label(
+            row_mat_opts,
+            text="Thời gian chờ ngấu:",
+            font=AppTheme.FONT_BODY_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.TEXT_MAIN
+        ).pack(side=tk.LEFT)
+
+        self.cb_maturation_delay = ttk.Combobox(
+            row_mat_opts,
+            textvariable=self.var_account_maturation_delay,
+            values=[
+                "60-120s (Ngẫu nhiên)",
+                "30s",
+                "60s (1 phút)",
+                "90s (1.5 phút)",
+                "120s (2 phút - Khuyên dùng)",
+                "180s (3 phút)",
+                "300s (5 phút)"
+            ],
+            width=26,
+            font=AppTheme.FONT_BODY
+        )
+        self.cb_maturation_delay.pack(side=tk.LEFT, padx=(6, 8))
+        self.cb_maturation_delay.bind("<<ComboboxSelected>>", self._on_account_maturation_delay_changed)
+        self.cb_maturation_delay.bind("<FocusOut>", self._on_account_maturation_delay_changed)
+
+        tk.Label(
+            row_mat_opts,
+            text="(Có thể chọn hoặc tự gõ số giây/khoảng thời gian, vd: 60, 90, 60-120s)",
+            font=AppTheme.FONT_SMALL,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.TEXT_MUTED
+        ).pack(side=tk.LEFT)
+
+        # 2. Hàng Giãn cách nhịp gửi OTP (Pacing Rate)
+        row_otp_pacing = tk.Frame(card_live_boost, bg=AppTheme.BG_CARD)
+        row_otp_pacing.pack(fill=tk.X, pady=(4, 4))
+
+        is_pacing_on = bool(self.config.get("enable_otp_pacing", True))
+        self.chk_otp_pacing = tk.Checkbutton(
+            row_otp_pacing,
+            text="⚡ BẬT GIÃN CÁCH NHỊP GỬI OTP (PACING RATE) [Chống Facebook chặn dồn dập]",
+            variable=self.var_enable_otp_pacing,
+            font=AppTheme.FONT_BODY_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.SUCCESS if is_pacing_on else AppTheme.TEXT_MUTED,
+            selectcolor=AppTheme.BG_INPUT,
+            activebackground=AppTheme.BG_CARD,
+            activeforeground=AppTheme.SUCCESS,
+            command=self._on_otp_pacing_toggled
+        )
+        self.chk_otp_pacing.pack(side=tk.LEFT)
+
+        row_pacing_opts = tk.Frame(card_live_boost, bg=AppTheme.BG_CARD)
+        row_pacing_opts.pack(fill=tk.X, pady=(2, 6), padx=(24, 0))
+
+        tk.Label(
+            row_pacing_opts,
+            text="Khoảng giãn cách:",
+            font=AppTheme.FONT_BODY_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.TEXT_MAIN
+        ).pack(side=tk.LEFT)
+
+        self.spn_otp_pacing_min = tk.Spinbox(
+            row_pacing_opts,
+            from_=0.5,
+            to=30.0,
+            increment=0.5,
+            textvariable=self.var_otp_pacing_min,
+            width=5,
+            bg=AppTheme.BG_INPUT,
+            fg=AppTheme.TEXT_MAIN,
+            font=AppTheme.FONT_BODY,
+            justify=tk.CENTER
+        )
+        self.spn_otp_pacing_min.pack(side=tk.LEFT, padx=(6, 4))
+
+        tk.Label(
+            row_pacing_opts,
+            text="đến",
+            font=AppTheme.FONT_BODY_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.TEXT_MAIN
+        ).pack(side=tk.LEFT, padx=(2, 4))
+
+        self.spn_otp_pacing_max = tk.Spinbox(
+            row_pacing_opts,
+            from_=0.5,
+            to=30.0,
+            increment=0.5,
+            textvariable=self.var_otp_pacing_max,
+            width=5,
+            bg=AppTheme.BG_INPUT,
+            fg=AppTheme.TEXT_MAIN,
+            font=AppTheme.FONT_BODY,
+            justify=tk.CENTER
+        )
+        self.spn_otp_pacing_max.pack(side=tk.LEFT, padx=(2, 6))
+
+        tk.Label(
+            row_pacing_opts,
+            text="giây (Ngẫu nhiên giữa các request submit OTP của tất cả các luồng)",
+            font=AppTheme.FONT_SMALL,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.TEXT_MUTED
+        ).pack(side=tk.LEFT)
+
+        # 3. Hàng Cố định IP theo phiên (Account IP Stickiness)
+        row_stickiness = tk.Frame(card_live_boost, bg=AppTheme.BG_CARD)
+        row_stickiness.pack(fill=tk.X, pady=(4, 4))
+
+        is_stick_on = bool(self.config.get("enable_account_ip_stickiness", True))
+        self.chk_ip_stickiness = tk.Checkbutton(
+            row_stickiness,
+            text="⚡ BẬT CỐ ĐỊNH IP THEO PHIÊN [Account IP Stickiness - Chống đổi IP giữa chừng]",
+            variable=self.var_enable_account_ip_stickiness,
+            font=AppTheme.FONT_BODY_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.SUCCESS if is_stick_on else AppTheme.TEXT_MUTED,
+            selectcolor=AppTheme.BG_INPUT,
+            activebackground=AppTheme.BG_CARD,
+            activeforeground=AppTheme.SUCCESS,
+            command=self._on_account_ip_stickiness_toggled
+        )
+        self.chk_ip_stickiness.pack(side=tk.LEFT)
+
+        row_stick_desc = tk.Frame(card_live_boost, bg=AppTheme.BG_CARD)
+        row_stick_desc.pack(fill=tk.X, pady=(0, 2), padx=(24, 0))
+
+        tk.Label(
+            row_stick_desc,
+            text="Giữ nguyên IP từ lúc tạo nick đến khi xác minh OTP xong. Khóa không cho xoay IP khi key đang có luồng xử lý nick dở dang.",
+            font=AppTheme.FONT_SMALL,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.TEXT_MUTED
+        ).pack(side=tk.LEFT)
+
         # Card 6: Điều khiển & Lưu Cài Đặt
         card_actions = tk.LabelFrame(
             parent,
@@ -6408,6 +6626,49 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             command=self._on_verry_continuous_toggled
         )
         self.chk_dash_verry_continuous.pack(side=tk.LEFT, padx=(2, 4))
+
+        # Checkboxes Tối ưu LIVE trên Dashboard
+        self.chk_dash_maturation = tk.Checkbutton(
+            quick_bar,
+            text="⏳ Chờ ngấu",
+            variable=self.var_enable_account_maturation,
+            font=AppTheme.FONT_SMALL_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.SUCCESS if self.var_enable_account_maturation.get() else AppTheme.TEXT_MUTED,
+            selectcolor=AppTheme.BG_INPUT,
+            activebackground=AppTheme.BG_CARD,
+            activeforeground=AppTheme.SUCCESS,
+            command=self._on_account_maturation_toggled
+        )
+        self.chk_dash_maturation.pack(side=tk.LEFT, padx=(2, 3))
+
+        self.chk_dash_otp_pacing = tk.Checkbutton(
+            quick_bar,
+            text="⏱️ Giãn OTP",
+            variable=self.var_enable_otp_pacing,
+            font=AppTheme.FONT_SMALL_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.SUCCESS if self.var_enable_otp_pacing.get() else AppTheme.TEXT_MUTED,
+            selectcolor=AppTheme.BG_INPUT,
+            activebackground=AppTheme.BG_CARD,
+            activeforeground=AppTheme.SUCCESS,
+            command=self._on_otp_pacing_toggled
+        )
+        self.chk_dash_otp_pacing.pack(side=tk.LEFT, padx=(2, 3))
+
+        self.chk_dash_ip_stickiness = tk.Checkbutton(
+            quick_bar,
+            text="🛡️ Cố định IP",
+            variable=self.var_enable_account_ip_stickiness,
+            font=AppTheme.FONT_SMALL_BOLD,
+            bg=AppTheme.BG_CARD,
+            fg=AppTheme.SUCCESS if self.var_enable_account_ip_stickiness.get() else AppTheme.TEXT_MUTED,
+            selectcolor=AppTheme.BG_INPUT,
+            activebackground=AppTheme.BG_CARD,
+            activeforeground=AppTheme.SUCCESS,
+            command=self._on_account_ip_stickiness_toggled
+        )
+        self.chk_dash_ip_stickiness.pack(side=tk.LEFT, padx=(2, 4))
 
         # Phía Phải: Nút Mở Cài Đặt
         right_box = tk.Frame(quick_bar, bg=AppTheme.BG_CARD)
@@ -10672,6 +10933,21 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         curr_metaking_domain = self.config.get("metaking_domain", "hotmail.com") or "hotmail.com"
         curr_metaking_country_id = self.config.get("metaking_country_id", 154)
         curr_metaking_price = self.config.get("metaking_price", "low")
+        curr_enable_account_maturation = bool(self.var_enable_account_maturation.get()) if hasattr(self, "var_enable_account_maturation") else bool(self.config.get("enable_account_maturation", False))
+        curr_account_maturation_delay = str(self.var_account_maturation_delay.get()) if hasattr(self, "var_account_maturation_delay") else str(self.config.get("account_maturation_delay", "60-120s (Ngẫu nhiên)"))
+        curr_maturation_delay_seconds = parse_maturation_delay_seconds(curr_account_maturation_delay, default=90.0)
+
+        curr_enable_otp_pacing = bool(self.var_enable_otp_pacing.get()) if hasattr(self, "var_enable_otp_pacing") else bool(self.config.get("enable_otp_pacing", True))
+        try:
+            curr_otp_pacing_min = float(str(self.var_otp_pacing_min.get()).replace(",", ".")) if hasattr(self, "var_otp_pacing_min") else float(self.config.get("otp_pacing_min", 2.0))
+        except Exception:
+            curr_otp_pacing_min = float(self.config.get("otp_pacing_min", 2.0))
+        try:
+            curr_otp_pacing_max = float(str(self.var_otp_pacing_max.get()).replace(",", ".")) if hasattr(self, "var_otp_pacing_max") else float(self.config.get("otp_pacing_max", 3.5))
+        except Exception:
+            curr_otp_pacing_max = float(self.config.get("otp_pacing_max", 3.5))
+
+        curr_enable_account_ip_stickiness = bool(self.var_enable_account_ip_stickiness.get()) if hasattr(self, "var_enable_account_ip_stickiness") else bool(self.config.get("enable_account_ip_stickiness", True))
         nvr_list_to_run = []
         is_continuous = bool(getattr(self, "var_verry_auto_continuous", None) and self.var_verry_auto_continuous.get()) and (curr_reg_mode == "verify_nvr")
         if curr_reg_mode == "verify_nvr":
@@ -12421,6 +12697,14 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     "metaking_country_id": self.config.get("metaking_country_id", 154),
                                     "metaking_price": self.config.get("metaking_price", "low"),
                                     "proxy_provider": provider_name,
+                                    "enable_account_maturation": curr_enable_account_maturation,
+                                    "account_maturation_delay": curr_account_maturation_delay,
+                                    "account_maturation_delay_seconds": curr_maturation_delay_seconds,
+                                    "enable_otp_pacing": curr_enable_otp_pacing,
+                                    "otp_pacing_min": curr_otp_pacing_min,
+                                    "otp_pacing_max": curr_otp_pacing_max,
+                                    "enable_account_ip_stickiness": curr_enable_account_ip_stickiness,
+                                    "stop_event": self.stop_event,
                                 }
                             )
                             stagger_wait = 0.0
@@ -12524,6 +12808,14 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     "metaking_service_id": (67 if ("phone" in str(curr_email_service).lower() or self.config.get("metaking_service_type") == "phone") else 1),
                                     "metaking_country_id": curr_metaking_country_id,
                                     "metaking_price": curr_metaking_price,
+                                    "enable_account_maturation": curr_enable_account_maturation,
+                                    "account_maturation_delay": curr_account_maturation_delay,
+                                    "account_maturation_delay_seconds": curr_maturation_delay_seconds,
+                                    "enable_otp_pacing": curr_enable_otp_pacing,
+                                    "otp_pacing_min": curr_otp_pacing_min,
+                                    "otp_pacing_max": curr_otp_pacing_max,
+                                    "enable_account_ip_stickiness": curr_enable_account_ip_stickiness,
+                                    "stop_event": self.stop_event,
                                 }
                             )
 
@@ -12770,6 +13062,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     break
 
                                 # TH 4: Cần xoay sang IP mới cho key này
+                                if curr_enable_account_ip_stickiness and k_state and k_state.get("active_sessions", 0) > 0:
+                                    time.sleep(1.0)
+                                    continue
                                 rot_lock = k_state.setdefault("rot_lock", threading.Lock()) if k_state else None
                                 if (not rot_lock) or rot_lock.acquire(blocking=False):
                                     try:
@@ -12891,6 +13186,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                         rot_success = True
                                         break
 
+                                if curr_enable_account_ip_stickiness and k_state and k_state.get("active_sessions", 0) > 0:
+                                    time.sleep(1.0)
+                                    continue
                                 rot_lock = k_state.setdefault("rot_lock", threading.Lock()) if k_state else None
                                 if (not rot_lock) or rot_lock.acquire(blocking=False):
                                     got_new = False
@@ -13022,6 +13320,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                         rot_success = True
                                         break
 
+                                if curr_enable_account_ip_stickiness and k_state and k_state.get("active_sessions", 0) > 0:
+                                    time.sleep(1.0)
+                                    continue
                                 rot_lock = k_state.setdefault("rot_lock", threading.Lock()) if k_state else None
                                 if (not rot_lock) or rot_lock.acquire(blocking=False):
                                     got_new = False
@@ -13161,6 +13462,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     break
 
                                 # TH 3: Cần xoay sang IP mới cho key này
+                                if curr_enable_account_ip_stickiness and k_state and k_state.get("active_sessions", 0) > 0:
+                                    time.sleep(1.0)
+                                    continue
                                 rot_lock = k_state.setdefault("rot_lock", threading.Lock()) if k_state else None
                                 if (not rot_lock) or rot_lock.acquire(blocking=False):
                                     try:
@@ -15231,6 +15535,69 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
     # =========================================================================
     # PIPELINE INTEGRATION WITH TOOL VERRY
     # =========================================================================
+
+    def _on_account_maturation_toggled(self):
+        is_on = bool(self.var_enable_account_maturation.get()) if hasattr(self, "var_enable_account_maturation") else False
+        self.config["enable_account_maturation"] = is_on
+        accent_color = getattr(AppTheme, "SUCCESS", "#22c55e") if is_on else getattr(AppTheme, "TEXT_MUTED", "#94a3b8")
+        if hasattr(self, "chk_maturation"):
+            try:
+                self.chk_maturation.configure(fg=accent_color)
+            except Exception:
+                pass
+        if hasattr(self, "chk_dash_maturation"):
+            try:
+                self.chk_dash_maturation.configure(fg=accent_color)
+            except Exception:
+                pass
+        st = "BẬT" if is_on else "TẮT"
+        delay_txt = self.var_account_maturation_delay.get() if hasattr(self, "var_account_maturation_delay") else "60-120s"
+        self.log(f"🛡️ Đã {st} chế độ 'Chờ ngấu' tự động [Thời gian: {delay_txt}] (Chống Checkpoint 282 sau tạo nick)", "info" if is_on else "warning")
+        self.save_config(show_toast=False)
+
+    def _on_account_maturation_delay_changed(self, event=None):
+        if hasattr(self, "var_account_maturation_delay"):
+            val = str(self.var_account_maturation_delay.get()).strip()
+            self.config["account_maturation_delay"] = val
+            self.save_config(show_toast=False)
+
+    def _on_otp_pacing_toggled(self):
+        is_on = bool(self.var_enable_otp_pacing.get()) if hasattr(self, "var_enable_otp_pacing") else True
+        self.config["enable_otp_pacing"] = is_on
+        accent_color = getattr(AppTheme, "SUCCESS", "#22c55e") if is_on else getattr(AppTheme, "TEXT_MUTED", "#94a3b8")
+        if hasattr(self, "chk_otp_pacing"):
+            try:
+                self.chk_otp_pacing.configure(fg=accent_color)
+            except Exception:
+                pass
+        if hasattr(self, "chk_dash_otp_pacing"):
+            try:
+                self.chk_dash_otp_pacing.configure(fg=accent_color)
+            except Exception:
+                pass
+        st = "BẬT" if is_on else "TẮT"
+        p_min = self.var_otp_pacing_min.get() if hasattr(self, "var_otp_pacing_min") else "2.0"
+        p_max = self.var_otp_pacing_max.get() if hasattr(self, "var_otp_pacing_max") else "3.5"
+        self.log(f"⏱️ Đã {st} Giãn cách nhịp gửi OTP [Khoảng {p_min}s - {p_max}s] (Chống Facebook WAF chặn dồn dập)", "info" if is_on else "warning")
+        self.save_config(show_toast=False)
+
+    def _on_account_ip_stickiness_toggled(self):
+        is_on = bool(self.var_enable_account_ip_stickiness.get()) if hasattr(self, "var_enable_account_ip_stickiness") else True
+        self.config["enable_account_ip_stickiness"] = is_on
+        accent_color = getattr(AppTheme, "SUCCESS", "#22c55e") if is_on else getattr(AppTheme, "TEXT_MUTED", "#94a3b8")
+        if hasattr(self, "chk_ip_stickiness"):
+            try:
+                self.chk_ip_stickiness.configure(fg=accent_color)
+            except Exception:
+                pass
+        if hasattr(self, "chk_dash_ip_stickiness"):
+            try:
+                self.chk_dash_ip_stickiness.configure(fg=accent_color)
+            except Exception:
+                pass
+        st = "BẬT" if is_on else "TẮT"
+        self.log(f"🛡️ Đã {st} Cố định IP theo phiên [Account IP Stickiness] (Chống đổi IP giữa chừng khi luồng đang chạy)", "info" if is_on else "warning")
+        self.save_config(show_toast=False)
 
     def _on_verry_pipeline_toggled(self):
         """Bật/tắt chế độ pipeline kết hợp giữa Tool Reg và Tool Verry."""

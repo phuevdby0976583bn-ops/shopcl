@@ -66,6 +66,7 @@ from core.email_service import (
     get_email_provider,
     extract_otp_code,
     submit_facebook_web_email_otp,
+    OtpSubmitPacingLimiter,
 )
 from core.nvr_verifier import SmartAccountParser, verify_single_nvr_account
 from core.facebook_checker import (
@@ -148,6 +149,8 @@ __all__ = [
     "get_email_provider",
     "extract_otp_code",
     "submit_facebook_web_email_otp",
+    "parse_maturation_delay_seconds",
+    "OtpSubmitPacingLimiter",
     "check_facebook_uid_live",
     "batch_check_facebook_uids",
     "check_registration_account_live",
