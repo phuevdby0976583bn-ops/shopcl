@@ -11513,7 +11513,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         p_item.country_code = normalize_country_code(loc) or "VN"
                         p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=cur_ip)
                         p_item.real_ip = cur_ip
-                    max_key_concur = (6 if curr_reg_mode == "verify_nvr" else 4) if actual_threads >= 200 else (3 if curr_reg_mode == "verify_nvr" else 2)
+                    _k_cnt = max(1, len(kiot_p_keys if "kiot_p_keys" in locals() and kiot_p_keys else [1]))
+                    max_key_concur = max(32, int(actual_threads / _k_cnt) + 8) if actual_threads >= 100 else max(10, actual_threads)
                     return cand_k, {
                         "lock": threading.Lock(),
                         "session_lock": threading.Lock(),
@@ -11568,7 +11569,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         p_item.country_code = normalize_country_code(loc) or "VN"
                         p_item.geo_profile = GeoTelephonyResolver.get_profile_for_country(p_item.country_code, ip=cur_ip)
                         p_item.real_ip = cur_ip
-                    max_key_concur = (6 if curr_reg_mode == "verify_nvr" else 4) if actual_threads >= 200 else (3 if curr_reg_mode == "verify_nvr" else 2)
+                    _k_cnt = max(1, len(proxyvn_p_keys if "proxyvn_p_keys" in locals() and proxyvn_p_keys else [1]))
+                    max_key_concur = max(32, int(actual_threads / _k_cnt) + 8) if actual_threads >= 100 else max(10, actual_threads)
                     return cand_k, {
                         "lock": threading.Lock(),
                         "session_lock": threading.Lock(),
@@ -11972,7 +11974,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         shared_proxyvn_state[k] = {
                             "lock": threading.Lock(),
                             "session_lock": threading.Lock(),
-                            "exec_semaphore": threading.BoundedSemaphore(value=(6 if curr_reg_mode == "verify_nvr" else 4) if actual_threads >= 200 else (3 if curr_reg_mode == "verify_nvr" else 2)),
+                            "exec_semaphore": threading.BoundedSemaphore(value=max(32, int(actual_threads / max(1, len(keys_pool if "keys_pool" in locals() and keys_pool else [1]))) + 8) if actual_threads >= 100 else max(10, actual_threads)),
                             "proxy_obj": None,
                             "cur_ip": "",
                             "last_working_proxy": None,
@@ -12729,7 +12731,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             if k_state:
                                 with k_state["lock"]:
                                     if "exec_semaphore" not in k_state:
-                                        k_state["exec_semaphore"] = threading.BoundedSemaphore(value=(6 if curr_reg_mode == "verify_nvr" else 4) if actual_threads >= 200 else 3)
+                                        k_state["exec_semaphore"] = threading.BoundedSemaphore(value=max(32, int(actual_threads / max(1, len(keys_pool if "keys_pool" in locals() and keys_pool else [1]))) + 8) if actual_threads >= 100 else max(10, actual_threads))
                                     key_sem = k_state["exec_semaphore"]
 
                             sem_acquired = False
@@ -12865,7 +12867,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 if k_state:
                                     with k_state["lock"]:
                                         if "exec_semaphore" not in k_state:
-                                            k_state["exec_semaphore"] = threading.BoundedSemaphore(value=(6 if curr_reg_mode == "verify_nvr" else 4) if actual_threads >= 200 else 3)
+                                            k_state["exec_semaphore"] = threading.BoundedSemaphore(value=max(32, int(actual_threads / max(1, len(keys_pool if "keys_pool" in locals() and keys_pool else [1]))) + 8) if actual_threads >= 100 else max(10, actual_threads))
                                         key_sem = k_state["exec_semaphore"]
 
                                 sem_acquired = False
@@ -12888,21 +12890,12 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                             now_req = time.time()
                                             last_req = _shared_ip_last_submit.get(assigned_ip, 0.0)
                                             elapsed = now_req - last_req
-                                            if curr_enable_otp_pacing:
-                                                min_p = float(curr_otp_pacing_min)
-                                                max_p = max(min_p, float(curr_otp_pacing_max))
-                                                target_gap = random.uniform(min_p, max_p)
-                                                if elapsed < target_gap:
-                                                    stagger_wait = max(0.0, target_gap - elapsed)
-                                            else:
-                                                if elapsed < 0.2:
-                                                    stagger_wait = max(0.0, random.uniform(0.1, 0.25) - elapsed)
+                                            if elapsed < 0.15:
+                                                stagger_wait = max(0.0, random.uniform(0.08, 0.2) - elapsed)
                                             _shared_ip_last_submit[assigned_ip] = now_req + stagger_wait
 
-                                    if stagger_wait > 0.05:
-                                        t_wait_end = time.time() + stagger_wait
-                                        while time.time() < t_wait_end and not self.stop_event.is_set():
-                                            time.sleep(min(0.2, t_wait_end - time.time()))
+                                    if stagger_wait > 0.03:
+                                        time.sleep(stagger_wait)
 
                                     if k_state:
                                         with k_state["lock"]:
@@ -13188,7 +13181,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     break
 
                                 # TH 4: Cần xoay sang IP mới cho key này
-                                if curr_enable_account_ip_stickiness and k_state and k_state.get("active_sessions", 0) > 0:
+                                is_ip_burned = bool(old_ip in burned_set or is_run_waf or is_actual_proxy_down)
+                                if curr_enable_account_ip_stickiness and k_state and k_state.get("active_sessions", 0) > 0 and not is_ip_burned:
                                     if not hasattr(self, "_last_ip_stickiness_log_ts"):
                                         self._last_ip_stickiness_log_ts = {}
                                     _now_st = time.time()
@@ -13606,7 +13600,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     break
 
                                 # TH 3: Cần xoay sang IP mới cho key này
-                                if curr_enable_account_ip_stickiness and k_state and k_state.get("active_sessions", 0) > 0:
+                                is_ip_burned = bool(old_ip in burned_set or is_run_waf or is_actual_proxy_down)
+                                if curr_enable_account_ip_stickiness and k_state and k_state.get("active_sessions", 0) > 0 and not is_ip_burned:
                                     time.sleep(1.0)
                                     continue
                                 rot_lock = k_state.setdefault("rot_lock", threading.Lock()) if k_state else None

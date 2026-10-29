@@ -2740,9 +2740,18 @@ def extract_facebook_comet_tokens(
         "actor_id": "",
         "is_confirmed": False,
     }
-    # Đảm bảo lấy đúng Comet Desktop Tokens (fb_dtsg NAf..., lsd, rev, hs, s) theo chuẩn cURL
-    target_host = "www.facebook.com"
-    is_desktop_comet = bool("www.facebook.com" in target_host)
+    incoming_ua = (headers or {}).get("User-Agent") or (headers or {}).get("user-agent") or getattr(session, "headers", {}).get("User-Agent") or getattr(session, "headers", {}).get("user-agent") or ""
+    target_host = server or "m.facebook.com"
+    is_session_mobile = bool(
+        (target_host != "www.facebook.com")
+        or (incoming_ua and any(k in incoming_ua.lower() for k in ("android", "mobile", "iphone", "ipad", "dalvik", "katana")))
+    )
+    if is_session_mobile:
+        if target_host in ("www.facebook.com", "web.facebook.com"):
+            target_host = "m.facebook.com"
+        is_desktop_comet = False
+    else:
+        is_desktop_comet = bool("www.facebook.com" in target_host)
     fetch_hdrs = dict(headers or {})
     if is_desktop_comet:
         desktop_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -3124,7 +3133,7 @@ def cleanup_facebook_pending_contactpoints(
 def add_facebook_confirmation_contactpoint(
     session: Any,
     email: str,
-    server: str = "www.facebook.com",
+    server: str = "m.facebook.com",
     headers: Optional[Dict[str, str]] = None,
     uid: Optional[str] = None,
     fb_dtsg: Optional[str] = None,
@@ -3171,7 +3180,7 @@ def add_facebook_confirmation_contactpoint(
     eff_lsd = lsd or ""
     tokens = {}
     if not eff_dtsg or not eff_lsd or not str(eff_dtsg).startswith("NAf"):
-        tokens = extract_facebook_comet_tokens(session, server="www.facebook.com", headers=headers, timeout=min(timeout, 8))
+        tokens = extract_facebook_comet_tokens(session, server=server, headers=headers, timeout=min(timeout, 8))
         if tokens.get("dtsg"):
             eff_dtsg = tokens["dtsg"]
         if tokens.get("lsd"):
@@ -3497,8 +3506,6 @@ def is_checkpoint_die(url_or_text: str) -> bool:
         "you might not get appeal status updates",
         "ufacintrominimalscreenstate", "xufacxhpcontroller", "ufacintrostate",
         "ufacintrominimalscreen",
-        "tài khoản của bạn hiện bị hạn chế thực hiện hành động này",
-        "your account is currently restricted",
     )
 
     if any(m in s for m in explicit_die_human_phrases):
@@ -3730,10 +3737,10 @@ def submit_facebook_web_email_otp(
     last_page_text = ""
     page_bkv = None
 
-    # Step A: Lấy bộ token bảo mật Comet Desktop từ www.facebook.com/confirmemail.php nếu chưa có đủ
+    # Step A: Lấy bộ token bảo mật Comet từ confirmemail.php nếu chưa có đủ
     if not cur_fb_dtsg or not cur_lsd or not cur_fb_dtsg.startswith("NAf"):
         try:
-            c_toks = extract_facebook_comet_tokens(session, server="www.facebook.com", timeout=min(timeout, 10))
+            c_toks = extract_facebook_comet_tokens(session, server=mobile_server, headers=base_hdrs, timeout=min(timeout, 10))
             if c_toks.get("is_confirmed"):
                 return _confirm_success("Phiên Facebook đã được xác nhận hoàn tất!")
             if c_toks.get("dtsg"):
@@ -3919,9 +3926,22 @@ def submit_facebook_web_email_otp(
                 mobile_gql_hdrs["sec-ch-ua-mobile"] = "?1"
                 mobile_gql_hdrs["sec-ch-ua-platform"] = '"Android"' if "android" in mobile_gql_hdrs["user-agent"].lower() else '""'
 
-            gql_attempts = [
-                ("https://www.facebook.com/api/graphql/", desktop_gql_hdrs, "Desktop Comet Relay"),
-            ]
+            is_mobile_sess = bool(
+                (mobile_server and mobile_server != "www.facebook.com")
+                or (session_ua and any(k in session_ua.lower() for k in ("android", "mobile", "iphone", "ipad", "dalvik", "katana")))
+            )
+
+            if is_mobile_sess:
+                gql_attempts = [
+                    (f"https://{mobile_server}/api/graphql/", mobile_gql_hdrs, f"Mobile Web Relay ({mobile_server})"),
+                    ("https://m.facebook.com/api/graphql/", mobile_gql_hdrs, "Mobile Web Relay (m.facebook.com)"),
+                    ("https://www.facebook.com/api/graphql/", desktop_gql_hdrs, "Desktop Comet Relay (Fallback)"),
+                ]
+            else:
+                gql_attempts = [
+                    ("https://www.facebook.com/api/graphql/", desktop_gql_hdrs, "Desktop Comet Relay"),
+                    (f"https://{mobile_server}/api/graphql/", mobile_gql_hdrs, f"Mobile Web Relay ({mobile_server})"),
+                ]
 
             for gql_url, cur_ep_hdrs, gql_label in gql_attempts:
                 logger.info(f"[VR OTP] Gửi mã OTP '{clean_code}' qua {gql_label} ({gql_url}, UID: {clean_actor})...")
@@ -4099,15 +4119,26 @@ def submit_facebook_web_email_otp(
     if clean_code:
         p_host = mobile_server or server or "m.facebook.com"
         try:
-            get_conf_urls = [
-                f"https://www.facebook.com/confirmemail.php?c={clean_code}",
-                f"https://{p_host}/confirmemail.php?c={clean_code}",
-                f"https://{p_host}/confirmemail.php?c={clean_code}&_fb_noscript=1",
-            ]
-            if email and "@" in str(email):
-                clean_e = urllib.parse.quote(str(email))
-                get_conf_urls.append(f"https://{p_host}/confirmemail.php?c={clean_code}&e={clean_e}")
-                get_conf_urls.append(f"https://www.facebook.com/confirmemail.php?c={clean_code}&e={clean_e}")
+            if is_mobile_sess:
+                get_conf_urls = [
+                    f"https://{p_host}/confirmemail.php?c={clean_code}",
+                    f"https://{p_host}/confirmemail.php?c={clean_code}&_fb_noscript=1",
+                    f"https://m.facebook.com/confirmemail.php?c={clean_code}",
+                    f"https://www.facebook.com/confirmemail.php?c={clean_code}",
+                ]
+                if email and "@" in str(email):
+                    clean_e = urllib.parse.quote(str(email))
+                    get_conf_urls.insert(2, f"https://{p_host}/confirmemail.php?c={clean_code}&e={clean_e}")
+            else:
+                get_conf_urls = [
+                    f"https://www.facebook.com/confirmemail.php?c={clean_code}",
+                    f"https://{p_host}/confirmemail.php?c={clean_code}",
+                    f"https://{p_host}/confirmemail.php?c={clean_code}&_fb_noscript=1",
+                ]
+                if email and "@" in str(email):
+                    clean_e = urllib.parse.quote(str(email))
+                    get_conf_urls.append(f"https://{p_host}/confirmemail.php?c={clean_code}&e={clean_e}")
+                    get_conf_urls.append(f"https://www.facebook.com/confirmemail.php?c={clean_code}&e={clean_e}")
 
             conf_get_hdrs = dict(base_hdrs)
             conf_get_hdrs["sec-fetch-dest"] = "document"
