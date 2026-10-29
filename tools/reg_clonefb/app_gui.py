@@ -12424,6 +12424,16 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                 }
                             )
                             stagger_wait = 0.0
+                            if alloc_mode == "shared" and assigned_ip and assigned_ip != "Direct":
+                                with _shared_ip_gate_lock:
+                                    last_req = _shared_ip_last_submit.get(assigned_ip, 0.0)
+                                    now_req = time.time()
+                                    elapsed_since = now_req - last_req
+                                    if elapsed_since < 0.3:
+                                        stagger_wait = max(0.0, min(1.0, random.uniform(0.1, 0.3) - elapsed_since))
+                                    _shared_ip_last_submit[assigned_ip] = now_req + stagger_wait
+                            if stagger_wait > 0:
+                                time.sleep(stagger_wait)
 
                             if k_state:
                                 with k_state["lock"]:
@@ -12519,6 +12529,17 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
                             def _exec_reg_action():
                                 stagger_wait = 0.0
+                                if assigned_ip and assigned_ip != "Direct":
+                                    with _shared_ip_gate_lock:
+                                        last_req = _shared_ip_last_submit.get(assigned_ip, 0.0)
+                                        now_req = time.time()
+                                        base_time = max(now_req, min(last_req, now_req + 2.0))
+                                        safe_gap = random.uniform(1.2, 2.5)
+                                        target_time = base_time + safe_gap
+                                        stagger_wait = max(0.0, target_time - now_req)
+                                        _shared_ip_last_submit[assigned_ip] = target_time
+                                if stagger_wait > 0:
+                                    time.sleep(min(stagger_wait, 4.0))
 
                                 if k_state:
                                     with k_state["lock"]:
@@ -13381,9 +13402,15 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     worker_threads[wid] = t
                     t.start()
 
-            # Khởi tạo siêu tốc 100% toàn bộ luồng đồng thời không độ trễ
+            if provider_name in ("proxysocks5", "kiotproxy", "kiotproxy_current", "mproxy", "proxyvn") and actual_threads > 1:
+                # Tránh các luồng đâm vào port proxy cùng 1 microsecond gây timeout 5004ms
+                ramp_delay = 0.05 if actual_threads >= 100 else (0.1 if actual_threads >= 30 else (0.2 if actual_threads > 5 else 0.5))
+            else:
+                ramp_delay = 0.005 if actual_threads >= 200 else (0.01 if actual_threads >= 50 else 0.02)
             for i in range(1, actual_threads + 1):
                 spawn_worker(i)
+                if ramp_delay > 0:
+                    time.sleep(ramp_delay)
 
             try:
                 # Vòng lặp giám sát (Supervisor): Luôn đảm bảo đủ đúng số luồng như setting hoạt động song song độc lập
@@ -13546,18 +13573,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 if not hasattr(self, "_last_worker_push_ts"):
                     self._last_worker_push_ts = {}
                 last_push = self._last_worker_push_ts.get(wid, 0.0)
-                if cached_threads >= 500:
-                    throttle_interval = 1.5
-                elif cached_threads >= 200:
-                    throttle_interval = 1.2
-                elif cached_threads >= 100:
-                    throttle_interval = 1.0
-                elif cached_threads >= 50:
-                    throttle_interval = 0.70
-                elif cached_threads >= 20:
-                    throttle_interval = 0.40
-                else:
-                    throttle_interval = 0.10
+                throttle_interval = 1.5 if cached_threads >= 100 else (1.0 if cached_threads >= 50 else (0.4 if cached_threads >= 20 else 0.20))
                 is_terminal = tg_name in ('live', 'die', 'unver', 'checkpoint', 'failed')
                 is_milestone = is_terminal or any(k in str(st_msg).lower() for k in ('otp', 'sinh uid', 'uid:', 'thành công', 'live', 'die', 'unver'))
                 if not is_milestone and (now_push - last_push < throttle_interval):
@@ -13717,11 +13733,18 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 _push_row_state(info_status, "running")
 
         elif evt == "warning":
-            self.event_queue.put(("log", {
-                "message": f"{_get_pfx()}⚠️ {msg}",
-                "tag": "warning"
-            }))
             msg_l = msg.lower()
+            is_high_concurrency = False
+            try:
+                is_high_concurrency = getattr(self, "_cached_num_threads", 1) >= 30
+            except Exception:
+                is_high_concurrency = False
+            is_minor_retry = any(k in msg_l for k in ("mồi lại", "thử lại", "chuyển tiếp nick", "khởi động", "1351050"))
+            if not is_high_concurrency or not is_minor_retry:
+                self.event_queue.put(("log", {
+                    "message": f"{_get_pfx()}⚠️ {msg}",
+                    "tag": "warning"
+                }))
             warn_status = ""
             if "vẫn chuyển hướng về form" in msg_l or "đổi email" in msg_l:
                 warn_status = f"⚠️ L{wid}: FB bắt xác minh tiếp (NVR)..."
@@ -14353,9 +14376,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         norm_keys.append(wid_k)
 
                 pending_cnt = len(self._pending_row_updates)
-                cached_threads = getattr(self, "_cached_num_threads", 1)
-                max_draw = 150 if cached_threads >= 500 else (120 if cached_threads >= 200 else 100)
-                draw_cap = min(max_draw, max(30, pending_cnt // 2 if pending_cnt > 60 else pending_cnt))
+                draw_cap = min(150, max(45, pending_cnt // 2 if pending_cnt > 90 else pending_cnt))
                 draw_keys = (pri_keys + norm_keys)[:draw_cap]
                 for wid_c in draw_keys:
                     c_d = self._pending_row_updates.pop(wid_c, None)
@@ -14418,14 +14439,11 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     self._log_line_count += len(batched_logs)
                     
                     now_t = time.time()
-                    cached_threads = getattr(self, "_cached_num_threads", 1)
-                    max_lines = 800 if cached_threads >= 500 else (1200 if cached_threads >= 100 else 1500)
-                    trim_chunk = 400 if cached_threads >= 500 else 500
-                    if self._log_line_count > max_lines and (now_t - getattr(self, "_last_log_trim_ts", 0.0) > 3.0):
+                    if self._log_line_count > 1500 and (now_t - getattr(self, "_last_log_trim_ts", 0.0) > 4.0):
                         self._last_log_trim_ts = now_t
                         try:
-                            self.txt_logs.delete("1.0", f"{trim_chunk + 1}.0")
-                            self._log_line_count = max(0, self._log_line_count - trim_chunk)
+                            self.txt_logs.delete("1.0", "501.0")
+                            self._log_line_count = max(0, self._log_line_count - 500)
                         except Exception:
                             pass
                             

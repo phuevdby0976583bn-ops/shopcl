@@ -32,9 +32,7 @@ def _safe_sleep(seconds: float) -> None:
     if _is_test_env():
         return
     if seconds > 0:
-        # Tăng tốc tối đa (Ultra Fast Mode): rút ngắn thời gian ngủ tối đa chỉ 0.15s
-        eff_sec = min(seconds * 0.15, 0.15) if seconds >= 0.5 else seconds * 0.2
-        time.sleep(eff_sec)
+        time.sleep(seconds)
 
 import core.facebook_checker as fb_checker
 from core.facebook_checker import check_registration_account_live, check_facebook_account_live_status, check_facebook_uid_live, extract_facebook_uid
@@ -69,9 +67,23 @@ class ProxySubmitRateLimiter:
             return cls._ip_locks[clean_key]
 
     @classmethod
-    def wait_turn(cls, proxy_key: str, min_interval: float = 0.0, max_wait: float = 0.0) -> None:
-        # Tăng tốc siêu tốc: loại bỏ thời gian chờ xếp hàng submit
-        return
+    def wait_turn(cls, proxy_key: str, min_interval: float = 0.25, max_wait: float = 2.0) -> None:
+        clean_key = str(proxy_key or "").strip().lower()
+        if not clean_key or clean_key in ("direct", "none", "127.0.0.1", "0.0.0.0", ""):
+            return
+
+        with cls._master_lock:
+            now = time.time()
+            last_t = cls._next_allowed_time.get(clean_key, 0.0)
+            base_time = max(now, last_t)
+            stagger = random.uniform(min_interval * 0.8, min_interval * 1.2) if min_interval > 0 else random.uniform(0.35, 0.75)
+            target_time = base_time + stagger
+            wait_s = max(0.0, target_time - now)
+            cls._next_allowed_time[clean_key] = target_time
+
+        # Ngủ bên ngoài lock để các luồng khác không bị nghẽn
+        if wait_s > 0:
+            _safe_sleep(min(wait_s, max_wait))
 
     @classmethod
     def record_submit_finish(cls, proxy_key: str) -> None:
@@ -2060,37 +2072,38 @@ class RegistrationService:
                 except Exception:
                     pass
 
-                # Giãn cách tần suất submit tự nhiên theo IP Proxy (Non-blocking Timestamp Scheduling)
+                # Giãn cách tần suất submit tự nhiên theo IP Proxy và đồng bộ khoá giữa các luồng dùng chung 1 IP
                 proxy_slot_key = target_host or (task_input.proxy.real_ip if hasattr(task_input.proxy, "real_ip") and task_input.proxy.real_ip else str(task_input.proxy or ""))
-                stagger_intv = random.uniform(0.15, 0.35) if (proxy_slot_key and str(proxy_slot_key).lower() not in ("direct", "none", "")) else 0.0
-                ProxySubmitRateLimiter.wait_turn(proxy_slot_key, min_interval=stagger_intv, max_wait=2.5)
+                reg_ip_lock = ProxySubmitRateLimiter.get_ip_lock(proxy_slot_key)
                 response_2 = None
-                for post_attempt in range(2):
-                    try:
-                        response_2 = client.post(
-                            f"https://{server}/reg/submit/",
-                            params=params,
-                            headers=post_headers,
-                            data=data,
-                            allow_redirects=False,
-                            timeout=14,
-                        )
-                        if response_2 is not None:
-                            break
-                    except (ProxyConnectionError, RequestTimeoutError, HttpClientError) as p_err:
-                        if post_attempt == 0:
-                            if hasattr(client, "_reset_session_connections"):
-                                client._reset_session_connections()
-                            _safe_sleep(random.uniform(0.3, 0.6))
-                            continue
-                        logger.warning(f"[Legacy Submit Error] Proxy error: {p_err}")
-                        return RegistrationResult(
-                            success=False,
-                            status="failed",
-                            error_message=f"Lỗi kết nối Proxy: {p_err}",
-                            elapsed_seconds=round(time.time() - start_time, 2)
-                        )
-                ProxySubmitRateLimiter.record_submit_finish(proxy_slot_key)
+                with reg_ip_lock:
+                    ProxySubmitRateLimiter.wait_turn(proxy_slot_key, min_interval=random.uniform(1.2, 2.2), max_wait=6.0)
+                    for post_attempt in range(2):
+                        try:
+                            response_2 = client.post(
+                                f"https://{server}/reg/submit/",
+                                params=params,
+                                headers=post_headers,
+                                data=data,
+                                allow_redirects=False,
+                                timeout=14,
+                            )
+                            if response_2 is not None:
+                                break
+                        except (ProxyConnectionError, RequestTimeoutError, HttpClientError) as p_err:
+                            if post_attempt == 0:
+                                if hasattr(client, "_reset_session_connections"):
+                                    client._reset_session_connections()
+                                _safe_sleep(random.uniform(0.5, 1.0))
+                                continue
+                            logger.warning(f"[Legacy Submit Error] Proxy error: {p_err}")
+                            return RegistrationResult(
+                                success=False,
+                                status="failed",
+                                error_message=f"Lỗi kết nối Proxy: {p_err}",
+                                elapsed_seconds=round(time.time() - start_time, 2)
+                            )
+                    ProxySubmitRateLimiter.record_submit_finish(proxy_slot_key)
 
                 if not response_2:
                     continue
@@ -4723,48 +4736,48 @@ class RegistrationService:
             post_resp = None
             max_post_attempts = 2
             vr_slot_key = task_input.extra.get("proxy_ip", "") or (task_input.proxy.real_ip if hasattr(task_input.proxy, "real_ip") and task_input.proxy.real_ip else str(task_input.proxy or ""))
-            stagger_intv = random.uniform(0.15, 0.35) if (vr_slot_key and str(vr_slot_key).lower() not in ("direct", "none", "")) else 0.0
-            ProxySubmitRateLimiter.wait_turn(vr_slot_key, min_interval=stagger_intv, max_wait=2.5)
-            try:
-                for post_attempt in range(max_post_attempts):
-                    try:
-                        post_resp = client.post(
-                            post_target_url,
-                            params=params,
-                            headers=post_headers,
-                            data=build_post_data(submit_target),
-                            allow_redirects=False,
-                            timeout=20,
-                        )
-                        if post_resp is not None:
-                            break
-                    except (ProxyConnectionError, RequestTimeoutError, HttpClientError) as p_err:
-                        logger.warning(f"[Submit Error] Proxy error submitting form (attempt {post_attempt+1}/{max_post_attempts}): {p_err}")
-                        prov = task_input.extra.get("proxy_provider", "")
-                        if prov in ("free_proxy", "free_proxy_live", "free_proxy_cached"):
-                            try:
-                                # top-level FreeProxyManager
-                                free_mgr = FreeProxyManager()
-                                old_p = getattr(client, "proxy", None) or task_input.proxy
-                                if old_p:
-                                    free_mgr.mark_bad_proxy(old_p)
-                                if post_attempt < max_post_attempts - 1:
-                                    new_p = free_mgr.get_verified_live_proxy(worker_id=wid, timeout=5.0) or free_mgr.claim_instant_candidate(worker_id=wid)
-                                    if new_p:
-                                        client.set_proxy(new_p)
-                                        task_input.proxy = new_p.as_url() if hasattr(new_p, "as_url") else str(new_p)
-                                        emit("info", {"message": f"[Proxy Live] 🔄 Tự động đổi sang Proxy LIVE mới ({free_mgr._get_host(task_input.proxy)}) để gửi lại biểu mẫu Facebook..."})
-                            except Exception:
-                                pass
-                        if post_attempt == max_post_attempts - 1:
-                            return RegistrationResult(
-                                success=False,
-                                status="failed",
-                                error_message=f"Facebook từ chối kết nối/mồi form (Chưa tạo nick - Lỗi proxy): {p_err}",
-                                elapsed_seconds=round(time.time() - start_time, 2)
+            vr_ip_lock = ProxySubmitRateLimiter.get_ip_lock(vr_slot_key)
+            with vr_ip_lock:
+                ProxySubmitRateLimiter.wait_turn(vr_slot_key, min_interval=random.uniform(2.8, 4.0))
+                try:
+                    for post_attempt in range(max_post_attempts):
+                        try:
+                            post_resp = client.post(
+                                post_target_url,
+                                params=params,
+                                headers=post_headers,
+                                data=build_post_data(submit_target),
+                                allow_redirects=False,
+                                timeout=25,
                             )
-            finally:
-                ProxySubmitRateLimiter.record_submit_finish(vr_slot_key)
+                            break
+                        except (ProxyConnectionError, RequestTimeoutError, HttpClientError) as p_err:
+                            logger.warning(f"[Submit Error] Proxy error submitting form (attempt {post_attempt+1}/{max_post_attempts}): {p_err}")
+                            prov = task_input.extra.get("proxy_provider", "")
+                            if prov in ("free_proxy", "free_proxy_live", "free_proxy_cached"):
+                                try:
+                                    # top-level FreeProxyManager
+                                    free_mgr = FreeProxyManager()
+                                    old_p = getattr(client, "proxy", None) or task_input.proxy
+                                    if old_p:
+                                        free_mgr.mark_bad_proxy(old_p)
+                                    if post_attempt < max_post_attempts - 1:
+                                        new_p = free_mgr.get_verified_live_proxy(worker_id=wid, timeout=5.0) or free_mgr.claim_instant_candidate(worker_id=wid)
+                                        if new_p:
+                                            client.set_proxy(new_p)
+                                            task_input.proxy = new_p.as_url() if hasattr(new_p, "as_url") else str(new_p)
+                                            emit("info", {"message": f"[Proxy Live] 🔄 Tự động đổi sang Proxy LIVE mới ({free_mgr._get_host(task_input.proxy)}) để gửi lại biểu mẫu Facebook..."})
+                                except Exception:
+                                    pass
+                            if post_attempt == max_post_attempts - 1:
+                                return RegistrationResult(
+                                    success=False,
+                                    status="failed",
+                                    error_message=f"Facebook từ chối kết nối/mồi form (Chưa tạo nick - Lỗi proxy): {p_err}",
+                                    elapsed_seconds=round(time.time() - start_time, 2)
+                                )
+                finally:
+                    ProxySubmitRateLimiter.record_submit_finish(vr_slot_key)
 
             if not post_resp:
                 return RegistrationResult(
