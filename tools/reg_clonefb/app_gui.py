@@ -12769,39 +12769,6 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     rot_success = True
                                     break
 
-                                # TH 3.5: Mượn tạm IP sạch của key khác khi key nhà đang dính cooldown xoay IP (TUYỆT ĐỐI KHÔNG ĐỔI base_k!)
-                                if alloc_mode == "shared" and len(keys_pool) > 1 and (old_ip in burned_set or need_rot):
-                                    borrowed = False
-                                    shuffled_pool = list(keys_pool)
-                                    random.shuffle(shuffled_pool)
-                                    for cand_k in shuffled_pool:
-                                        if cand_k == base_k:
-                                            continue
-                                        c_st = shared_kiot_state.get(cand_k)
-                                        if c_st:
-                                            with c_st["lock"]:
-                                                c_p = c_st.get("proxy_obj")
-                                                c_ip = c_st.get("cur_ip", "")
-                                                c_burned = c_st.get("burned_ips", set())
-                                                c_act = c_st.get("active_sessions", 0)
-                                                max_borrow_act = max(4, actual_threads // len(keys_pool) // 2) if len(keys_pool) > 0 else 3
-                                                if c_p and c_ip and c_ip != old_ip and c_ip not in c_burned and c_ip not in burned_set and c_act < max_borrow_act:
-                                                    proxy_obj = copy.copy(c_p)
-                                                    assigned_ip = c_ip
-                                                    display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
-                                                    self._worker_proxy_map[worker_id] = display_ip
-                                                    if ip_registry:
-                                                        ip_registry.lease_ip(worker_id, assigned_ip, force=True)
-                                                    self.event_queue.put(("log", {
-                                                        "message": f"[Luồng {worker_id}] ⚡ Mượn tạm IP ({self.mask_ip(assigned_ip)}) trong khi {base_key_label} đang chờ đổi IP mới ➔ Tiếp tục reg không chờ!",
-                                                        "tag": "info"
-                                                    }))
-                                                    rot_success = True
-                                                    borrowed = True
-                                                    break
-                                    if borrowed:
-                                        break
-
                                 # TH 4: Cần xoay sang IP mới cho key này
                                 rot_lock = k_state.setdefault("rot_lock", threading.Lock()) if k_state else None
                                 if (not rot_lock) or rot_lock.acquire(blocking=False):
@@ -13192,39 +13159,6 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                                     time.sleep(random.uniform(0.1, 0.4))
                                     rot_success = True
                                     break
-
-                                # TH 2.5: Mượn tạm IP sạch của key khác khi key nhà đang dính cooldown xoay IP (TUYỆT ĐỐI KHÔNG ĐỔI base_k!)
-                                if alloc_mode == "shared" and len(keys_pool) > 1 and (old_ip in burned_set or need_rot):
-                                    borrowed = False
-                                    shuffled_pool = list(keys_pool)
-                                    random.shuffle(shuffled_pool)
-                                    for cand_k in shuffled_pool:
-                                        if cand_k == base_k:
-                                            continue
-                                        c_st = shared_proxyvn_state.get(cand_k)
-                                        if c_st:
-                                            with c_st["lock"]:
-                                                c_p = c_st.get("proxy_obj")
-                                                c_ip = c_st.get("cur_ip", "")
-                                                c_burned = c_st.get("burned_ips", set())
-                                                c_act = c_st.get("active_sessions", 0)
-                                                max_borrow_act = max(4, actual_threads // len(keys_pool) // 2) if len(keys_pool) > 0 else 3
-                                                if c_p and c_ip and c_ip != old_ip and c_ip not in c_burned and c_ip not in burned_set and c_act < max_borrow_act:
-                                                    proxy_obj = copy.copy(c_p)
-                                                    assigned_ip = c_ip
-                                                    display_ip = getattr(proxy_obj, "real_ip", None) or assigned_ip or (f"{proxy_obj.host}:{proxy_obj.port}" if getattr(proxy_obj, "port", None) else assigned_ip)
-                                                    self._worker_proxy_map[worker_id] = display_ip
-                                                    if ip_registry:
-                                                        ip_registry.lease_ip(worker_id, assigned_ip, force=True)
-                                                    self.event_queue.put(("log", {
-                                                        "message": f"[Luồng {worker_id}] ⚡ Mượn tạm IP ({self.mask_ip(assigned_ip)}) trong khi {base_key_label} đang chờ đổi IP mới ➔ Tiếp tục reg không chờ!",
-                                                        "tag": "info"
-                                                    }))
-                                                    rot_success = True
-                                                    borrowed = True
-                                                    break
-                                    if borrowed:
-                                        break
 
                                 # TH 3: Cần xoay sang IP mới cho key này
                                 rot_lock = k_state.setdefault("rot_lock", threading.Lock()) if k_state else None
@@ -13775,7 +13709,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
         elif evt == "error":
             self.event_queue.put(("log", {
-                "message": f"{pfx}❌ {msg}",
+                "message": f"{_get_pfx()}❌ {msg}",
                 "tag": "error"
             }))
             is_die_err = any(k in msg.lower() for k in ("die", "checkpoint", "282", "ufac", "vô hiệu hóa", "suspended", "tạm ngưng"))
@@ -13792,7 +13726,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             is_die_msg = any(k in msg.lower() for k in ("die", "checkpoint", "282", "ufac", "vô hiệu hóa", "suspended", "tạm ngưng"))
             if is_die_msg:
                 self.event_queue.put(("log", {
-                    "message": f"{pfx}❌ {msg}",
+                    "message": f"{_get_pfx()}❌ {msg}",
                     "tag": "error"
                 }))
                 self.event_queue.put(("row_state_update", {
@@ -14149,18 +14083,23 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     is_fb_form_err = any(k in err_lower for k in ("1351050", "lỗi đăng ký", "erreur d’inscription", "registration error", "form_error", "country_code_selector", "facebook error"))
 
                     if not has_account_created or (is_proxy_net_err and not is_genuinely_live):
+                        c_th = getattr(self, "_cached_num_threads", 1)
+                        is_hi_th = c_th >= 30
                         if is_email_err:
                             self.log(f"[Luồng {wid}] ⚠️ Lỗi cấp hòm thư: {res.error_message[:90]}", "warning")
                         elif is_fb_form_err:
-                            self.log(f"[Luồng {wid}] ⚠️ Facebook từ chối biểu mẫu (Lỗi đăng ký / 1351050 - FB WAF) ➔ Chuyển tiếp nick kế tiếp!", "warning")
+                            if not is_hi_th:
+                                self.log(f"[Luồng {wid}] ⚠️ Facebook từ chối biểu mẫu (Lỗi đăng ký / 1351050 - FB WAF) ➔ Chuyển tiếp nick kế tiếp!", "warning")
                         elif is_proxy_net_err:
                             clean_p_err = res.error_message or "Proxy Error"
                             for pfx in ("Chưa tạo nick - Lỗi proxy):", "Lỗi kết nối Proxy:", "Proxy Error:"):
                                 if pfx in clean_p_err:
                                     clean_p_err = clean_p_err.split(pfx, 1)[-1].strip()
-                            self.log(f"[Luồng {wid}] ⚠️ Lỗi kết nối Proxy: {clean_p_err[:120]}", "warning")
+                            if not is_hi_th:
+                                self.log(f"[Luồng {wid}] ⚠️ Lỗi kết nối Proxy: {clean_p_err[:120]}", "warning")
                         else:
-                            self.log(f"[Luồng {wid}] ⚠️ Tạo phiên chưa thành công: {(res.error_message or '')[:80]}", "warning")
+                            if not is_hi_th:
+                                self.log(f"[Luồng {wid}] ⚠️ Tạo phiên chưa thành công: {(res.error_message or '')[:80]}", "warning")
 
                         # Cập nhật trực tiếp lên dòng đang hiển thị của luồng này (tránh để dòng treo hoặc sinh rác)
                         if existing_item and self.tree.exists(existing_item):
