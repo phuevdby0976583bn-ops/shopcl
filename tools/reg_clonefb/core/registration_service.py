@@ -32,7 +32,9 @@ def _safe_sleep(seconds: float) -> None:
     if _is_test_env():
         return
     if seconds > 0:
-        time.sleep(seconds)
+        # Tăng tốc tối đa (Ultra Fast Mode): rút ngắn thời gian ngủ tối đa chỉ 0.15s
+        eff_sec = min(seconds * 0.15, 0.15) if seconds >= 0.5 else seconds * 0.2
+        time.sleep(eff_sec)
 
 import core.facebook_checker as fb_checker
 from core.facebook_checker import check_registration_account_live, check_facebook_account_live_status, check_facebook_uid_live, extract_facebook_uid
@@ -67,23 +69,9 @@ class ProxySubmitRateLimiter:
             return cls._ip_locks[clean_key]
 
     @classmethod
-    def wait_turn(cls, proxy_key: str, min_interval: float = 0.20, max_wait: float = 2.5) -> None:
-        clean_key = str(proxy_key or "").strip().lower()
-        if not clean_key or clean_key in ("direct", "none", "127.0.0.1", "0.0.0.0", "") or min_interval <= 0:
-            return
-
-        with cls._master_lock:
-            now = time.time()
-            last_t = cls._next_allowed_time.get(clean_key, 0.0)
-            base_time = min(max(now, last_t), now + max_wait)
-            stagger = random.uniform(min_interval * 0.8, min_interval * 1.2)
-            target_time = base_time + stagger
-            wait_s = max(0.0, target_time - now)
-            cls._next_allowed_time[clean_key] = target_time
-
-        # Ngủ bên ngoài lock để các luồng khác không bị nghẽn
-        if wait_s > 0:
-            _safe_sleep(min(wait_s, max_wait))
+    def wait_turn(cls, proxy_key: str, min_interval: float = 0.0, max_wait: float = 0.0) -> None:
+        # Tăng tốc siêu tốc: loại bỏ thời gian chờ xếp hàng submit
+        return
 
     @classmethod
     def record_submit_finish(cls, proxy_key: str) -> None:
