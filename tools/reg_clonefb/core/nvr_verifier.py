@@ -454,18 +454,28 @@ def verify_single_nvr_account(
                     return res
 
             if not mailbox or not getattr(mailbox, "email", None):
-                is_strict_laoia = "laoia" in str(getattr(active_provider, "fixed_domain", "")).lower() or "laoia" in str(task_input.extra.get("email_service", "")).lower()
-                if not is_strict_laoia:
-                    try:
-                        from core.email_service import TempMailPlusProvider
-                        fallback_prov = TempMailPlusProvider()
-                        mailbox = fallback_prov.create_mailbox(proxy=task_input.proxy)
-                        if mailbox and getattr(mailbox, "email", None):
-                            active_provider = fallback_prov
-                            new_email = mailbox.email
-                            emit("info", {"message": f"⚡ [Cứu Nguy Tự Động] Hòm thư chính nghẽn ➔ Cấp hòm thư dự phòng: {mailbox.email}"})
-                    except Exception:
-                        pass
+                try:
+                    from core.email_service import TempMailPlusProvider
+                    fallback_prov = TempMailPlusProvider()
+                    mailbox = fallback_prov.create_mailbox(proxy=task_input.proxy)
+                    if mailbox and getattr(mailbox, "email", None):
+                        active_provider = fallback_prov
+                        new_email = mailbox.email
+                        emit("info", {"message": f"[Cứu Nguy Tự Động] Hòm thư chính nghẽn ➔ Cấp hòm thư dự phòng: {mailbox.email}"})
+                except Exception:
+                    pass
+
+            if not mailbox or not getattr(mailbox, "email", None):
+                try:
+                    from core.email_service import CleanTrioEmailProvider
+                    fallback_trio = CleanTrioEmailProvider()
+                    mailbox = fallback_trio.create_mailbox(proxy=task_input.proxy)
+                    if mailbox and getattr(mailbox, "email", None):
+                        active_provider = fallback_trio
+                        new_email = mailbox.email
+                        emit("info", {"message": f"[Cứu Nguy Tự Động] Cấp hòm thư dự phòng Đa Nguồn: {mailbox.email}"})
+                except Exception:
+                    pass
 
             if not mailbox or not getattr(mailbox, "email", None):
                 elapsed = time.time() - start_time
@@ -960,17 +970,26 @@ def verify_single_nvr_account(
                             pass
 
                 if not new_box or not getattr(new_box, "email", None):
-                    is_strict_laoia = "laoia" in str(getattr(cur_prov, "fixed_domain", "")).lower() or "laoia" in str(retry_email_srv).lower()
-                    if not is_strict_laoia:
-                        try:
-                            from core.email_service import TempMailPlusProvider
-                            fallback_prov = TempMailPlusProvider()
-                            new_box = fallback_prov.create_mailbox(proxy=task_input.proxy)
-                            if new_box and getattr(new_box, "email", None):
-                                cur_prov = fallback_prov
-                                prov_label = "TempMail.Plus (Đa đuôi sạch tức thì)"
-                        except Exception:
-                            pass
+                    try:
+                        from core.email_service import TempMailPlusProvider
+                        fallback_prov = TempMailPlusProvider()
+                        new_box = fallback_prov.create_mailbox(proxy=task_input.proxy)
+                        if new_box and getattr(new_box, "email", None):
+                            cur_prov = fallback_prov
+                            prov_label = "TempMail.Plus"
+                    except Exception:
+                        pass
+
+                if not new_box or not getattr(new_box, "email", None):
+                    try:
+                        from core.email_service import CleanTrioEmailProvider
+                        fallback_trio = CleanTrioEmailProvider()
+                        new_box = fallback_trio.create_mailbox(proxy=task_input.proxy)
+                        if new_box and getattr(new_box, "email", None):
+                            cur_prov = fallback_trio
+                            prov_label = "CleanSuite Đa Nguồn"
+                    except Exception:
+                        pass
 
                 if not new_box or not getattr(new_box, "email", None):
                     emit("warning", {"message": f"[Lần {retry_idx}/{max_email_retries}] Không thể tạo hòm thư mới ({prov_label}). Tiếp tục lần thử sau..."})
@@ -1507,17 +1526,8 @@ def verify_single_nvr_account(
             except Exception:
                 pass
 
-            # Remove from accounts_unverified.txt
-            if uid_val and uid_val != "N/A" and os.path.exists("accounts_unverified.txt"):
-                try:
-                    with open("accounts_unverified.txt", "r", encoding="utf-8-sig", errors="ignore") as f_un:
-                        un_lines = f_un.readlines()
-                    filtered = [l for l in un_lines if not (l.strip().startswith(uid_val + "|") or f"c_user={uid_val}" in l)]
-                    if len(filtered) < len(un_lines):
-                        with open("accounts_unverified.txt", "w", encoding="utf-8-sig") as f_un:
-                            f_un.writelines(filtered)
-                except Exception:
-                    pass
+            # Bảo toàn accounts_unverified.txt: Không xóa acc No-Verify khi xác minh xong
+            pass
 
 # Handled exclusively by GUI based on user checkbox (auto_ttc_pipeline)
 

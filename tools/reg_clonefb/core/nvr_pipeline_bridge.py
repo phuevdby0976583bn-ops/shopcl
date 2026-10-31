@@ -373,46 +373,13 @@ def mark_account_result(
 
 
 def _clean_unverified_file(uid: str, verry_dir: str):
-    """Xóa tài khoản đã xử lý khỏi file accounts_unverified.txt."""
-    unver_file = os.path.join(verry_dir, "accounts_unverified.txt")
-    if not os.path.exists(unver_file):
-        return
-    try:
-        with open(unver_file, "r", encoding="utf-8-sig", errors="ignore") as f:
-            lines = f.readlines()
-        cleaned = [l for l in lines if not (l.strip().startswith(f"{uid}|") or f"c_user={uid}" in l)]
-        if len(cleaned) < len(lines):
-            with open(unver_file, "w", encoding="utf-8-sig") as f:
-                f.writelines(cleaned)
-    except Exception:
-        pass
+    """Bảo toàn 100% dữ liệu accounts_unverified.txt, không bao giờ xóa acc No-Verify."""
+    return
 
 
 def _clean_unverified_file_bulk(uid_set: set, verry_dir: str):
-    """Xóa tập hợp UID khỏi file accounts_unverified.txt trong một lần đọc ghi duy nhất."""
-    if not uid_set:
-        return
-    unver_file = os.path.join(verry_dir, "accounts_unverified.txt")
-    if not os.path.exists(unver_file):
-        return
-    try:
-        with open(unver_file, "r", encoding="utf-8-sig", errors="ignore") as f:
-            lines = f.readlines()
-        cleaned = []
-        for l in lines:
-            ls = l.strip()
-            if not ls:
-                continue
-            parts = ls.split("|")
-            p_uid = parts[0].strip() if parts else ""
-            if p_uid in uid_set or any(f"c_user={u}" in ls for u in uid_set):
-                continue
-            cleaned.append(l)
-        if len(cleaned) < len(lines):
-            with open(unver_file, "w", encoding="utf-8-sig") as f:
-                f.writelines(cleaned)
-    except Exception:
-        pass
+    """Bảo toàn 100% dữ liệu accounts_unverified.txt, không bao giờ xóa acc No-Verify."""
+    return
 
 
 def remove_accounts_from_pipeline(uids, verry_dir = DEFAULT_VERRY_DIR) -> int:

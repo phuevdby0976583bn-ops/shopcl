@@ -28,6 +28,13 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+try:
+    # Tối ưu hóa GIL switch interval cho Python đa luồng (500 threads)
+    # 1ms giúp MainThread GUI nhận CPU kịp thời, loại bỏ triệt để hiện tượng đơ giao diện
+    sys.setswitchinterval(0.001)
+except Exception:
+    pass
+
 import webbrowser
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, scrolledtext
@@ -2811,42 +2818,183 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 tgs = ()
         return tgs
 
-    def _update_tree_item(self, item_id: str, values=None, tags=None):
+    def _set_tree_item_data_cached(self, item_id: str, values=None, tags=None):
+        """Lưu trữ dữ liệu hàng trong RAM siêu tốc (0ms, không chạm Tcl/Tk)."""
         if not hasattr(self, "_tree_item_values"):
             self._tree_item_values = {}
         if not hasattr(self, "_tree_item_tags"):
             self._tree_item_tags = {}
-        kwargs = {}
+        if not hasattr(self, "_tree_item_dirty"):
+            self._tree_item_dirty = set()
+
+        changed = False
         if values is not None:
             v_list = list(values)
-            cur_v = self._tree_item_values.get(item_id)
-            if cur_v != v_list:
+            if self._tree_item_values.get(item_id) != v_list:
                 self._tree_item_values[item_id] = v_list
-                kwargs["values"] = v_list
+                changed = True
         if tags is not None:
             t_tup = tuple(tags)
-            cur_t = self._tree_item_tags.get(item_id)
-            if cur_t != t_tup:
+            if self._tree_item_tags.get(item_id) != t_tup:
                 self._tree_item_tags[item_id] = t_tup
-                kwargs["tags"] = t_tup
-        if kwargs and hasattr(self, "tree") and self.tree.winfo_exists():
+                changed = True
+        if changed:
+            self._tree_item_dirty.add(item_id)
+        return changed
+
+    def _flush_dirty_item_to_tree(self, item_id: str):
+        """Đẩy dữ liệu bẩn từ RAM lên widget Treeview (chỉ vẽ khi thật sự cần)."""
+        if not hasattr(self, "tree") or not self.tree.winfo_exists():
+            return
+        if not hasattr(self, "_tree_item_dirty") or item_id not in self._tree_item_dirty:
+            return
+        self._tree_item_dirty.discard(item_id)
+        kwargs = {}
+        if hasattr(self, "_tree_item_values") and item_id in self._tree_item_values:
+            kwargs["values"] = self._tree_item_values[item_id]
+        if hasattr(self, "_tree_item_tags") and item_id in self._tree_item_tags:
+            kwargs["tags"] = self._tree_item_tags[item_id]
+        if kwargs:
             try:
                 self.tree.item(item_id, **kwargs)
             except Exception:
                 pass
 
+    def _get_visible_tree_items(self) -> set:
+        """Xác định nhanh các dòng đang nằm trong khung nhìn hiển thị của màn hình (tối đa 35 dòng)."""
+        if not hasattr(self, "tree") or not self.tree.winfo_exists():
+            return set()
+        if not hasattr(self, "_tree_item_order") or not self._tree_item_order:
+            try:
+                self._tree_item_order = list(self.tree.get_children())
+            except Exception:
+                self._tree_item_order = []
+        total = len(self._tree_item_order)
+        if total == 0:
+            return set()
+        if total <= 35:
+            return set(self._tree_item_order)
+        try:
+            y_view = self.tree.yview()
+            if not y_view or len(y_view) < 2:
+                return set(self._tree_item_order[:35])
+            y1, y2 = float(y_view[0]), float(y_view[1])
+            # Tuyệt đối không trả về toàn bộ cây nếu số dòng lớn (chỉ lấy tối đa 35 dòng hiển thị)
+            if y2 - y1 >= 0.98:
+                return set(self._tree_item_order[:35])
+            idx_start = max(0, int(y1 * total) - 2)
+            idx_end = min(total, max(idx_start + 35, int(y2 * total) + 2))
+            if (idx_end - idx_start) > 38:
+                idx_end = idx_start + 38
+            return set(self._tree_item_order[idx_start:idx_end])
+        except Exception:
+            return set(self._tree_item_order[:35])
+
+    def _render_visible_rows(self):
+        """Vẽ lại các dòng đang hiển thị khi người dùng cuộn chuột hoặc kéo scrollbar."""
+        if not hasattr(self, "tree") or not self.tree.winfo_exists():
+            return
+        vis_set = self._get_visible_tree_items()
+        dirty_set = getattr(self, "_tree_item_dirty", set())
+        for itm in vis_set:
+            if itm in dirty_set:
+                self._flush_dirty_item_to_tree(itm)
+
+    def _update_tree_item(self, item_id: str, values=None, tags=None, force_immediate: bool = False):
+        """Cập nhật dữ liệu dòng: ghi vào cache RAM siêu tốc (0ms) và chỉ vẽ ra Treeview nếu dòng đang hiển thị."""
+        changed = self._set_tree_item_data_cached(item_id, values=values, tags=tags)
+        if not changed and not force_immediate:
+            return
+        if not hasattr(self, "tree") or not self.tree.winfo_exists():
+            return
+        if force_immediate:
+            self._flush_dirty_item_to_tree(item_id)
+        else:
+            vis_items = self._get_visible_tree_items()
+            if item_id in vis_items:
+                self._flush_dirty_item_to_tree(item_id)
+
+    def _prune_treeview_rows_if_needed(self):
+        """Dọn dẹp các dòng lỗi/thất bại cũ không còn gắn với luồng nào để Treeview luôn thanh thoát."""
+        if not hasattr(self, "tree") or not self.tree.winfo_exists():
+            return
+        if not hasattr(self, "_tree_item_order") or not self._tree_item_order:
+            return
+
+        cached_threads = getattr(self, "_cached_num_threads", 1)
+        max_rows_limit = max(350, cached_threads + 150)
+        total_items = len(self._tree_item_order)
+        if total_items <= max_rows_limit:
+            return
+
+        active_worker_items = set(self._worker_item_map.values()) if hasattr(self, "_worker_item_map") else set()
+        cached_tags = getattr(self, "_tree_item_tags", {})
+
+        to_delete = []
+        keep_order = []
+        for itm in self._tree_item_order:
+            # Tuyệt đối không xóa dòng của luồng đang chạy
+            if itm in active_worker_items:
+                keep_order.append(itm)
+                continue
+            # Giữ lại các dòng LIVE thành công
+            tgs = cached_tags.get(itm, ())
+            if "live" in tgs:
+                keep_order.append(itm)
+                continue
+            # Dọn dẹp dòng rác/cũ đã kết thúc (die, unver, failed)
+            if (len(self._tree_item_order) - len(to_delete)) > max_rows_limit:
+                to_delete.append(itm)
+            else:
+                keep_order.append(itm)
+            if len(to_delete) >= 100:
+                break
+
+        if to_delete:
+            try:
+                self.tree.delete(*to_delete)
+            except Exception:
+                for itm in to_delete:
+                    try:
+                        self.tree.delete(itm)
+                    except Exception:
+                        pass
+            for itm in to_delete:
+                if hasattr(self, "_tree_item_values"):
+                    self._tree_item_values.pop(itm, None)
+                if hasattr(self, "_tree_item_tags"):
+                    self._tree_item_tags.pop(itm, None)
+                if hasattr(self, "_tree_item_dirty"):
+                    self._tree_item_dirty.discard(itm)
+                if hasattr(self, "_row_acc_data"):
+                    self._row_acc_data.pop(itm, None)
+                if hasattr(self, "_row_full_lines"):
+                    self._row_full_lines.pop(itm, None)
+            self._tree_item_order = keep_order
+
     def save_table_session(self, force: bool = False):
         now_ts = time.time()
-        if not force and hasattr(self, "_last_table_save_ts") and (now_ts - self._last_table_save_ts < 15.0):
+        if not force and hasattr(self, "_last_table_save_ts") and (now_ts - self._last_table_save_ts < 10.0):
             return
         self._last_table_save_ts = now_ts
         try:
             rows = []
-            for item in self.tree.get_children():
-                vals = self._get_tree_values(item)
-                tags = list(self._get_tree_tags(item))
-                full_l = getattr(self, "_row_full_lines", {}).get(item, "")
-                rows.append({"values": vals, "tags": tags, "full_line": full_l})
+            order = list(self.tree.get_children()) if (hasattr(self, "tree") and self.tree.winfo_exists()) else []
+            self._tree_item_order = order
+            cached_vals = getattr(self, "_tree_item_values", {})
+            cached_tags = getattr(self, "_tree_item_tags", {})
+            cached_lines = getattr(self, "_row_full_lines", {})
+            for item in (order or []):
+                vals = cached_vals.get(item)
+                if vals is None and hasattr(self, "tree") and self.tree.winfo_exists():
+                    try:
+                        vals = list(self.tree.item(item, "values"))
+                    except Exception:
+                        vals = []
+                tags = list(cached_tags.get(item, ()))
+                full_l = cached_lines.get(item, "")
+                if vals:
+                    rows.append({"values": vals, "tags": tags, "full_line": full_l})
             data = {
                 "rows": rows,
                 "stats": {
@@ -3745,24 +3893,41 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         # Smooth mousewheel scrolling thông minh cho toàn bộ giao diện: Tự động điều hướng tới widget dưới con trỏ, không giật lag
         def _global_mousewheel_dispatch(event):
             try:
-                w = self.root.winfo_containing(event.x_root, event.y_root)
+                w = getattr(event, "widget", None) or self.root.winfo_containing(event.x_root, event.y_root)
                 if not w:
                     return
-                # 1. Bảng danh sách tài khoản
-                if hasattr(self, "tree") and (w == self.tree or str(w).startswith(str(self.tree))):
-                    delta = int(-1 * (event.delta / 120) * 3)
+                w_str = str(w)
+                # 1. Bảng danh sách tài khoản, scrollbar, hoặc table container
+                is_tree_area = False
+                if hasattr(self, "tree") and (w == self.tree or w_str == str(self.tree) or w_str.startswith(str(self.tree))):
+                    is_tree_area = True
+                elif hasattr(self, "sb_y") and (w == self.sb_y or w_str.startswith(str(self.sb_y))):
+                    is_tree_area = True
+                elif hasattr(self, "sb_x") and (w == self.sb_x or w_str.startswith(str(self.sb_x))):
+                    is_tree_area = True
+                elif hasattr(self, "table_container") and (w == self.table_container or w_str.startswith(str(self.table_container))):
+                    is_tree_area = True
+
+                if is_tree_area:
+                    self._user_is_interacting = True
+                    self._last_user_interaction_ts = time.perf_counter()
+                    delta = int(-1 * (event.delta / 120) * 5)
                     self.tree.yview_scroll(delta, "units")
+                    if hasattr(self, "root") and self.root.winfo_exists():
+                        self.root.after(80, self._render_visible_rows)
                     return "break"
+
                 # 2. Hộp nhật ký Log
-                if hasattr(self, "txt_logs") and (w == self.txt_logs or str(w).startswith(str(self.txt_logs))):
-                    delta = int(-1 * (event.delta / 120) * 3)
+                if hasattr(self, "txt_logs") and (w == self.txt_logs or w_str.startswith(str(self.txt_logs))):
+                    delta = int(-1 * (event.delta / 120) * 4)
                     self.txt_logs.yview_scroll(delta, "units")
                     y_pos = self.txt_logs.yview()
                     self._auto_scroll_logs = (len(y_pos) >= 2 and y_pos[1] >= 0.985)
                     return "break"
-                # 3. Canvas cài đặt bên trái (Cuộn siêu mượt, loại bỏ bbox tính toán lại gây đơ)
-                if hasattr(self, "left_canvas") and (w == self.left_canvas or str(w).startswith(str(self.left_canvas)) or (hasattr(self, "left_scrollable_frame") and str(w).startswith(str(self.left_scrollable_frame)))):
-                    delta = int(-1 * (event.delta / 120) * 3)
+
+                # 3. Canvas cài đặt bên trái (Cuộn siêu mượt)
+                if hasattr(self, "left_canvas") and (w == self.left_canvas or w_str.startswith(str(self.left_canvas)) or (hasattr(self, "left_scrollable_frame") and w_str.startswith(str(self.left_scrollable_frame)))):
+                    delta = int(-1 * (event.delta / 120) * 4)
                     self.left_canvas.yview_scroll(delta, "units")
                     return "break"
             except Exception:
@@ -6967,6 +7132,34 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
         sb_y = ttk.Scrollbar(table_container, orient=tk.VERTICAL, command=self.tree.yview)
         sb_x = ttk.Scrollbar(table_container, orient=tk.HORIZONTAL, command=self.tree.xview)
+        self.sb_y = sb_y
+        self.sb_x = sb_x
+        self.table_container = table_container
+
+        def _on_sb_press(event):
+            self._user_is_interacting = True
+            self._last_user_interaction_ts = time.perf_counter()
+
+        def _on_sb_motion(event):
+            self._user_is_interacting = True
+            self._last_user_interaction_ts = time.perf_counter()
+
+        def _on_sb_release(event):
+            self._last_user_interaction_ts = time.perf_counter()
+            if hasattr(self, "root") and self.root.winfo_exists():
+                self.root.after(80, self._render_visible_rows)
+
+        sb_y.bind("<Button-1>", _on_sb_press, add="+")
+        sb_y.bind("<B1-Motion>", _on_sb_motion, add="+")
+        sb_y.bind("<ButtonRelease-1>", _on_sb_release, add="+")
+
+        sb_x.bind("<Button-1>", _on_sb_press, add="+")
+        sb_x.bind("<B1-Motion>", _on_sb_motion, add="+")
+        sb_x.bind("<ButtonRelease-1>", _on_sb_release, add="+")
+
+        self.tree.bind("<Button-1>", _on_sb_press, add="+")
+        self.tree.bind("<B1-Motion>", _on_sb_motion, add="+")
+
         self.tree.configure(yscrollcommand=sb_y.set, xscrollcommand=sb_x.set)
 
         self.tree.grid(row=0, column=0, sticky="nsew")
@@ -6983,10 +7176,13 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         self.tree.bind("<Control-A>", lambda e: (self.select_all_rows(), "break")[1])
         self.tree.bind("<Delete>", lambda e: self.delete_selected_rows())
 
-        # Smooth mousewheel scrolling cho bang danh sach tai khoan (khong giat khi 30 luong dang chay)
+        # Smooth mousewheel scrolling cho bang danh sach tai khoan (5 units, phan hoi tuc thi)
         def _on_tree_mousewheel(event):
             try:
-                self.tree.yview_scroll(int(-1 * (event.delta / 120) * 3), "units")
+                self._user_is_interacting = True
+                self._last_user_interaction_ts = time.perf_counter()
+                delta = int(-1 * (event.delta / 120) * 5)
+                self.tree.yview_scroll(delta, "units")
             except Exception:
                 pass
             return "break"
@@ -8763,11 +8959,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 if "live" in tag_set:
                     live_to_add[u_str] = full_l
                     remove_from_die.add(u_str)
-                    remove_from_unver.add(u_str)
                 elif "die" in tag_set:
                     die_to_add[u_str] = full_l
                     remove_from_live.add(u_str)
-                    remove_from_unver.add(u_str)
                 elif "unver" in tag_set or "unverified" in tag_set:
                     unver_to_add[u_str] = full_l
                     remove_from_live.add(u_str)
@@ -8908,6 +9102,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             is_live_confirmed = False
             is_nvr = bool(not is_checkpoint and uid_to_check and uid_to_check.isdigit() and len(uid_to_check) >= 8)
 
+        if not is_checkpoint and uid_to_check and uid_to_check.isdigit() and len(uid_to_check) >= 8 and not is_live_confirmed:
+            is_nvr = True
         has_uid_and_cookie = bool(uid_to_check and uid_to_check.isdigit() and len(uid_to_check) >= 8 and (has_valid_cookie or getattr(result, "cookie_string", "") or getattr(result, "cookies", None)))
         is_reg_success = bool(
             (result.success and not is_checkpoint)
@@ -9004,7 +9200,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
             # Tự động gỡ khỏi accounts_unverified.txt và accounts_die.txt nếu tài khoản vừa được xác minh thành công
             if uid_to_check and uid_to_check != "N/A":
-                for other_fn in ["accounts_unverified.txt", "accounts_die.txt"]:
+                for other_fn in ["accounts_die.txt"]:
                     if os.path.exists(other_fn):
                         try:
                             with open(other_fn, "r", encoding="utf-8-sig", errors="ignore") as f_oth:
@@ -9129,7 +9325,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
 
                 # Tự động gỡ khỏi accounts_unverified.txt và accounts_live.txt nếu tài khoản bị DIE
                 if uid_to_check and uid_to_check != "N/A":
-                    for other_fn in ["accounts_unverified.txt", "accounts_live.txt"]:
+                    for other_fn in ["accounts_live.txt"]:
                         if os.path.exists(other_fn):
                             try:
                                 with open(other_fn, "r", encoding="utf-8-sig", errors="ignore") as f_oth:
@@ -13876,6 +14072,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         self.log("[*] Đang gửi tín hiệu dừng tiến trình...", "warning")
         self.stop_event.set()
         self.is_running = False
+        self.save_table_session(force=True)
         if hasattr(self, "_worker_item_map"):
             for wid, itm in list(self._worker_item_map.items()):
                 try:
@@ -13950,9 +14147,9 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 if not hasattr(self, "_last_worker_push_ts"):
                     self._last_worker_push_ts = {}
                 last_push = self._last_worker_push_ts.get(wid, 0.0)
-                throttle_interval = 1.5 if cached_threads >= 100 else (1.0 if cached_threads >= 50 else (0.4 if cached_threads >= 20 else 0.20))
-                is_terminal = tg_name in ('live', 'die', 'unver', 'checkpoint', 'failed')
-                is_milestone = is_terminal or any(k in str(st_msg).lower() for k in ('otp', 'sinh uid', 'uid:', 'thành công', 'live', 'die', 'unver'))
+                throttle_interval = 2.0 if cached_threads >= 200 else (1.5 if cached_threads >= 100 else (1.0 if cached_threads >= 50 else (0.4 if cached_threads >= 20 else 0.20)))
+                st_low = str(st_msg).lower()
+                is_milestone = (tg_name == 'live') or ('bắt được otp' in st_low) or ('sinh uid' in st_low and 'thành công' in st_low)
                 if not is_milestone and (now_push - last_push < throttle_interval):
                     return
                 self._last_worker_push_ts[wid] = now_push
@@ -14151,58 +14348,35 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
             _push_row_state(f"🟢 L{wid}: Tạo nick thành công!", "live")
 
         elif evt == "error":
-            self.event_queue.put(("log", {
-                "message": f"{_get_pfx()}❌ {msg}",
-                "tag": "error"
-            }))
             is_die_err = any(k in msg.lower() for k in ("die", "checkpoint", "282", "ufac", "vô hiệu hóa", "suspended", "tạm ngưng"))
-            self.event_queue.put(("row_state_update", {
-                "uid": uid or None,
-                "worker_id": wid,
-                "proxy": p_ip,
-                "status": f"🔴 L{wid}: DIE / Checkpoint 282" if is_die_err else f"⚠️ L{wid}: Lỗi ({msg[:22]})",
-                "target": eff_target,
-                "tag": "die" if is_die_err else "unver"
-            }))
-
-        elif evt == "failed":
-            is_die_msg = any(k in msg.lower() for k in ("die", "checkpoint", "282", "ufac", "vô hiệu hóa", "suspended", "tạm ngưng"))
-            if is_die_msg:
+            now_ts = time.time()
+            if not hasattr(self, "_last_worker_err_log"):
+                self._last_worker_err_log = {}
+            last_err_ts = self._last_worker_err_log.get(wid, 0.0)
+            if not is_high_concurrency or (now_ts - last_err_ts > 6.0):
+                self._last_worker_err_log[wid] = now_ts
                 self.event_queue.put(("log", {
                     "message": f"{_get_pfx()}❌ {msg}",
                     "tag": "error"
                 }))
-                self.event_queue.put(("row_state_update", {
-                    "uid": uid or None,
-                    "worker_id": wid,
-                    "proxy": p_ip,
-                    "status": f"🔴 L{wid}: DIE / Checkpoint 282",
-                    "target": eff_target,
-                    "tag": "die"
-                }))
-            else:
+            _push_row_state(f"🔴 L{wid}: DIE / Checkpoint 282" if is_die_err else f"⚠️ L{wid}: Lỗi ({msg[:22]})", "die" if is_die_err else "unver")
+
+        elif evt == "failed":
+            is_die_msg = any(k in msg.lower() for k in ("die", "checkpoint", "282", "ufac", "vô hiệu hóa", "suspended", "tạm ngưng"))
+            now_ts = time.time()
+            if not hasattr(self, "_last_worker_err_log"):
+                self._last_worker_err_log = {}
+            last_err_ts = self._last_worker_err_log.get(wid, 0.0)
+            if not is_high_concurrency or (now_ts - last_err_ts > 6.0):
+                self._last_worker_err_log[wid] = now_ts
                 self.event_queue.put(("log", {
-                    "message": f"{_get_pfx()}⚠️ {msg}",
-                    "tag": "warning"
+                    "message": f"{_get_pfx()}❌ {msg}" if is_die_msg else f"{_get_pfx()}⚠️ {msg}",
+                    "tag": "error" if is_die_msg else "warning"
                 }))
-                self.event_queue.put(("row_state_update", {
-                    "uid": uid or None,
-                    "worker_id": wid,
-                    "proxy": p_ip,
-                    "status": f"⚠️ L{wid}: Thất bại ({msg[:24]})",
-                    "target": eff_target,
-                    "tag": "unver"
-                }))
+            _push_row_state(f"🔴 L{wid}: DIE / Checkpoint 282" if is_die_msg else f"⚠️ L{wid}: Thất bại ({msg[:24]})", "die" if is_die_msg else "unver")
 
         elif evt == "start":
-            self.event_queue.put(("row_state_update", {
-                "uid": uid or None,
-                "worker_id": wid,
-                "proxy": p_ip,
-                "status": f"🔄 L{wid}: Khởi tạo phiên reg...",
-                "target": eff_target,
-                "tag": "running"
-            }))
+            _push_row_state(f"🔄 L{wid}: Khởi tạo phiên reg...", "running")
 
     def safe_ui_call(self, func, *args, **kwargs):
         """Thread-safe UI callback via event_queue on the Tk mainloop thread."""
@@ -14233,11 +14407,11 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         batched_logs = []
         coalesced_row_updates = {}
         try:
-            # Tối ưu xả hàng đợi thông minh: tự động tăng lưu lượng khi backlog nhiều để giao diện không lag
+            # Tối ưu xả hàng đợi thông minh: ngân sách 8ms nhẹ nhàng, không gây khựng giật UI khi chạy 800 - 2000 luồng
             qsz = self.event_queue.qsize()
             cached_threads = getattr(self, "_cached_num_threads", 1)
-            max_drain = 400 if qsz > 500 else (200 if qsz > 200 else 100)
-            max_time = 0.012
+            max_drain = 350 if qsz > 400 else (180 if qsz > 150 else 90)
+            max_time = 0.008
             while processed < max_drain and (time.perf_counter() - start_t) < max_time:
                 try:
                     msg_type, data = self.event_queue.get_nowait()
@@ -14366,15 +14540,22 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     now_str = datetime.now().strftime("%H:%M:%S")
 
                     if itm and self.tree.exists(itm):
-                        # Cập nhật thời gian thực dòng hiện tại của luồng
+                        # Cập nhật thời gian thực dòng hiện tại của luồng (hỗ trợ tái sử dụng dòng)
                         v = self._get_tree_values(itm)
                         old_v = list(v)
                         if len(old_v) >= 11:
                             if t_uid and len(t_uid) >= 8 and t_uid.isdigit():
                                 old_v[2] = t_uid
                                 self._tree_items_by_uid[t_uid] = itm
+                            elif tag_val == "running":
+                                old_v[2] = f"(L{wid}: Đang tạo...)" if wid is not None else "(Đang tạo...)"
+                                old_v[5] = ""
+                                old_v[6] = ""
+                                old_v[7] = ""
                             if target_val and str(target_val) != "N/A":
                                 old_v[3] = str(target_val)
+                            elif tag_val == "running":
+                                old_v[3] = f"(L{wid}: Đang khởi tạo...)" if wid is not None else "(Đang khởi tạo...)"
                             if pwd_val:
                                 old_v[4] = str(pwd_val)
                             if p_val and str(p_val) not in ("Direct", "(Chờ cấp IP)"):
@@ -14415,6 +14596,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             self._worker_item_map[wid] = new_itm
                         if t_uid and len(t_uid) >= 8 and t_uid.isdigit():
                             self._tree_items_by_uid[t_uid] = new_itm
+                        if hasattr(self, "_tree_item_order") and self._tree_item_order is not None:
+                            self._tree_item_order.append(new_itm)
 
                 elif msg_type == "result":
                     res: RegistrationResult = data["result"]
@@ -14607,7 +14790,13 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         self.stat_failed += 1
                         self.session_new_failed += 1
                         err = res.error_message or "Checkpoint 282 sau 10s kiểm định"
-                        self.log(f"[Luồng {wid}] ❌ DIE: UID {res.uid} bị Checkpoint 282 ({err[:80]})", "error")
+                        c_th = getattr(self, "_cached_num_threads", 1)
+                        now_res_ts = time.time()
+                        last_e = getattr(self, "_last_worker_err_log", {}).get(wid, 0.0)
+                        if c_th < 50 or (now_res_ts - last_e > 6.0):
+                            if hasattr(self, "_last_worker_err_log"):
+                                self._last_worker_err_log[wid] = now_res_ts
+                            self.log(f"[Luồng {wid}] ❌ DIE: UID {res.uid} bị Checkpoint 282 ({err[:80]})", "error")
                     elif is_nvr_res:
                         tag = "unver"
                         if curr_reg_mode in ("ios_bloks", "bloks_ios", "regfb"):
@@ -14626,7 +14815,13 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                         status_text = "🔴 DIE / THẤT BẠI"
                         self.stat_failed += 1
                         self.session_new_failed += 1
-                        self.log(f"[Luồng {wid}] ❌ THẤT BẠI: {err[:90]}", "error")
+                        c_th = getattr(self, "_cached_num_threads", 1)
+                        now_res_ts = time.time()
+                        last_e = getattr(self, "_last_worker_err_log", {}).get(wid, 0.0)
+                        if c_th < 50 or (now_res_ts - last_e > 6.0):
+                            if hasattr(self, "_last_worker_err_log"):
+                                self._last_worker_err_log[wid] = now_res_ts
+                            self.log(f"[Luồng {wid}] ❌ THẤT BẠI: {err[:90]}", "error")
 
                     if existing_item:
                         old_vals = list(self._get_tree_values(existing_item))
@@ -14670,10 +14865,16 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                             self._tree_item_values[item_id] = list(row_vals)
                         if hasattr(self, "_tree_item_tags"):
                             self._tree_item_tags[item_id] = (tag,)
+                        if hasattr(self, "_tree_item_order") and self._tree_item_order is not None:
+                            self._tree_item_order.append(item_id)
 
-                    # Giải phóng worker khỏi _worker_item_map để lượt chạy tiếp theo tạo dòng mới!
+                    # Worker Slot Row Recycling: CHỈ giải phóng slot khi tài khoản ĐÃ LIVE THÀNH CÔNG!
+                    # Nếu DIE / NVR / Thất bại, luồng wid sẽ TÁI SỬ DỤNG dòng này cho nick tiếp theo (ngăn ngừa phình to bảng làm khựng giao diện)
                     if wid is not None and hasattr(self, "_worker_item_map"):
-                        self._worker_item_map.pop(wid, None)
+                        if is_genuinely_live:
+                            self._worker_item_map.pop(wid, None)
+                        else:
+                            self._worker_item_map[wid] = item_id
 
                     if hasattr(self, "_tree_items_by_uid") and res.uid:
                         self._tree_items_by_uid[str(res.uid).strip()] = item_id
@@ -14738,7 +14939,7 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
         except Exception as e:
             logger.debug(f"Queue dispatch error: {e}")
         finally:
-            # 1. Cập nhật các dòng bảng đã gom trong tick này với giới hạn tốc độ vẽ lại để giao diện luôn mượt
+            # 1. Đồng bộ các cập nhật trạng thái vào RAM cache (_tree_item_values / _tree_item_tags)
             if not hasattr(self, "_pending_row_updates"):
                 self._pending_row_updates = {}
             if coalesced_row_updates:
@@ -14750,74 +14951,76 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     else:
                         self._pending_row_updates[wid_c] = c_d
 
+            # Cập nhật toàn bộ pending updates vào RAM cache (cực nhanh 0.1ms, không chạm Tcl/Tk)
             if self._pending_row_updates:
-                pri_keys = []
-                norm_keys = []
-                for wid_k, data_k in self._pending_row_updates.items():
-                    if data_k.get("tag") in ("live", "die", "unver") or (data_k.get("uid") and str(data_k.get("uid")).isdigit()):
-                        pri_keys.append(wid_k)
-                    else:
-                        norm_keys.append(wid_k)
+                for wid_c, c_d in list(self._pending_row_updates.items()):
+                    itm_c = self._worker_item_map.get(wid_c) if hasattr(self, "_worker_item_map") else None
+                    if itm_c and hasattr(self, "tree") and self.tree.exists(itm_c):
+                        v_c = list(self._get_tree_values(itm_c))
+                        if len(v_c) >= 11:
+                            t_u = str(c_d.get("uid") or "").strip()
+                            p_v = c_d.get("proxy")
+                            s_v = c_d.get("status")
+                            tgt_v = c_d.get("target")
+                            tg_v = c_d.get("tag", "running")
+                            pw_v = c_d.get("password")
+                            now_s = datetime.now().strftime("%H:%M:%S")
 
-                pending_cnt = len(self._pending_row_updates)
-                draw_cap = min(25, pending_cnt) if cached_threads >= 50 else min(50, pending_cnt)
-                draw_keys = (pri_keys + norm_keys)[:draw_cap]
-                for wid_c in draw_keys:
-                    c_d = self._pending_row_updates.pop(wid_c, None)
-                    if not c_d:
-                        continue
-                    try:
-                        itm_c = self._worker_item_map.get(wid_c)
-                        if itm_c and self.tree.exists(itm_c):
-                            v_c = list(self._get_tree_values(itm_c))
-                            if len(v_c) >= 11:
-                                changed = False
-                                t_u = str(c_d.get("uid") or "").strip()
-                                p_v = c_d.get("proxy")
-                                s_v = c_d.get("status")
-                                tgt_v = c_d.get("target")
-                                tg_v = c_d.get("tag", "running")
-                                pw_v = c_d.get("password")
-                                if t_u and len(t_u) >= 8 and t_u.isdigit() and v_c[2] != t_u:
-                                    v_c[2] = t_u
+                            if t_u and len(t_u) >= 8 and t_u.isdigit() and v_c[2] != t_u:
+                                v_c[2] = t_u
+                                if hasattr(self, "_tree_items_by_uid"):
                                     self._tree_items_by_uid[t_u] = itm_c
-                                    changed = True
-                                if tgt_v and str(tgt_v) != "N/A" and v_c[3] != str(tgt_v):
-                                    v_c[3] = str(tgt_v)
-                                    changed = True
-                                if pw_v and v_c[4] != str(pw_v):
-                                    v_c[4] = str(pw_v)
-                                    changed = True
-                                if p_v and str(p_v) not in ("Direct", "(Chờ cấp IP)"):
-                                    mp = self.mask_ip(str(p_v))
-                                    if v_c[8] != mp:
-                                        v_c[8] = mp
-                                        changed = True
-                                elif p_v and (not v_c[8] or v_c[8] in ("Direct", "(Chờ cấp IP)")):
-                                    mp = self.mask_ip(str(p_v))
-                                    if v_c[8] != mp:
-                                        v_c[8] = mp
-                                        changed = True
-                                if s_v and v_c[9] != str(s_v):
-                                    v_c[9] = str(s_v)
-                                    changed = True
-                                cur_tags = self._get_tree_tags(itm_c)
-                                tag_changed = (not cur_tags or cur_tags[0] != tg_v)
-                                if changed or tag_changed:
-                                    self._update_tree_item(itm_c, values=v_c if changed else None, tags=(tg_v,) if tag_changed else None)
-                    except Exception:
-                        pass
+                            elif tg_v == "running" and (not t_u or not t_u.isdigit()):
+                                v_c[2] = f"(L{wid_c}: Đang tạo...)"
+                                v_c[5] = ""
+                                v_c[6] = ""
+                                v_c[7] = "" 
+                            if tgt_v and str(tgt_v) != "N/A" and v_c[3] != str(tgt_v):
+                                v_c[3] = str(tgt_v)
+                            if pw_v and v_c[4] != str(pw_v):
+                                v_c[4] = str(pw_v)
+                            if p_v and str(p_v) not in ("Direct", "(Chờ cấp IP)"):
+                                mp = self.mask_ip(str(p_v))
+                                if v_c[8] != mp:
+                                    v_c[8] = mp
+                            elif p_v and (not v_c[8] or v_c[8] in ("Direct", "(Chờ cấp IP)")):
+                                mp = self.mask_ip(str(p_v))
+                                if v_c[8] != mp:
+                                    v_c[8] = mp
+                            if s_v and v_c[9] != str(s_v):
+                                v_c[9] = str(s_v)
+                            v_c[10] = now_s
 
-            # 2. Xả nhật ký log theo khối gộp với 1 lệnh insert duy nhất (tăng tốc gấp 8-10 lần, giảm 95% reflow Text Widget)
+                            self._set_tree_item_data_cached(itm_c, values=v_c, tags=(tg_v,))
+                self._pending_row_updates.clear()
+
+            # 2. Kiểm tra tương tác người dùng: nếu đang kéo thanh cuộn hoặc lăn chuột, HOÃN vẽ giao diện
+            is_user_busy = False
+            if getattr(self, "_user_is_interacting", False):
+                if (time.perf_counter() - getattr(self, "_last_user_interaction_ts", 0.0)) < 0.25:
+                    is_user_busy = True
+                else:
+                    self._user_is_interacting = False
+
+            # CHỈ VẼ RA GIAO DIỆN KHI NGƯỜI DÙNG KHÔNG ĐANG KÉO / CUỘN
+            # và chỉ vẽ các dòng nhìn thấy trên màn hình (Viewport Virtualization)
+            if not is_user_busy and hasattr(self, "tree") and self.tree.winfo_exists():
+                vis_items = self._get_visible_tree_items()
+                dirty_set = getattr(self, "_tree_item_dirty", set())
+                for itm in vis_items:
+                    if itm in dirty_set:
+                        self._flush_dirty_item_to_tree(itm)
+
+            # 3. Xả nhật ký log theo khối gộp với 1 lệnh insert duy nhất
             if batched_logs and hasattr(self, "txt_logs"):
                 try:
                     if cached_threads >= 50:
                         filtered_logs = []
                         for l_msg, l_tag in batched_logs:
                             l_low = l_msg.lower()
-                            if l_tag in ("success", "error", "warning") or any(k in l_low for k in ("live", "die", "checkpoint", "đổi sang ip", "đã đổi", "nvr", "bắt otp", "bắt được")):
+                            if l_tag in ("success", "error") or any(k in l_low for k in ("live", "die", "checkpoint", "đổi sang ip", "đã đổi", "nvr", "bắt otp", "bắt được")):
                                 filtered_logs.append((l_msg, l_tag))
-                        batched_logs = filtered_logs
+                        batched_logs = filtered_logs[-15:]
 
                     import itertools
                     flat_args = []
@@ -14829,18 +15032,18 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     if not hasattr(self, "_log_line_count"):
                         self._log_line_count = 0
                     self._log_line_count += len(batched_logs)
-                    
+
                     now_t = time.time()
-                    if self._log_line_count > 1500 and (now_t - getattr(self, "_last_log_trim_ts", 0.0) > 4.0):
+                    if self._log_line_count > 600 and (now_t - getattr(self, "_last_log_trim_ts", 0.0) > 3.0):
                         self._last_log_trim_ts = now_t
                         try:
-                            self.txt_logs.delete("1.0", "501.0")
-                            self._log_line_count = max(0, self._log_line_count - 500)
+                            self.txt_logs.delete("1.0", "201.0")
+                            self._log_line_count = max(0, self._log_line_count - 200)
                         except Exception:
                             pass
-                            
+
                     now_sc = time.perf_counter()
-                    if getattr(self, "_auto_scroll_logs", True):
+                    if getattr(self, "_auto_scroll_logs", True) and not is_user_busy:
                         if (now_sc - getattr(self, "_last_log_scroll_ts", 0.0)) > 0.40:
                             self._last_log_scroll_ts = now_sc
                             try:
@@ -14852,6 +15055,11 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                 except Exception:
                     pass
 
+            now_prune_ts = time.time()
+            if not hasattr(self, "_last_prune_ts") or (now_prune_ts - self._last_prune_ts > 3.0):
+                self._last_prune_ts = now_prune_ts
+                self._prune_treeview_rows_if_needed()
+
             if stats_changed:
                 try:
                     self.update_stats_display()
@@ -14859,14 +15067,8 @@ class RegFacebookGUI(MetaOtpTabMixin, UtilitiesTabMixin):
                     pass
 
             if hasattr(self, "root") and self.root.winfo_exists():
-                qsz_now = self.event_queue.qsize()
-                pending_cnt = len(getattr(self, "_pending_row_updates", {}))
-                if qsz_now > 100 or pending_cnt > 50:
-                    next_delay = 10
-                elif qsz_now > 20 or pending_cnt > 0:
-                    next_delay = 25
-                else:
-                    next_delay = 50
+                # 18ms = ~55-60 FPS: Tốc độ mượt mà tuyệt đối ở 800 - 2000 luồng
+                next_delay = 18
                 self.root.after(next_delay, self.process_queue_events)
 
 

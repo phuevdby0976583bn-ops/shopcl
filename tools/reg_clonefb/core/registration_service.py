@@ -6391,16 +6391,8 @@ class RegistrationService:
 
 # Handled exclusively by GUI based on user checkbox (auto_ttc_pipeline)
 
-                    if is_truly_live and uid_val and uid_val != "N/A" and os.path.exists("accounts_unverified.txt"):
-                        try:
-                            with open("accounts_unverified.txt", "r", encoding="utf-8-sig", errors="ignore") as f_un:
-                                un_lines = f_un.readlines()
-                            filtered = [l for l in un_lines if not (l.strip().startswith(uid_val + "|") or f"c_user={uid_val}" in l)]
-                            if len(filtered) < len(un_lines):
-                                with open("accounts_unverified.txt", "w", encoding="utf-8-sig") as f_un:
-                                    f_un.writelines(filtered)
-                        except Exception:
-                            pass
+                    # Bảo toàn accounts_unverified.txt: Không xóa acc No-Verify
+                    pass
 
                 emit("success", {"result": result})
 
