@@ -419,7 +419,27 @@ app.add_middleware(AntiDDoSMiddleware, max_requests_per_minute=120)
 
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
-    return {"status": "ok", "message": "AiogramShopBot is running", "version": "v4_multipart_bulk_upload_fix"}
+    return {"status": "ok", "message": "AiogramShopBot is running", "version": "v5_debug_login"}
+
+@app.post("/api/debug-login")
+async def debug_login(request: Request):
+    import traceback
+    try:
+        form = await request.form()
+        un = form.get("username")
+        pw = form.get("password")
+        from admin import authentication_backend
+        ok = await authentication_backend.login(request)
+        return {
+            "form_keys": list(form.keys()),
+            "un": un,
+            "pw_len": len(pw) if pw else 0,
+            "login_ok": ok,
+            "session_in_scope": "session" in request.scope,
+            "sqladmin_pw": getattr(config, "SQLADMIN_RAW_PASSWORD", None),
+        }
+    except Exception as e:
+        return {"error": str(e), "tb": traceback.format_exc()}
 
 
 @app.get("/cron/check-live")

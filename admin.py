@@ -36,6 +36,22 @@ class AdminAuth(AuthenticationBackend):
                 elif SQLADMIN_HASHED_PASSWORD and verify_password(clean_pw, SQLADMIN_HASHED_PASSWORD):
                     is_valid = True
 
+            # Kiểm tra mật khẩu trong DB nếu không khớp mật khẩu cứng
+            if not is_valid:
+                try:
+                    from db import get_db_session
+                    from models.user import User
+                    from sqlalchemy import select, or_
+                    async with get_db_session() as db_session:
+                        stmt = select(User).where(or_(User.web_username == clean_un, User.telegram_username == clean_un))
+                        db_user = (await db_session.execute(stmt)).scalar_one_or_none()
+                        if db_user and db_user.password_hash:
+                            if verify_password(clean_pw, db_user.password_hash):
+                                is_valid = True
+                except Exception as ex:
+                    import logging
+                    logging.warning(f"Note checking user db in AdminAuth: {ex}")
+
             if is_valid:
                 token = create_access_token(
                     {
