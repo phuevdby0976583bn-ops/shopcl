@@ -182,7 +182,7 @@ class SettingsService:
                 or "facebook, fb, clone, via, bm"
             ),
             "FB_CRON_CHECK_INTERVAL_MINUTES": int(
-                db_settings.get("FB_CRON_CHECK_INTERVAL_MINUTES", getattr(config, "FB_CRON_CHECK_INTERVAL_MINUTES", 30)) or 30
+                db_settings.get("FB_CRON_CHECK_INTERVAL_MINUTES", getattr(config, "FB_CRON_CHECK_INTERVAL_MINUTES", 0)) or 0
             ),
             "FB_CRON_NOTIFY_ADMIN": (
                 db_settings.get("FB_CRON_NOTIFY_ADMIN", "true").lower() in ("true", "1", "yes")

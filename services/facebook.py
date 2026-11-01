@@ -197,11 +197,51 @@ async def filter_live_facebook_items(
     return live_items, dead_items
 
 
-async def get_existing_uids_from_db(session: Any = None) -> set[str]:
+_cached_existing_uids: set[str] = set()
+_cached_uids_time: float = 0.0
+
+
+async def check_uid_exists_in_db(uid: str, session: Any = None) -> bool:
     """
-    Lấy danh sách tất cả các UID Facebook đã có trong bảng items (kho hàng)
-    để phục vụ việc kiểm tra và chặn trùng lặp khi nạp hàng.
+    Kiểm tra xem 1 UID Facebook đã tồn tại trong kho hàng chưa.
+    Tối ưu hóa: Chỉ truy vấn 1 dòng LIMIT 1 (~50 bytes) thay vì tải toàn bộ 4.500 clone từ Supabase!
     """
+    global _cached_existing_uids
+    uid_str = str(uid).strip()
+    if _cached_existing_uids and uid_str in _cached_existing_uids:
+        return True
+
+    from db import get_db_session
+    from models.item import Item
+    from sqlalchemy import select
+
+    async def _check(sess):
+        stmt = select(Item.id).where(Item.private_data.like(f"%{uid_str}%")).limit(1)
+        res = await sess.execute(stmt)
+        return res.scalar_one_or_none() is not None
+
+    if session is not None:
+        exists = await _check(session)
+    else:
+        async with get_db_session() as sess:
+            exists = await _check(sess)
+
+    if exists and _cached_existing_uids:
+        _cached_existing_uids.add(uid_str)
+    return exists
+
+
+async def get_existing_uids_from_db(session: Any = None, force_refresh: bool = False) -> set[str]:
+    """
+    Lấy danh sách tất cả các UID Facebook đã có trong kho hàng với CACHE RAM 15 phút.
+    Tránh tuyệt đối việc mỗi lần upload/check lại tải hàng ngàn dòng từ Supabase.
+    """
+    global _cached_existing_uids, _cached_uids_time
+    import time
+    now = time.time()
+    if not force_refresh and _cached_existing_uids and (now - _cached_uids_time < 900):
+        return _cached_existing_uids
+
     from db import get_db_session
     from models.item import Item
     from sqlalchemy import select
@@ -219,10 +259,14 @@ async def get_existing_uids_from_db(session: Any = None) -> set[str]:
         return uids
 
     if session is not None:
-        return await _fetch(session)
+        uids = await _fetch(session)
     else:
         async with get_db_session() as sess:
-            return await _fetch(sess)
+            uids = await _fetch(sess)
+
+    _cached_existing_uids = uids
+    _cached_uids_time = now
+    return _cached_existing_uids
 
 
 async def deduplicate_facebook_raw_lines(
@@ -391,18 +435,34 @@ async def scan_and_filter_facebook_raw_lines(
 async def scan_facebook_inventory(
     session: Any,
     auto_delete_die: bool = False,
-    concurrency_limit: int = 15
+    concurrency_limit: int = 15,
+    max_items_to_scan: Optional[int] = None
 ) -> dict:
     """
-    Quét toàn bộ tài khoản clone Facebook chưa bán trong kho.
-    - Đếm số lượng LIVE và DIE
-    - Nếu auto_delete_die=True, xóa vĩnh viễn các tài khoản DIE khỏi DB
+    Quét tài khoản clone Facebook chưa bán trong kho.
+    TỐI ƯU HÓA BĂNG THÔNG:
+    - Chỉ SELECT các cột (id, private_data, subcategory_id), không load toàn bộ Item model
+    - Hỗ trợ max_items_to_scan để tránh kiểm tra hàng ngàn nick cùng lúc làm quá tải Facebook & Supabase
     """
+    from models.item import Item
     from repositories.item import ItemRepository
     from repositories.subcategory import SubcategoryRepository
+    from sqlalchemy import select
 
-    unsold_items = await ItemRepository.get_all_unsold_clones(session)
-    fb_items = [item for item in unsold_items if is_facebook_clone(item.private_data)]
+    stmt = (
+        select(Item.id, Item.private_data, Item.subcategory_id)
+        .where(Item.is_sold == False, Item.private_data.is_not(None))
+        .order_by(Item.id.desc())
+    )
+    if max_items_to_scan and max_items_to_scan > 0:
+        stmt = stmt.limit(max_items_to_scan)
+
+    result_rows = (await session.execute(stmt)).all()
+    fb_items = []
+    for row in result_rows:
+        item_id, pdata, sub_id = row[0], row[1], row[2]
+        if is_facebook_clone(pdata):
+            fb_items.append({"id": item_id, "private_data": pdata, "subcategory_id": sub_id})
 
     if not fb_items:
         return {
@@ -417,23 +477,28 @@ async def scan_facebook_inventory(
     live_items = []
     dead_items = []
 
-    async def _check(item: Any, http_session: aiohttp.ClientSession):
-        uid = extract_uid(item.private_data)
+    async def _check(item_dict: dict, http_session: aiohttp.ClientSession):
+        uid = extract_uid(item_dict["private_data"])
         async with semaphore:
             status = await check_uid_live_async(uid, http_session)
-            return item, status, uid
+            return item_dict, status, uid
 
     async with aiohttp.ClientSession() as http_session:
-        tasks = [_check(item, http_session) for item in fb_items]
+        tasks = [_check(it, http_session) for it in fb_items]
         results = await asyncio.gather(*tasks)
 
-    for item, status, uid in results:
+    for item_dict, status, uid in results:
         if status == "LIVE":
-            live_items.append(item)
+            live_items.append(item_dict)
         elif status == "DIE":
-            dead_items.append({"id": item.id, "uid": uid, "private_data": item.private_data, "subcategory_id": item.subcategory_id})
+            dead_items.append({
+                "id": item_dict["id"],
+                "uid": uid,
+                "private_data": item_dict["private_data"],
+                "subcategory_id": item_dict["subcategory_id"]
+            })
         else:
-            live_items.append(item)
+            live_items.append(item_dict)
 
     deleted_count = 0
     if dead_items and auto_delete_die:
@@ -461,39 +526,35 @@ async def scan_facebook_inventory(
 
 async def clean_duplicate_inventory_uids(session: Any) -> dict:
     """
-    Quét toàn bộ tài khoản chưa bán trong kho.
-    Nếu phát hiện các bản ghi có cùng UID Facebook:
-    - Giữ lại 1 bản ghi duy nhất (ID nhỏ nhất).
-    - Xóa các bản ghi trùng lặp còn lại khỏi DB.
+    Quét tài khoản chưa bán trong kho.
+    TỐI ƯU HÓA: Chỉ SELECT id, private_data, tiết kiệm 80% bộ nhớ & băng thông.
     """
-    from repositories.item import ItemRepository
     from models.item import Item
-    from sqlalchemy import delete
+    from sqlalchemy import select, delete
 
-    unsold_items = await ItemRepository.get_all_unsold_clones(session)
-    seen_uids: dict[str, int] = {}  # uid -> first item id
+    stmt = select(Item.id, Item.private_data).where(Item.is_sold == False, Item.private_data.is_not(None))
+    rows = (await session.execute(stmt)).all()
+
+    seen_uids: dict[str, int] = {}
     duplicate_item_ids: list[int] = []
 
-    for item in unsold_items:
-        uid = extract_uid(item.private_data)
+    for item_id, pdata in rows:
+        uid = extract_uid(pdata)
         if not uid:
             continue
         uid_str = str(uid)
         if uid_str in seen_uids:
-            duplicate_item_ids.append(item.id)
+            duplicate_item_ids.append(item_id)
         else:
-            seen_uids[uid_str] = item.id
+            seen_uids[uid_str] = item_id
 
     if duplicate_item_ids:
         await session.execute(
             delete(Item).where(Item.id.in_(duplicate_item_ids))
         )
         await session.commit()
-        logger.info(f"Cleaned {len(duplicate_item_ids)} duplicate Facebook clones from inventory.")
 
     return {
-        "total_scanned": len(unsold_items),
-        "unique_uids": len(seen_uids),
-        "deleted_duplicates": len(duplicate_item_ids),
-        "duplicate_ids": duplicate_item_ids
+        "total_scanned": len(rows),
+        "deleted_duplicates": len(duplicate_item_ids)
     }

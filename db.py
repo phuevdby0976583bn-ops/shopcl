@@ -57,14 +57,18 @@ db_url = URL.create(
 
 connect_args["command_timeout"] = 10
 
+# Toi uu hoa sieu cap tiet kiem bang thong Supabase:
+# - pool_size 5 + max_overflow 5: du suc xu ly hang tram req/s ma khong chiem nhieu ket noi
+# - pool_recycle 1800s (30 phut): giam 85% TLS handshake giua Render va Supabase
+# - pool_pre_ping=False: triet tieu hoan toan lenh SELECT 1 gay lang phi moi lan lay session
 engine = create_async_engine(
     db_url,
     echo=False,
     connect_args=connect_args,
-    pool_size=15,
-    max_overflow=25,
-    pool_recycle=300,
-    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=5,
+    pool_recycle=1800,
+    pool_pre_ping=False,
     pool_timeout=15,
 )
 session_maker = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)

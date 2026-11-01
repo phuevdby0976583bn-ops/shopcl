@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 
 class BinancePayService:
     _deposit_lock: asyncio.Lock | None = None
+    _processed_binance_tx_ids: set[str] = set()
+    _tx_cache_loaded: bool = False
     @staticmethod
     async def fetch_binance_pay_transactions() -> list[dict]:
         api_key = getattr(config, "BINANCE_API_KEY", "") or ""
@@ -80,10 +82,7 @@ class BinancePayService:
 
     @staticmethod
     async def _process_and_credit_transactions_internal(bot, session: AsyncSession, target_order_id: int = None, target_telegram_id: int = None) -> list[dict]:
-        tx_list = await BinancePayService.fetch_binance_pay_transactions()
-        if not tx_list:
-            return []
-
+        # TỐI ƯU HÓA: Kiểm tra xem có đơn PENDING nào không trước khi gọi API & truy vấn DB
         stmt_pending = select(BinancePayOrder).where(BinancePayOrder.status == "PENDING")
         if target_order_id:
             stmt_pending = stmt_pending.where(BinancePayOrder.id == target_order_id)
@@ -91,11 +90,38 @@ class BinancePayService:
             stmt_pending = stmt_pending.where(BinancePayOrder.telegram_id == target_telegram_id)
 
         pending_orders = list((await session.execute(stmt_pending)).scalars().all())
+        if not pending_orders and not target_order_id and not target_telegram_id:
+            return []
+
+        tx_list = await BinancePayService.fetch_binance_pay_transactions()
+        if not tx_list:
+            return []
+
+        # Nạp cache mã giao dịch Binance đã hoàn tất
+        if not BinancePayService._tx_cache_loaded:
+            try:
+                stmt_cached = (
+                    select(BinancePayOrder.transaction_id)
+                    .where(BinancePayOrder.transaction_id.is_not(None), BinancePayOrder.status == "COMPLETED")
+                    .order_by(BinancePayOrder.id.desc())
+                    .limit(300)
+                )
+                res_cached = await session.execute(stmt_cached)
+                for (t_id,) in res_cached.all():
+                    if t_id:
+                        BinancePayService._processed_binance_tx_ids.add(str(t_id).strip())
+                BinancePayService._tx_cache_loaded = True
+            except Exception as e:
+                logger.warning(f"Note init binance tx_cache: {e}")
+
         credited = []
 
         for tx in tx_list:
             tx_id = str(tx.get("transactionId") or tx.get("orderId") or "").strip()
             if not tx_id:
+                continue
+
+            if tx_id in BinancePayService._processed_binance_tx_ids:
                 continue
 
             currency = str(tx.get("currency", "")).upper()
@@ -118,6 +144,7 @@ class BinancePayService:
             )
             existing = (await session.execute(stmt_check)).scalar_one_or_none()
             if existing:
+                BinancePayService._processed_binance_tx_ids.add(tx_id)
                 continue
 
             matched_order = None
@@ -227,6 +254,7 @@ class BinancePayService:
                     except Exception as e:
                         logger.warning(f"Failed to notify admin: {e}")
 
+                    BinancePayService._processed_binance_tx_ids.add(tx_id)
                     credited.append({
                         "order_id": matched_order.id,
                         "telegram_id": matched_order.telegram_id,

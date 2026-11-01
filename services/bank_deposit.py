@@ -72,6 +72,8 @@ def build_vietqr_emvco_payload(bin_code: str, account_no: str, amount_vnd: int, 
 
 class BankDepositService:
     _deposit_lock: asyncio.Lock | None = None
+    _processed_tx_ids: set[str] = set()
+    _tx_cache_loaded: bool = False
     @staticmethod
     def generate_vietqr_image(bin_code: str, account_no: str, amount_vnd: int, memo: str, bank_code: str = "BIDV") -> BufferedInputFile:
         """Sinh mã QR VietQR chuẩn, vẽ logo ngân hàng BIDV màu xanh ngọc ở giữa."""
@@ -244,6 +246,23 @@ class BankDepositService:
         if not transactions:
             return []
 
+        # 1. Nạp danh sách mã giao dịch đã xử lý vào cache RAM (chỉ query 1 lần duy nhất khi khởi động)
+        if not BankDepositService._tx_cache_loaded:
+            try:
+                stmt_cached = (
+                    select(BankDepositOrder.transaction_id)
+                    .where(BankDepositOrder.transaction_id.is_not(None))
+                    .order_by(BankDepositOrder.id.desc())
+                    .limit(300)
+                )
+                res_cached = await session.execute(stmt_cached)
+                for (t_id,) in res_cached.all():
+                    if t_id:
+                        BankDepositService._processed_tx_ids.add(str(t_id).strip())
+                BankDepositService._tx_cache_loaded = True
+            except Exception as e:
+                logger.warning(f"Note init tx_cache: {e}")
+
         rate = float(getattr(config, "BANK_EXCHANGE_RATE", 26000) or 26000)
 
         for tx in transactions:
@@ -259,11 +278,16 @@ class BankDepositService:
             if not tx_id:
                 continue
 
+            # TỐI ƯU HÓA 100%: Nếu mã giao dịch đã có trong cache -> BỎ QUA NGAY LẬP TỨC (0 truy vấn DB!)
+            if tx_id in BankDepositService._processed_tx_ids:
+                continue
+
             desc = str(tx.get("description", "") or "").strip()
 
             # Trích xuất ID từ nội dung chuyển khoản: NAP 123456789 hoặc NAP123456789
             m = re.search(r"NAP\s*(\d+)", desc, re.IGNORECASE)
             if not m:
+                BankDepositService._processed_tx_ids.add(tx_id)
                 continue
 
             matched_num = int(m.group(1))
@@ -272,6 +296,7 @@ class BankDepositService:
             stmt_exist = select(BankDepositOrder).where(BankDepositOrder.transaction_id == tx_id)
             exist_order = (await session.execute(stmt_exist)).scalar_one_or_none()
             if exist_order:
+                BankDepositService._processed_tx_ids.add(tx_id)
                 continue
 
             # Tìm kiếm người dùng theo Telegram ID
@@ -347,6 +372,7 @@ class BankDepositService:
             await session.commit()
 
             new_bal = round(user.top_up_amount - (user.consume_records or 0.0), 2)
+            BankDepositService._processed_tx_ids.add(tx_id)
             logger.info(f"Ting ting! Nạp thành công +{amount_vnd:,.0f}đ (+{usd_amount}$) cho Telegram ID {matched_tg_id}")
 
             # Gửi tin nhắn thông báo cho khách hàng

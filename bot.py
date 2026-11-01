@@ -106,25 +106,26 @@ facebook_cron_task = None
 
 
 async def facebook_stock_cron_worker():
-    """Tu dong quet va loai bo clone Facebook DIE trong kho dinh ky sau moi XX phut."""
-    await asyncio.sleep(15)
+    """Tự động quét và loại bỏ clone Facebook DIE trong kho định kỳ sau mỗi XX phút."""
+    await asyncio.sleep(60)
     from services.facebook import scan_facebook_inventory
 
     while True:
         try:
-            interval_minutes = int(getattr(config, "FB_CRON_CHECK_INTERVAL_MINUTES", 30) or 30)
+            interval_minutes = int(getattr(config, "FB_CRON_CHECK_INTERVAL_MINUTES", 0) or 0)
             if interval_minutes <= 0:
-                await asyncio.sleep(300)
+                # TẮT QUÉT ĐỊNH KỲ MẶC ĐỊNH để tiết kiệm 100% băng thông và tránh bị Facebook chặn IP
+                await asyncio.sleep(600)
                 continue
 
             async with get_db_session() as session:
-                res = await scan_facebook_inventory(session, auto_delete_die=True)
+                res = await scan_facebook_inventory(session, auto_delete_die=True, max_items_to_scan=100)
                 total = res.get("total_scanned", 0)
                 live = res.get("live_count", 0)
                 die = res.get("die_count", 0)
                 deleted = res.get("deleted_count", 0)
 
-                logging.info(f"Cron check live: Quet {total} clone | Live: {live} | Die da xoa: {deleted}")
+                logging.info(f"Cron check live: Quét {total} clone | Live: {live} | Die đã xóa: {deleted}")
 
                 notify_admin = getattr(config, "FB_CRON_NOTIFY_ADMIN", True)
                 if notify_admin and total > 0 and (die > 0 or interval_minutes >= 60):
@@ -152,8 +153,7 @@ async def facebook_stock_cron_worker():
             break
         except Exception as e:
             logging.warning(f"Error in facebook_stock_cron_worker: {e}")
-            await asyncio.sleep(180)
-
+            await asyncio.sleep(300)
 
 
 async def keep_alive_background_worker():
@@ -170,7 +170,7 @@ async def keep_alive_background_worker():
                         logging.debug(f"Keep-alive ping /health: status {resp.status}")
         except Exception as e:
             logging.debug(f"Keep-alive ping note: {e}")
-        await asyncio.sleep(480)
+        await asyncio.sleep(720)
 
 
 
@@ -178,338 +178,188 @@ async def keep_alive_background_worker():
 
 
 async def bank_deposit_background_worker():
+    await asyncio.sleep(20)
     while True:
         try:
-            await asyncio.sleep(15)
             token = getattr(config, "BANK_BIDV_TOKEN", "") or ""
             auto_check = getattr(config, "BANK_AUTO_CHECK", True)
             if token and auto_check:
                 from services.bank_deposit import BankDepositService
                 async with get_db_session() as session:
                     await BankDepositService.process_and_credit_transactions(bot, session)
+            await asyncio.sleep(30)
         except asyncio.CancelledError:
             break
         except Exception as e:
             logging.warning(f"Error in bank_deposit_background_worker: {e}")
+            await asyncio.sleep(30)
 
 
 async def binance_pay_background_worker():
-
+    await asyncio.sleep(25)
     while True:
-
         try:
-
-            await asyncio.sleep(10)
-
             if config.BINANCE_API_KEY and config.BINANCE_API_SECRET:
-
                 from services.binance_pay import BinancePayService
-
                 async with get_db_session() as session:
-
                     await BinancePayService.process_and_credit_transactions(bot, session)
-
+            await asyncio.sleep(30)
         except asyncio.CancelledError:
-
             break
-
         except Exception as e:
-
             logging.warning(f"Error in binance_pay_background_worker: {e}")
-
-
-
+            await asyncio.sleep(30)
 
 
 async def _startup() -> None:
+    # 1. Khởi tạo Database an toàn, không làm sập ASGI app nếu mạng chập chờn
+    try:
+        await create_db_and_tables()
+        async with get_db_session() as db_sess:
+            from services.settings import SettingsService
+            await SettingsService.load_settings_into_config(db_sess)
 
-    await create_db_and_tables()
-    async with get_db_session() as db_sess:
-        from services.settings import SettingsService
-        try:
+            # Kiểm tra xem migration đã chạy lần đầu chưa để tránh lặp lại mỗi lần server restart
             from sqlalchemy import text
-            schema_cmds = [
-                "ALTER TABLE subcategories ADD COLUMN IF NOT EXISTS price FLOAT DEFAULT 0.0",
-                "ALTER TABLE subcategories ADD COLUMN IF NOT EXISTS description VARCHAR DEFAULT ''",
-                "ALTER TABLE items ALTER COLUMN price DROP NOT NULL",
-                "ALTER TABLE items ALTER COLUMN description DROP NOT NULL",
-                "ALTER TABLE binance_pay_orders ADD COLUMN IF NOT EXISTS chat_id BIGINT",
-                "ALTER TABLE binance_pay_orders ADD COLUMN IF NOT EXISTS message_id BIGINT",
-                "ALTER TABLE bank_deposit_orders ADD COLUMN IF NOT EXISTS chat_id BIGINT",
-                "ALTER TABLE bank_deposit_orders ADD COLUMN IF NOT EXISTS message_id BIGINT",
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR",
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS web_username VARCHAR",
-                "ALTER TABLE users ALTER COLUMN telegram_id DROP NOT NULL",
-                "UPDATE items SET is_new = FALSE WHERE is_sold = TRUE",
-                """
-                UPDATE subcategories s
-                SET price = sub.item_price
-                FROM (
-                    SELECT subcategory_id, MAX(price) AS item_price
-                    FROM items
-                    WHERE price IS NOT NULL AND price > 0
-                    GROUP BY subcategory_id
-                ) sub
-                WHERE s.id = sub.subcategory_id AND (s.price IS NULL OR s.price = 0)
-                """,
-                """
-                UPDATE subcategories s
-                SET description = sub.item_desc
-                FROM (
-                    SELECT subcategory_id, MAX(description) AS item_desc
-                    FROM items
-                    WHERE description IS NOT NULL AND description != ''
-                    GROUP BY subcategory_id
-                ) sub
-                WHERE s.id = sub.subcategory_id AND (s.description IS NULL OR s.description = '')
-                """,
-                """
-                UPDATE items i
-                SET price = s.price
-                FROM subcategories s
-                WHERE i.subcategory_id = s.id 
-                  AND s.price IS NOT NULL 
-                  AND s.price > 0 
-                  AND (i.is_sold = FALSE OR i.price IS NULL OR i.price = 0 OR i.price != s.price)
-                """,
-                """
-                UPDATE items i
-                SET description = s.description
-                FROM subcategories s
-                WHERE i.subcategory_id = s.id 
-                  AND s.description IS NOT NULL
-                  AND s.description != ''
-                  AND (i.description IS NULL OR i.description = '')
-                """
-            ]
-            for cmd in schema_cmds:
+            try:
+                res_mig = await db_sess.execute(text("SELECT value FROM system_settings WHERE key = 'schema_v4_migrated'"))
+                migrated = res_mig.scalar_one_or_none()
+            except Exception:
+                migrated = None
+
+            if not migrated:
+                schema_cmds = [
+                    "ALTER TABLE subcategories ADD COLUMN IF NOT EXISTS price FLOAT DEFAULT 0.0",
+                    "ALTER TABLE subcategories ADD COLUMN IF NOT EXISTS description VARCHAR DEFAULT ''",
+                    "ALTER TABLE items ALTER COLUMN price DROP NOT NULL",
+                    "ALTER TABLE items ALTER COLUMN description DROP NOT NULL",
+                    "ALTER TABLE binance_pay_orders ADD COLUMN IF NOT EXISTS chat_id BIGINT",
+                    "ALTER TABLE binance_pay_orders ADD COLUMN IF NOT EXISTS message_id BIGINT",
+                    "ALTER TABLE bank_deposit_orders ADD COLUMN IF NOT EXISTS chat_id BIGINT",
+                    "ALTER TABLE bank_deposit_orders ADD COLUMN IF NOT EXISTS message_id BIGINT",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS web_username VARCHAR",
+                    "ALTER TABLE users ALTER COLUMN telegram_id DROP NOT NULL",
+                    "UPDATE items SET is_new = FALSE WHERE is_sold = TRUE",
+                    """
+                    UPDATE subcategories s
+                    SET price = sub.item_price
+                    FROM (
+                        SELECT subcategory_id, MAX(price) AS item_price
+                        FROM items
+                        WHERE price IS NOT NULL AND price > 0
+                        GROUP BY subcategory_id
+                    ) sub
+                    WHERE s.id = sub.subcategory_id AND (s.price IS NULL OR s.price = 0)
+                    """,
+                    """
+                    UPDATE subcategories s
+                    SET description = sub.item_desc
+                    FROM (
+                        SELECT subcategory_id, MAX(description) AS item_desc
+                        FROM items
+                        WHERE description IS NOT NULL AND description != ''
+                        GROUP BY subcategory_id
+                    ) sub
+                    WHERE s.id = sub.subcategory_id AND (s.description IS NULL OR s.description = '')
+                    """
+                ]
+                for cmd in schema_cmds:
+                    try:
+                        await db_sess.execute(text(cmd.strip()))
+                    except Exception:
+                        pass
                 try:
-                    await db_sess.execute(text(cmd.strip()))
+                    await db_sess.execute(text("INSERT INTO system_settings (key, value) VALUES ('schema_v4_migrated', 'true') ON CONFLICT (key) DO NOTHING;"))
                 except Exception:
                     pass
-            await db_sess.commit()
-            logging.info("Migrated subcategories table schema successfully")
-        except Exception as e:
-            logging.warning(f"Note on subcategories schema migration: {e}")
-
-        await SettingsService.load_settings_into_config(db_sess)
-        try:
-            from sqlalchemy import update, or_
-            from enums.language import Language
-            from models.user import User
-            await db_sess.execute(
-                update(User)
-                .where(or_(User.language == Language.EN, User.language.is_(None)))
-                .values(language=Language.VI)
-            )
-            await db_sess.commit()
-            logging.info("Synced users language to Vietnamese (VI)")
-        except Exception as e:
-            logging.warning(f"Note on user language sync: {e}")
-
-        try:
-            from models.subcategory import Subcategory
-            from models.item import Item
-            from models.cartItem import CartItem
-            from sqlalchemy import select, func, update, delete
-            dup_stmt = (
-                select(Subcategory.name)
-                .group_by(Subcategory.name)
-                .having(func.count(Subcategory.id) > 1)
-            )
-            dup_res = await db_sess.execute(dup_stmt)
-            dup_names = dup_res.scalars().all()
-            if dup_names:
-                for d_name in dup_names:
-                    s_stmt = select(Subcategory).where(Subcategory.name == d_name).order_by(Subcategory.id.asc())
-                    s_list = (await db_sess.execute(s_stmt)).scalars().all()
-                    if len(s_list) > 1:
-                        primary_sub = s_list[0]
-                        dup_sub_ids = [s.id for s in s_list[1:]]
-                        await db_sess.execute(
-                            update(Item).where(Item.subcategory_id.in_(dup_sub_ids)).values(subcategory_id=primary_sub.id)
-                        )
-                        await db_sess.execute(
-                            update(CartItem).where(CartItem.subcategory_id.in_(dup_sub_ids)).values(subcategory_id=primary_sub.id)
-                        )
-                        await db_sess.execute(
-                            delete(Subcategory).where(Subcategory.id.in_(dup_sub_ids))
-                        )
                 await db_sess.commit()
-                logging.info(f"Cleaned and merged {len(dup_names)} duplicate subcategories successfully")
+                logging.info("Migrated initial database schema successfully.")
+    except Exception as e:
+        logging.error(f"Database initialization note (will connect on demand): {e}")
+
+    # 2. Khởi tạo Telegram Bot an toàn (không bao giờ quăng exception làm sập web)
+    if config.TOKEN:
+        webhook_url = f"{config.WEBHOOK_HOST}{config.WEBHOOK_PATH}"
+        logging.info(f"Setting Telegram webhook to: {webhook_url}")
+        try:
+            await bot.set_webhook(
+                url=webhook_url,
+                secret_token=config.WEBHOOK_SECRET_TOKEN if config.WEBHOOK_SECRET_TOKEN else None,
+                drop_pending_updates=False
+            )
+            logging.info(f"Webhook set successfully to {webhook_url}")
         except Exception as e:
-            logging.warning(f"Note on duplicate subcategory cleanup: {e}")
+            logging.warning(f"Error setting webhook: {e}")
+
+        commands = [
+            BotCommand(command="menu", description="Mở Menu chính (Main Menu)"),
+            BotCommand(command="start", description="Trang chủ (Home)"),
+            BotCommand(command="products", description="Xem sản phẩm (Products)"),
+            BotCommand(command="orders", description="Đơn hàng đã mua (Orders)"),
+            BotCommand(command="wallet", description="Ví & Nạp tiền (Wallet)"),
+            BotCommand(command="support", description="Hỗ trợ, Bảo hành & API"),
+            BotCommand(command="language", description="Đổi ngôn ngữ (Language)"),
+        ]
+        try:
+            await bot.set_my_commands(commands)
+        except Exception as e:
+            logging.warning(f"Failed to set bot commands: {e}")
 
         try:
-            from models.subcategory import Subcategory
-            from models.item import Item
-            from sqlalchemy import update, select
-            subcat_records = (await db_sess.execute(select(Subcategory).where(Subcategory.price > 0))).scalars().all()
-            for sc in subcat_records:
-                if sc.price and float(sc.price) > 0:
-                    await db_sess.execute(
-                        update(Item)
-                        .where(Item.subcategory_id == sc.id, Item.is_sold == False)
-                        .values(price=float(sc.price))
-                    )
-            await db_sess.commit()
-            logging.info("Synced items prices from subcategories successfully")
+            await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+            logging.info("Set chat menu button to MenuButtonCommands successfully")
         except Exception as e:
-            logging.warning(f"Note on syncing items prices: {e}")
+            logging.warning(f"Failed to set chat menu button: {e}")
 
         try:
-            from services.facebook import clean_duplicate_inventory_uids
-            dup_uid_res = await clean_duplicate_inventory_uids(db_sess)
-            if dup_uid_res.get("deleted_duplicates", 0) > 0:
-                logging.info(f"Auto-cleaned {dup_uid_res['deleted_duplicates']} duplicate Facebook clone UIDs from database")
+            static = Path("static")
+            if not static.exists():
+                static.mkdir()
+            me = await bot.get_me()
+            photos = await bot.get_user_profile_photos(me.id)
+            if photos.total_count == 0:
+                photo_id_list = []
+                for admin_id in config.ADMIN_ID_LIST:
+                    try:
+                        msg = await bot.send_photo(
+                            chat_id=admin_id,
+                            photo=URLInputFile(url="https://img.freepik.com/premium-vector/no-photo-available-vector-icon-default-image-symbol-picture-coming-soon-web-site-mobile-app_87543-18055.jpg", filename="no_image.png")
+                        )
+                        bot_photo_id = msg.photo[-1].file_id
+                        photo_id_list.append(bot_photo_id)
+                    except Exception:
+                        pass
+                bot_photo_id = photo_id_list[0] if photo_id_list else "no_image_default"
+            else:
+                bot_photo_id = photos.photos[0][-1].file_id
+
+            with open("static/no_image.jpeg", "w") as f:
+                f.write(bot_photo_id)
+
+            await MediaService.update_inaccessible_media(bot)
         except Exception as e:
-            logging.warning(f"Note on duplicate UID cleanup: {e}")
+            logging.warning(f"Note on bot profile photo/media: {e}")
 
-    webhook_url = f"{config.WEBHOOK_HOST}{config.WEBHOOK_PATH}"
+        try:
+            validate_i18n()
+            await ButtonMediaRepository.init_buttons_media()
+        except Exception as e:
+            logging.warning(f"Note on button media init: {e}")
 
-    logging.info(f"Setting Telegram webhook to: {webhook_url}")
-
-    try:
-
-        await bot.set_webhook(
-
-            url=webhook_url,
-
-            secret_token=config.WEBHOOK_SECRET_TOKEN if config.WEBHOOK_SECRET_TOKEN else None,
-
-            drop_pending_updates=False
-
-        )
-
-        logging.info(f"Webhook set successfully to {webhook_url}")
-
-    except Exception as e:
-
-        logging.warning(f"Error setting webhook: {e}")
-
-
-
-    commands = [
-        BotCommand(command="menu", description="Mở Menu chính (Main Menu)"),
-        BotCommand(command="start", description="Trang chủ (Home)"),
-        BotCommand(command="products", description="Xem sản phẩm (Products)"),
-        BotCommand(command="orders", description="Đơn hàng đã mua (Orders)"),
-        BotCommand(command="wallet", description="Ví & Nạp tiền (Wallet)"),
-        BotCommand(command="support", description="Hỗ trợ, Bảo hành & API"),
-        BotCommand(command="language", description="Đổi ngôn ngữ (Language)"),
-    ]
-
-    try:
-
-        await bot.set_my_commands(commands)
-
-    except Exception as e:
-
-        logging.warning(f"Failed to set bot commands: {e}")
-
-    try:
-        await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-        logging.info("Set chat menu button to MenuButtonCommands successfully")
-    except Exception as e:
-        logging.warning(f"Failed to set chat menu button: {e}")
-
-
-
-    static = Path("static")
-
-    if static.exists() is False:
-
-        static.mkdir()
-
-    me = await bot.get_me()
-
-    photos = await bot.get_user_profile_photos(me.id)
-
-    if photos.total_count == 0:
-
-        photo_id_list = []
-
-        for admin_id in config.ADMIN_ID_LIST:
-
+        for admin in getattr(config, "ADMIN_ID_LIST", []):
             try:
+                await bot.send_message(admin, 'Bot is working')
+            except Exception as e:
+                logging.debug(e)
 
-                msg = await bot.send_photo(chat_id=admin_id,
-
-                                           photo=URLInputFile(url="https://img.freepik.com/premium-vector/no-photo-available-vector-icon-default-image-symbol-picture-coming-soon-web-site-mobile-app_87543-18055.jpg",
-
-                                                              filename="no_image.png"))
-
-                bot_photo_id = msg.photo[-1].file_id
-
-                photo_id_list.append(bot_photo_id)
-
-            except Exception as _:
-
-                pass
-
-        bot_photo_id = photo_id_list[0] if photo_id_list else "no_image_default"
-
-    else:
-
-        bot_photo_id = photos.photos[0][-1].file_id
-
-    with open("static/no_image.jpeg", "w") as f:
-
-        f.write(bot_photo_id)
-
-    await MediaService.update_inaccessible_media(bot)
-
-    validate_i18n()
-
-    await ButtonMediaRepository.init_buttons_media()
-
-    if config.CRYPTO_FORWARDING_MODE:
-
-        for cryptocurrency in Cryptocurrency:
-
-            forwarding_address = cryptocurrency.get_forwarding_address()
-
-            if forwarding_address:
-
-                is_addr_valid = WalletService.validate_withdrawal_address(forwarding_address, cryptocurrency)
-
-                if is_addr_valid is False:
-
-                    logging.warning(
-
-                        "Your withdrawal address for %s cryptocurrency is not configured correctly: %s",
-
-                        cryptocurrency.name,
-
-                        forwarding_address
-
-                    )
-
-                else:
-
-                    logging.info("Crypto forwarding configured for %s: %s", cryptocurrency.name, forwarding_address)
-
-    for admin in config.ADMIN_ID_LIST:
-
-        try:
-
-            await bot.send_message(admin, 'Bot is working')
-
-        except Exception as e:
-
-            logging.warning(e)
-
-
-
+    # 3. Kích hoạt các background worker
     global binance_task, bank_task, keep_alive_task, facebook_cron_task
 
     binance_task = asyncio.create_task(binance_pay_background_worker())
     bank_task = asyncio.create_task(bank_deposit_background_worker())
     keep_alive_task = asyncio.create_task(keep_alive_background_worker())
     facebook_cron_task = asyncio.create_task(facebook_stock_cron_worker())
-
-
-
 
 
 async def _shutdown() -> None:

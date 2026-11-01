@@ -448,7 +448,8 @@ class ItemAdmin(ModelView, model=Item):
             scan_and_filter_facebook_raw_lines,
             extract_uid,
             check_uid_live_async,
-            get_existing_uids_from_db
+            get_existing_uids_from_db,
+            check_uid_exists_in_db
         )
         import config
 
@@ -534,8 +535,7 @@ class ItemAdmin(ModelView, model=Item):
             line = lines[0]
             uid = extract_uid(line)
             if uid and should_filter_dups:
-                existing_uids = await get_existing_uids_from_db()
-                if str(uid) in existing_uids:
+                if await check_uid_exists_in_db(str(uid)):
                     raise ValueError(f"Tài khoản UID {uid} đã tồn tại trong kho hàng! Hệ thống từ chối thêm nick trùng lặp.")
             if is_fb and uid and should_check:
                 status = await check_uid_live_async(uid)
