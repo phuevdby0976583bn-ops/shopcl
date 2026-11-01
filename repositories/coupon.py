@@ -46,7 +46,7 @@ class CouponRepository:
 
     @staticmethod
     async def get_by_code(code: str, session: AsyncSession) -> CouponDTO | None:
-        now_time = datetime.datetime.now(datetime.UTC)
+        now_time = datetime.datetime.now(datetime.timezone.utc)
         stmt = select(Coupon).where(Coupon.code == code,
                                     Coupon.is_active == True,
                                     Coupon.expire_datetime > now_time)

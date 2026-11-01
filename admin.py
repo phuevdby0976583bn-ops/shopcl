@@ -11,43 +11,48 @@ from utils.utils import create_access_token, decode_token, verify_password
 
 class AdminAuth(AuthenticationBackend):
     async def login(self, request: Request) -> bool:
-        form = await request.form()
-        username = form.get("username")
-        password = form.get("password")
+        try:
+            form = await request.form()
+            username = form.get("username")
+            password = form.get("password")
 
-        if not username or not password:
-            return False
+            if not username or not password:
+                return False
 
-        clean_un = str(username).strip().lower()
-        clean_pw = str(password).strip()
+            clean_un = str(username).strip().lower()
+            clean_pw = str(password).strip()
 
-        valid_passwords = [
-            getattr(config, "SQLADMIN_RAW_PASSWORD", "MatKhauAdminCuaBan123"),
-            "MatKhauAdminCuaBan123",
-            "Xuantruong@1412",
-            "admin123"
-        ]
+            valid_passwords = [
+                getattr(config, "SQLADMIN_RAW_PASSWORD", "MatKhauAdminCuaBan123"),
+                "MatKhauAdminCuaBan123",
+                "Xuantruong@1412",
+                "admin123"
+            ]
 
-        is_valid = False
-        if clean_un == "admin":
-            if clean_pw in valid_passwords:
-                is_valid = True
-            elif SQLADMIN_HASHED_PASSWORD and verify_password(clean_pw, SQLADMIN_HASHED_PASSWORD):
-                is_valid = True
+            is_valid = False
+            if clean_un == "admin":
+                if clean_pw in valid_passwords:
+                    is_valid = True
+                elif SQLADMIN_HASHED_PASSWORD and verify_password(clean_pw, SQLADMIN_HASHED_PASSWORD):
+                    is_valid = True
 
-        if is_valid:
-            token = create_access_token(
-                {
-                    "sub": UserRole.ADMIN.name,
-                }
-            )
+            if is_valid:
+                token = create_access_token(
+                    {
+                        "sub": UserRole.ADMIN.name,
+                    }
+                )
 
-            request.session.update({
-                "token": token,
-                "web_user": {"id": 1, "username": "admin", "is_admin": True}
-            })
-            return True
-        else:
+                request.session.update({
+                    "token": token,
+                    "web_user": {"id": 1, "username": "admin", "is_admin": True}
+                })
+                return True
+            else:
+                return False
+        except Exception as e:
+            import logging
+            logging.error(f"Error in AdminAuth.login: {e}", exc_info=True)
             return False
 
     async def logout(self, request: Request) -> bool:
@@ -65,20 +70,20 @@ class AdminAuth(AuthenticationBackend):
         # 2. Kiem tra web_user trong session (neu admin da dang nhap tu web shop)
         web_user = request.session.get("web_user")
         if web_user and web_user.get("is_admin"):
-            # Gia han / cap moi JWT admin token hop le ngay lap tuc
             new_token = create_access_token({"sub": UserRole.ADMIN.name})
             request.session["token"] = new_token
             return True
 
-        # 3. Cho phep POST xu ly form login tai /admin/login cua sqladmin
-        if request.url.path.startswith("/admin/login") and request.method == "POST":
+        # 3. Cho phep ca GET va POST tai /admin/login
+        path_lower = request.url.path.lower()
+        if "/admin/login" in path_lower or path_lower.endswith("/login"):
             return True
 
-        # 4. Tranh redirect loop: neu request dang o /login thi khong chuyen tiep
-        if request.url.path.startswith("/login"):
+        # 4. Tranh redirect loop
+        if path_lower.startswith("/login"):
             return True
 
-        # 5. Nguoi dung chua dang nhap admin -> Chuyen ve trang dang nhap web shop
+        # 5. Nguoi dung chua dang nhap admin -> Chuyen ve trang dang nhap
         return RedirectResponse(url="/login?next=/admin", status_code=302)
 
 

@@ -150,7 +150,7 @@ def validate_i18n(reference_file: str = "en.json") -> None:
 def create_access_token(data: dict) -> str:
     import config
     to_encode = data.copy()
-    expire = datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=config.JWT_EXPIRE_MINUTES)
+    expire = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=config.JWT_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, config.JWT_SECRET_KEY, algorithm=config.JWT_ALGORITHM)
 

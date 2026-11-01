@@ -28,6 +28,11 @@ class AntiDDoSMiddleware(BaseHTTPMiddleware):
         self.max_body_size = max_body_size_mb * 1024 * 1024
 
     async def dispatch(self, request: Request, call_next):
+        # 0. Dam bao scheme luon la https neu chay qua Render / Cloudflare proxy
+        proto = request.headers.get("x-forwarded-proto") or request.headers.get("cf-visitor")
+        if proto and "https" in proto.lower():
+            request.scope["scheme"] = "https"
+
         # 1. Lay dia chi IP thuc te (Render / Cloudflare / Proxy)
         client_ip = (
             request.headers.get("CF-Connecting-IP")
