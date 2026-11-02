@@ -278,7 +278,7 @@ def get_select_quantity_text(language: Language, cat_name: str, subcat_name: str
                 f"💸 <b>Giá bán:</b> <code>{unit_price:.2f} {sym}</code> / nick\n"
                 f"{desc_str}"
                 f"🔢 <b>Số lượng có sẵn:</b> <code>{available_qty}</code> cái\n\n"
-                "🔢 <b>Vui lòng chọn số lượng cần mua bên dưới:</b>"
+                "🔢 <b>Vui lòng chọn số lượng bên dưới hoặc gõ trực tiếp số lượng cần mua:</b>"
             )
         case Language.ZH:
             desc_zh = f"📝 <b>描述:</b> <i>{desc}</i>\n" if desc else ""
@@ -348,9 +348,122 @@ def get_select_quantity_text(language: Language, cat_name: str, subcat_name: str
                 f"💸 <b>Price:</b> <code>{unit_price:.2f} {sym}</code> / acc\n"
                 f"{desc_en}"
                 f"🔢 <b>In stock:</b> <code>{available_qty}</code> pcs\n\n"
-                "🔢 <b>Please select quantity to buy below:</b>"
+                "🔢 <b>Please select quantity below or type your desired quantity directly:</b>"
             )
 
+
+
+
+def get_custom_qty_label(language: Language) -> str:
+    match language:
+        case Language.VI:
+            return "✏️ Tự nhập số lượng"
+        case Language.ZH:
+            return "✏️ 自定义数量"
+        case Language.HI:
+            return "✏️ अपनी मात्रा दर्ज करें"
+        case Language.FR:
+            return "✏️ Quantité personnalisée"
+        case Language.DE:
+            return "✏️ Eigene Menge"
+        case Language.IT:
+            return "✏️ Quantità personalizzata"
+        case Language.ES:
+            return "✏️ Cantidad personalizada"
+        case _:
+            return "✏️ Custom Quantity"
+
+
+def get_custom_qty_prompt(language: Language, cat_name: str, subcat_name: str, unit_price: float, sym: str, available_qty: int) -> str:
+    match language:
+        case Language.VI:
+            return (
+                "🔢 <b>NHẬP SỐ LƯỢNG TỰ CHỌN</b>\n"
+                "──────────────────\n"
+                f"📁 <b>Danh mục:</b> <code>{cat_name}</code>\n"
+                f"📦 <b>Sản phẩm:</b> <code>{subcat_name}</code>\n"
+                f"💲 <b>Đơn giá:</b> <code>{unit_price:.2f} {sym}</code> / nick\n"
+                f"🔢 <b>Kho hiện có:</b> <code>{available_qty}</code> cái\n\n"
+                "👉 <b>Vui lòng gửi tin nhắn chứa số lượng cần mua vào khung chat:</b>\n"
+                f"<i>(Ví dụ: <code>15</code>, <code>33</code>, <code>100</code>... - Tối thiểu 1, tối đa {available_qty} cái)</i>"
+            )
+        case Language.ZH:
+            return (
+                "🔢 <b>输入自定义购买数量</b>\n"
+                "──────────────────\n"
+                f"📁 <b>分类:</b> <code>{cat_name}</code>\n"
+                f"📦 <b>商品:</b> <code>{subcat_name}</code>\n"
+                f"💲 <b>单价:</b> <code>{unit_price:.2f} {sym}</code> / 个\n"
+                f"🔢 <b>当前库存:</b> <code>{available_qty}</code> 个\n\n"
+                "👉 <b>请在下方聊天框直接发送你要购买的数量：</b>\n"
+                f"<i>(例如: <code>15</code>, <code>33</code>, <code>100</code>... - 最低 1, 最高 {available_qty})</i>"
+            )
+        case Language.HI:
+            return (
+                "🔢 <b>कस्टम मात्रा दर्ज करें</b>\n"
+                "──────────────────\n"
+                f"📁 <b>श्रेणी:</b> <code>{cat_name}</code>\n"
+                f"📦 <b>उत्पाद:</b> <code>{subcat_name}</code>\n"
+                f"💲 <b>मूल्य:</b> <code>{unit_price:.2f} {sym}</code> / खाता\n"
+                f"🔢 <b>स्टॉक:</b> <code>{available_qty}</code>\n\n"
+                "👉 <b>कृपया चैट में वह मात्रा भेजें जिसे आप खरीदना चाहते हैं:</b>\n"
+                f"<i>(उदा., <code>15</code>, <code>33</code>, <code>100</code>... - न्यूनतम 1, अधिकतम {available_qty})</i>"
+            )
+        case Language.FR:
+            return (
+                "🔢 <b>SAISIR UNE QUANTITÉ PERSONNALISÉE</b>\n"
+                "──────────────────\n"
+                f"📁 <b>Catégorie :</b> <code>{cat_name}</code>\n"
+                f"📦 <b>Produit :</b> <code>{subcat_name}</code>\n"
+                f"💲 <b>Prix unitaire :</b> <code>{unit_price:.2f} {sym}</code> / compte\n"
+                f"🔢 <b>En stock :</b> <code>{available_qty}</code> pcs\n\n"
+                "👉 <b>Veuillez envoyer un message avec la quantité souhaitée :</b>\n"
+                f"<i>(Ex. : <code>15</code>, <code>33</code>, <code>100</code>... - Min 1, max {available_qty})</i>"
+            )
+        case Language.DE:
+            return (
+                "🔢 <b>BENUTZERDEFINIERTE MENGE EINGEBEN</b>\n"
+                "──────────────────\n"
+                f"📁 <b>Kategorie:</b> <code>{cat_name}</code>\n"
+                f"📦 <b>Produkt:</b> <code>{subcat_name}</code>\n"
+                f"💲 <b>Einzelpreis:</b> <code>{unit_price:.2f} {sym}</code> / Stk.\n"
+                f"🔢 <b>Auf Lager:</b> <code>{available_qty}</code> Stück\n\n"
+                "👉 <b>Bitte senden Sie eine Nachricht mit der gewünschten Menge:</b>\n"
+                f"<i>(z. B. <code>15</code>, <code>33</code>, <code>100</code>... - Min. 1, max. {available_qty})</i>"
+            )
+        case Language.IT:
+            return (
+                "🔢 <b>INSERISCI QUANTITÀ PERSONALIZZATA</b>\n"
+                "──────────────────\n"
+                f"📁 <b>Categoria:</b> <code>{cat_name}</code>\n"
+                f"📦 <b>Prodotto:</b> <code>{subcat_name}</code>\n"
+                f"💲 <b>Prezzo unitario:</b> <code>{unit_price:.2f} {sym}</code> / account\n"
+                f"🔢 <b>Disponibili:</b> <code>{available_qty}</code> pz\n\n"
+                "👉 <b>Invia un messaggio con la quantità desiderata:</b>\n"
+                f"<i>(es. <code>15</code>, <code>33</code>, <code>100</code>... - Min 1, max {available_qty})</i>"
+            )
+        case Language.ES:
+            return (
+                "🔢 <b>INGRESAR CANTIDAD PERSONALIZADA</b>\n"
+                "──────────────────\n"
+                f"📁 <b>Categoría:</b> <code>{cat_name}</code>\n"
+                f"📦 <b>Producto:</b> <code>{subcat_name}</code>\n"
+                f"💲 <b>Precio unitario:</b> <code>{unit_price:.2f} {sym}</code> / cuenta\n"
+                f"🔢 <b>En stock:</b> <code>{available_qty}</code> uds\n\n"
+                "👉 <b>Por favor envía un mensaje con la cantidad que deseas comprar:</b>\n"
+                f"<i>(ej. <code>15</code>, <code>33</code>, <code>100</code>... - Mín 1, máx {available_qty})</i>"
+            )
+        case _:
+            return (
+                "🔢 <b>ENTER CUSTOM QUANTITY</b>\n"
+                "──────────────────\n"
+                f"📁 <b>Category:</b> <code>{cat_name}</code>\n"
+                f"📦 <b>Product:</b> <code>{subcat_name}</code>\n"
+                f"💲 <b>Unit price:</b> <code>{unit_price:.2f} {sym}</code> / acc\n"
+                f"🔢 <b>In stock:</b> <code>{available_qty}</code> pcs\n\n"
+                "👉 <b>Please send a message with the quantity you want to buy:</b>\n"
+                f"<i>(e.g., <code>15</code>, <code>33</code>, <code>100</code>... - Min 1, max {available_qty})</i>"
+            )
 
 def get_all_qty_label(language: Language, qty: int) -> str:
     match language:

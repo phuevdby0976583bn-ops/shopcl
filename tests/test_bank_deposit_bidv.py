@@ -85,6 +85,8 @@ async def test_create_bank_invoice_mock():
 
 @pytest.mark.asyncio
 async def test_process_and_credit_transactions_logic():
+    BankDepositService._tx_cache_loaded = True
+    BankDepositService._processed_tx_ids.clear()
     mock_user = User(id=1, telegram_id=5194220815, top_up_amount=5.0, consume_records=0.0)
     mock_session = AsyncMock()
     mock_session.add = MagicMock()

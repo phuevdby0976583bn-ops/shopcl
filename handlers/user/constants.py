@@ -13,3 +13,4 @@ class UserStates(StatesGroup):
     filter_items = State()
     filter_purchase_history = State()
     coupon = State()
+    custom_buy_quantity = State()

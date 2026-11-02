@@ -77,6 +77,8 @@ async def test_create_binance_invoice_text_table():
 
 @pytest.mark.asyncio
 async def test_binance_auto_credit_by_exact_amount():
+    BinancePayService._tx_cache_loaded = True
+    BinancePayService._processed_binance_tx_ids.clear()
     mock_user = SimpleNamespace(id=1, telegram_id=999888, telegram_username="buyer", top_up_amount=0.0, consume_records=0.0)
     pending_order = BinancePayOrder(
         id=123,

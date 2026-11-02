@@ -146,19 +146,39 @@ async def select_quantity(**kwargs):
     callback_data: AllCategoriesCallback = kwargs.get('callback_data')
     session: AsyncSession = kwargs.get('session')
     language: Language = kwargs.get('language')
+    state: FSMContext = kwargs.get('state')
     media, kb_builder = await SubcategoryService.get_select_quantity_buttons(callback_data, session, language)
     caption = getattr(media, 'caption', None) or get_text(language, BotEntity.USER, 'select_quantity')
     await _send_or_edit_text(callback, caption, kb_builder.as_markup())
 
+    if state and callback_data:
+        item_type_val = callback_data.item_type.value if callback_data.item_type else ItemType.DIGITAL.value
+        await state.set_state(UserStates.custom_buy_quantity)
+        await state.update_data(
+            category_id=callback_data.category_id,
+            subcategory_id=callback_data.subcategory_id,
+            item_type=item_type_val
+        )
+
 
 async def instant_buy_confirmation(**kwargs):
-    callback: CallbackQuery = kwargs.get('callback')
+    callback: CallbackQuery | Message = kwargs.get('callback')
     callback_data: AllCategoriesCallback = kwargs.get('callback_data')
     session: AsyncSession = kwargs.get('session')
     language: Language = kwargs.get('language')
+    state: FSMContext = kwargs.get('state')
     user = await UserRepository.get_by_tgid(callback.from_user.id, session, for_update=True)
     msg, kb_builder = await SubcategoryService.get_instant_buy_confirmation(callback_data, user, session, language)
     await _send_or_edit_text(callback, msg, kb_builder.as_markup())
+
+    if state and callback_data:
+        item_type_val = callback_data.item_type.value if callback_data.item_type else ItemType.DIGITAL.value
+        await state.set_state(UserStates.custom_buy_quantity)
+        await state.update_data(
+            category_id=callback_data.category_id,
+            subcategory_id=callback_data.subcategory_id,
+            item_type=item_type_val
+        )
 
 
 async def execute_instant_buy(**kwargs):
@@ -166,6 +186,9 @@ async def execute_instant_buy(**kwargs):
     callback_data: AllCategoriesCallback = kwargs.get('callback_data')
     session: AsyncSession = kwargs.get('session')
     language: Language = kwargs.get('language')
+    state: FSMContext = kwargs.get('state')
+    if state:
+        await state.clear()
 
     if not callback_data.confirmation:
         return await show_subcategories_in_category(**kwargs)
@@ -792,6 +815,211 @@ async def receive_filter_message(message: Message, state: FSMContext, session: A
 
     await state.clear()
     await execute_global_search(message, filter_val, session, language)
+
+
+
+
+@all_categories_router.callback_query(F.data.startswith("ask_custom_qty:"), IsUserExistFilter())
+async def handle_ask_custom_qty(callback: CallbackQuery, state: FSMContext, session: AsyncSession, language: Language):
+    try:
+        await callback.answer()
+    except Exception:
+        pass
+    parts = callback.data.split(":")
+    cat_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
+    subcat_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 1
+    item_type_str = parts[3] if len(parts) > 3 else "DIGITAL"
+    try:
+        item_type = ItemType(item_type_str)
+    except Exception:
+        item_type = ItemType.DIGITAL
+
+    category = await CategoryRepository.get_by_id(cat_id, session)
+    subcategory = await SubcategoryRepository.get_by_id(subcat_id, session)
+    item = await ItemRepository.get_single(item_type, cat_id, subcat_id, session)
+    available_qty = await ItemRepository.get_available_qty(item_type=item_type, category_id=cat_id, subcategory_id=subcat_id, session=session)
+
+    unit_price = (getattr(subcategory, 'price', None) or (getattr(item, 'price', 0.0) if item else 0.0)) or 0.0
+    sym = _sym()
+
+    from services.i18n_messages import get_custom_qty_prompt
+    prompt_text = get_custom_qty_prompt(
+        language=language,
+        cat_name=category.name if category else "",
+        subcat_name=subcategory.name if subcategory else "",
+        unit_price=unit_price,
+        sym=sym,
+        available_qty=available_qty
+    )
+
+    kb_builder = InlineKeyboardBuilder()
+    back_cb = AllCategoriesCallback.create(
+        level=3,
+        item_type=item_type,
+        category_id=cat_id,
+        subcategory_id=subcat_id
+    )
+    btn_back_text = "⬅️ Quay lại" if language == Language.VI else "⬅️ Back"
+    kb_builder.button(text=btn_back_text, callback_data=back_cb.pack())
+
+    await state.set_state(UserStates.custom_buy_quantity)
+    await state.update_data(
+        category_id=cat_id,
+        subcategory_id=subcat_id,
+        item_type=item_type.value,
+        available_qty=available_qty
+    )
+
+    await _send_or_edit_text(callback, prompt_text, kb_builder.as_markup())
+
+
+@all_categories_router.message(IsUserExistFilter(), F.text, StateFilter(UserStates.custom_buy_quantity))
+async def handle_custom_quantity_input(message: Message, state: FSMContext, session: AsyncSession, language: Language):
+    raw_text = (message.text or "").strip()
+
+    cancel_words = {"/cancel", "huỷ", "huy", "cancel", "quay lại", "quay lai", "back"}
+    if raw_text.lower() in cancel_words:
+        await state.clear()
+        cancel_msg = "❌ <b>Đã huỷ thao tác nhập số lượng.</b>" if language == Language.VI else "❌ <b>Cancelled custom quantity input.</b>"
+        await message.answer(cancel_msg, parse_mode="HTML")
+        return
+
+    # Check for menu commands or persistent keyboard buttons
+    if not raw_text.isdigit():
+        if raw_text.startswith("/start"):
+            await state.clear()
+            from run import start
+            await start(message, session, language, None)
+            return
+        if any(k.lower() in raw_text.lower() for k in ["sản phẩm", "products"]):
+            await state.clear()
+            cb_all = AllCategoriesCallback.create(level=1, item_type=ItemType.DIGITAL)
+            await all_categories(callback=message, callback_data=cb_all, session=session, state=state, language=language)
+            return
+        if any(k.lower() in raw_text.lower() for k in ["ví", "wallet", "nạp tiền", "top-up", "topup"]):
+            await state.clear()
+            from services.deposit_flow import DepositFlowService
+            text_dep, kb_dep = DepositFlowService.get_method_selection_keyboard(language)
+            await message.answer(text=text_dep, reply_markup=kb_dep.as_markup(), parse_mode="HTML")
+            return
+        if any(k.lower() in raw_text.lower() for k in ["đơn hàng", "orders"]):
+            await state.clear()
+            from handlers.user.my_profile import my_profile
+            await my_profile(message=message, session=session, state=state, language=language)
+            return
+
+    state_data = await state.get_data()
+    cat_id = state_data.get("category_id")
+    subcat_id = state_data.get("subcategory_id")
+    item_type_str = state_data.get("item_type", "DIGITAL")
+    try:
+        item_type = ItemType(item_type_str)
+    except Exception:
+        item_type = ItemType.DIGITAL
+
+    if not subcat_id:
+        await state.clear()
+        return
+
+    available_qty = await ItemRepository.get_available_qty(
+        item_type=item_type,
+        category_id=cat_id,
+        subcategory_id=subcat_id,
+        session=session
+    )
+
+    clean_num = raw_text.replace(".", "").replace(",", "").replace(" ", "").strip()
+    if not clean_num.isdigit():
+        err_msg = (
+            "⚠️ <b>Số lượng không hợp lệ!</b>\n"
+            "Vui lòng chỉ nhập số nguyên dương (ví dụ: <code>10</code>, <code>33</code>, <code>100</code>).\n"
+            f"<i>Kho hiện có: <code>{available_qty}</code> cái. Hoặc gõ <b>Huỷ</b> để thoát.</i>"
+            if language == Language.VI
+            else (
+                "⚠️ <b>Invalid quantity!</b>\n"
+                "Please enter a positive whole number (e.g. <code>10</code>, <code>33</code>, <code>100</code>).\n"
+                f"<i>In stock: <code>{available_qty}</code> pcs. Or type <b>Cancel</b> to exit.</i>"
+            )
+        )
+        await message.answer(err_msg, parse_mode="HTML")
+        return
+
+    qty = int(clean_num)
+    if qty <= 0:
+        err_msg = (
+            "⚠️ <b>Số lượng phải lớn hơn 0!</b>\n"
+            f"Vui lòng nhập lại số lượng bạn muốn mua (1 - {available_qty}):"
+            if language == Language.VI
+            else (
+                "⚠️ <b>Quantity must be greater than 0!</b>\n"
+                f"Please enter a quantity greater than 0 (1 - {available_qty}):"
+            )
+        )
+        await message.answer(err_msg, parse_mode="HTML")
+        return
+
+    if available_qty <= 0:
+        await state.clear()
+        out_msg = (
+            "❌ <b>Sản phẩm này tạm thời đã hết hàng!</b>"
+            if language == Language.VI
+            else "❌ <b>This product is currently out of stock!</b>"
+        )
+        await message.answer(out_msg, parse_mode="HTML")
+        return
+
+    if qty > available_qty:
+        kb_builder = InlineKeyboardBuilder()
+        cb_all = AllCategoriesCallback.create(
+            level=4,
+            item_type=item_type,
+            category_id=cat_id,
+            subcategory_id=subcat_id,
+            quantity=available_qty
+        )
+        cb_back = AllCategoriesCallback.create(
+            level=3,
+            item_type=item_type,
+            category_id=cat_id,
+            subcategory_id=subcat_id
+        )
+        btn_all = f"⚡ Mua tất cả ({available_qty})" if language == Language.VI else f"⚡ Buy all ({available_qty})"
+        btn_back = "⬅️ Quay lại" if language == Language.VI else "⬅️ Back"
+        kb_builder.button(text=btn_all, callback_data=cb_all.pack())
+        kb_builder.button(text=btn_back, callback_data=cb_back.pack())
+        kb_builder.adjust(1)
+
+        err_msg = (
+            f"⚠️ <b>Kho không đủ số lượng bạn yêu cầu!</b>\n\n"
+            f"• Bạn muốn mua: <b>{qty}</b> cái\n"
+            f"• Kho hiện tại chỉ còn: <b>{available_qty}</b> cái\n\n"
+            f"👉 Vui lòng nhập số lượng nhỏ hơn hoặc bằng <b>{available_qty}</b>, hoặc bấm nút bên dưới để mua toàn bộ kho:"
+            if language == Language.VI
+            else (
+                f"⚠️ <b>Not enough stock available!</b>\n\n"
+                f"• You requested: <b>{qty}</b> pcs\n"
+                f"• Available stock: <b>{available_qty}</b> pcs\n\n"
+                f"👉 Please enter a quantity up to <b>{available_qty}</b>, or click below to buy all available:"
+            )
+        )
+        await message.answer(err_msg, reply_markup=kb_builder.as_markup(), parse_mode="HTML")
+        return
+
+    # Valid quantity! Transition to level 4 confirmation
+    cb_confirm = AllCategoriesCallback.create(
+        level=4,
+        item_type=item_type,
+        category_id=cat_id,
+        subcategory_id=subcat_id,
+        quantity=qty
+    )
+    await instant_buy_confirmation(
+        callback=message,
+        callback_data=cb_confirm,
+        session=session,
+        language=language,
+        state=state
+    )
 
 
 @all_categories_router.callback_query(AllCategoriesCallback.filter(), IsUserExistFilter())

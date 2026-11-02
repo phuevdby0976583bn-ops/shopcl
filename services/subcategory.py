@@ -1,6 +1,6 @@
 from typing import Any
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InputMediaVideo, InputMediaAnimation, InputMediaPhoto
+from aiogram.types import InputMediaVideo, InputMediaAnimation, InputMediaPhoto, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -17,7 +17,7 @@ from repositories.item import ItemRepository
 from repositories.subcategory import SubcategoryRepository
 from services.media import MediaService
 from utils.utils import get_text
-from services.i18n_messages import get_out_of_stock_text, get_select_quantity_text, get_instant_buy_confirm_text, get_all_qty_label
+from services.i18n_messages import get_out_of_stock_text, get_select_quantity_text, get_instant_buy_confirm_text, get_all_qty_label, get_custom_qty_label
 from utils.utils import get_bot_photo_id
 
 
@@ -173,6 +173,27 @@ class SubcategoryService:
                 quantity=qty
             ))
         kb_builder.adjust(3)
+
+        custom_btn_text = get_custom_qty_label(language)
+        item_type_str = item_dto.item_type.value if item_dto.item_type else 'DIGITAL'
+        ask_cb_data = f"ask_custom_qty:{item_dto.category_id}:{item_dto.subcategory_id}:{item_type_str}"
+
+        if available_qty > 500 and available_qty not in options:
+            all_btn_text = f"⚡ {get_all_qty_label(language, available_qty)}"
+            all_cb_data = AllCategoriesCallback.create(
+                level=callback_data.level + 1,
+                item_type=item_dto.item_type,
+                category_id=item_dto.category_id,
+                subcategory_id=item_dto.subcategory_id,
+                quantity=available_qty
+            ).pack()
+            kb_builder.row(
+                InlineKeyboardButton(text=custom_btn_text, callback_data=ask_cb_data),
+                InlineKeyboardButton(text=all_btn_text, callback_data=all_cb_data)
+            )
+        else:
+            kb_builder.row(InlineKeyboardButton(text=custom_btn_text, callback_data=ask_cb_data))
+
         kb_builder.row(callback_data.get_back_button(language, lvl=2))
         media = MediaService.convert_to_media(subcategory_dto.media_id, caption)
         return media, kb_builder
