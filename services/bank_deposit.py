@@ -299,14 +299,20 @@ class BankDepositService:
                 BankDepositService._processed_tx_ids.add(tx_id)
                 continue
 
-            # Tìm kiếm người dùng theo Telegram ID, User ID hoặc Order ID
+            # Tìm kiếm người dùng theo Telegram ID (BigInteger) hoặc User ID (Integer 32-bit) hoặc Order ID
             matched_order_obj = None
-            stmt_u = select(User).where(or_(User.telegram_id == matched_num, User.id == matched_num))
+            stmt_u = select(User).where(User.telegram_id == matched_num)
             user = (await session.execute(stmt_u)).scalar_one_or_none()
+
+            # Nếu chưa tìm thấy và matched_num nằm trong khoảng Integer 32-bit (<= 2,147,483,647)
+            if not user and matched_num <= 2147483647:
+                stmt_u_id = select(User).where(User.id == matched_num)
+                user = (await session.execute(stmt_u_id)).scalar_one_or_none()
+
             matched_tg_id = user.telegram_id if (user and user.telegram_id) else matched_num
 
-            if not user:
-                # Nếu matched_num là order ID
+            if not user and matched_num <= 2147483647:
+                # Nếu matched_num là order ID (cột id kiểu Integer 32-bit)
                 stmt_ord = select(BankDepositOrder).where(BankDepositOrder.id == matched_num)
                 ord_obj = (await session.execute(stmt_ord)).scalar_one_or_none()
                 if ord_obj:
@@ -342,16 +348,18 @@ class BankDepositService:
             # Cộng số dư cho User
             user.top_up_amount = round(float(user.top_up_amount or 0.0) + total_credit, 2)
 
-            # Cập nhật hoặc tạo BankDepositOrder
+            # Cập nhật hoặc tạo BankDepositOrder (Tránh ép kiểu BigInteger vào cột id Integer 32-bit)
             pending_order = matched_order_obj
             if not pending_order:
+                conds = [
+                    BankDepositOrder.user_id == user.id,
+                    BankDepositOrder.telegram_id == matched_tg_id,
+                    BankDepositOrder.telegram_id == user.id
+                ]
+                if matched_num <= 2147483647:
+                    conds.append(BankDepositOrder.id == matched_num)
                 stmt_p = select(BankDepositOrder).where(
-                    or_(
-                        BankDepositOrder.id == matched_num,
-                        BankDepositOrder.user_id == user.id,
-                        BankDepositOrder.telegram_id == matched_tg_id,
-                        BankDepositOrder.telegram_id == user.id
-                    ),
+                    or_(*conds),
                     BankDepositOrder.status == "PENDING"
                 ).order_by(BankDepositOrder.id.desc())
                 pending_order = (await session.execute(stmt_p)).scalar_one_or_none()

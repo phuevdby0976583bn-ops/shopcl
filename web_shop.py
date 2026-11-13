@@ -2983,9 +2983,14 @@ async def api_check_recharge_status(request: Request):
             except Exception as e:
                 logger.debug(f"Check bank status error: {e}")
 
+            owner_conds = [BankDepositOrder.user_id == user.id]
+            if user.telegram_id:
+                owner_conds.append(BankDepositOrder.telegram_id == user.telegram_id)
+            owner_conds.append(BankDepositOrder.telegram_id == user.id)
+
             stmt = select(BankDepositOrder).where(
                 BankDepositOrder.id == int(order_id),
-                or_(BankDepositOrder.user_id == user.id, BankDepositOrder.telegram_id == user.telegram_id, BankDepositOrder.telegram_id == user.id)
+                or_(*owner_conds)
             )
             bk_order = (await session.execute(stmt)).scalar_one_or_none()
             if bk_order and bk_order.status in ("COMPLETED", "PAID"):
