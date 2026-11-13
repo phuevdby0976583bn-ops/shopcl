@@ -449,6 +449,44 @@ async def top_level_cron_check_live(request: Request):
     return await cron_check_live_endpoint(request)
 
 
+@app.get("/cron/check-deposit")
+@app.post("/cron/check-deposit")
+@app.get("/cron/check-bank")
+@app.post("/cron/check-bank")
+async def top_level_cron_check_deposit(request: Request):
+    """
+    Endpoint Cron quét giao dịch nạp tiền ngân hàng BIDV & Binance Pay từ bên ngoài.
+    Hỗ trợ gọi từ Cron-job.org, UptimeRobot, Render Cron Job, EasyCron,...
+    URL: https://shopcl.onrender.com/cron/check-deposit?token=<SQLADMIN_PASSWORD hoặc bất kỳ>
+    """
+    from services.bank_deposit import BankDepositService
+    from services.binance_pay import BinancePayService
+
+    credited_bank = []
+    credited_binance = []
+    async with get_db_session() as session:
+        try:
+            token = getattr(config, "BANK_BIDV_TOKEN", "") or ""
+            if token:
+                credited_bank = await BankDepositService.process_and_credit_transactions(bot, session)
+        except Exception as e:
+            logging.warning(f"Cron check bank deposit error: {e}")
+
+        try:
+            if config.BINANCE_API_KEY and config.BINANCE_API_SECRET:
+                credited_binance = await BinancePayService.process_and_credit_transactions(bot, session)
+        except Exception as e:
+            logging.warning(f"Cron check binance deposit error: {e}")
+
+    return {
+        "status": "success",
+        "bank_credited_count": len(credited_bank),
+        "bank_credited": credited_bank,
+        "binance_credited_count": len(credited_binance),
+        "binance_credited": credited_binance
+    }
+
+
 
 admin = Admin(app=app, engine=engine, authentication_backend=authentication_backend, title="🦐 Bubba Gump")
 
