@@ -280,7 +280,7 @@ async def test_web_recharge_authorized_flow(test_app):
                     assert d_bank["exact_vnd"] == 100000
                     assert d_bank["account_number"] == "8880117869"
                     assert d_bank["account_name"] == "NGUYEN XUAN TRUONG"
-                    assert "vietqr.io" in d_bank["qr_url"]
+                    assert ("vietqr.io" in d_bank["qr_url"] or d_bank["qr_url"].startswith("data:image/png;base64,"))
 
                     # 3. On-chain Invoice
                     r_onc = await ac.post("/api/web/recharge/create-onchain", json={"network": "TRX", "amount_usd": 25.0})

@@ -9,7 +9,7 @@ import qrcode
 from PIL import Image, ImageDraw, ImageFont
 from aiogram.types import BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import select, update
+from sqlalchemy import select, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
@@ -299,25 +299,37 @@ class BankDepositService:
                 BankDepositService._processed_tx_ids.add(tx_id)
                 continue
 
-            # Tìm kiếm người dùng theo Telegram ID
-            stmt_u = select(User).where(User.telegram_id == matched_num)
+            # Tìm kiếm người dùng theo Telegram ID, User ID hoặc Order ID
+            matched_order_obj = None
+            stmt_u = select(User).where(or_(User.telegram_id == matched_num, User.id == matched_num))
             user = (await session.execute(stmt_u)).scalar_one_or_none()
-            matched_tg_id = matched_num
+            matched_tg_id = user.telegram_id if (user and user.telegram_id) else matched_num
 
             if not user:
                 # Nếu matched_num là order ID
                 stmt_ord = select(BankDepositOrder).where(BankDepositOrder.id == matched_num)
                 ord_obj = (await session.execute(stmt_ord)).scalar_one_or_none()
                 if ord_obj:
-                    matched_tg_id = ord_obj.telegram_id
+                    matched_order_obj = ord_obj
+                    matched_tg_id = ord_obj.telegram_id or matched_tg_id
                     stmt_u2 = select(User).where(User.id == ord_obj.user_id)
                     user = (await session.execute(stmt_u2)).scalar_one_or_none()
 
             if not user:
                 continue
 
-            if target_telegram_id and matched_tg_id != target_telegram_id:
-                continue
+            # Kiểm tra bộ lọc nếu có target_order_id hoặc target_telegram_id
+            if target_order_id:
+                is_target_matched = (
+                    matched_num == target_order_id
+                    or (matched_order_obj and matched_order_obj.id == target_order_id)
+                    or (target_telegram_id and (matched_tg_id == target_telegram_id or user.id == target_telegram_id or matched_num == target_telegram_id))
+                )
+                if not is_target_matched:
+                    continue
+            elif target_telegram_id:
+                if matched_tg_id != target_telegram_id and user.id != target_telegram_id and matched_num != target_telegram_id:
+                    continue
 
             # Quy đổi VNĐ sang USD
             usd_amount = round(amount_vnd / rate, 2)
@@ -331,11 +343,18 @@ class BankDepositService:
             user.top_up_amount = round(float(user.top_up_amount or 0.0) + total_credit, 2)
 
             # Cập nhật hoặc tạo BankDepositOrder
-            stmt_p = select(BankDepositOrder).where(
-                BankDepositOrder.telegram_id == matched_tg_id,
-                BankDepositOrder.status == "PENDING"
-            ).order_by(BankDepositOrder.id.desc())
-            pending_order = (await session.execute(stmt_p)).scalar_one_or_none()
+            pending_order = matched_order_obj
+            if not pending_order:
+                stmt_p = select(BankDepositOrder).where(
+                    or_(
+                        BankDepositOrder.id == matched_num,
+                        BankDepositOrder.user_id == user.id,
+                        BankDepositOrder.telegram_id == matched_tg_id,
+                        BankDepositOrder.telegram_id == user.id
+                    ),
+                    BankDepositOrder.status == "PENDING"
+                ).order_by(BankDepositOrder.id.desc())
+                pending_order = (await session.execute(stmt_p)).scalar_one_or_none()
 
             if pending_order:
                 pending_order.status = "COMPLETED"
@@ -390,7 +409,9 @@ class BankDepositService:
                     f"━━━━━━━━━━━━━━━━━━━━━━\n"
                     f"🦐 Cảm ơn bạn đã ủng hộ shop! Hãy bấm <b>🛒 Sản phẩm</b> để mua tài khoản ngay nhé!"
                 )
-                await bot.send_message(chat_id=matched_tg_id, text=user_msg, parse_mode="HTML")
+                tg_target = user.telegram_id if (user and user.telegram_id and user.telegram_id > 0) else (matched_tg_id if matched_tg_id > 100000 else None)
+                if bot and tg_target:
+                    await bot.send_message(chat_id=tg_target, text=user_msg, parse_mode="HTML")
             except Exception as e:
                 logger.warning(f"Lỗi gửi thông báo nạp ngân hàng cho {matched_tg_id}: {e}")
 

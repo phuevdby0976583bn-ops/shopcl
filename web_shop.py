@@ -74,7 +74,7 @@ from utils.utils import create_access_token, decode_token, hash_password, verify
 
 import base64
 from services.binance_pay import BinancePayService
-from services.bank_deposit import BankDepositService
+from services.bank_deposit import BankDepositService, BANK_BINS
 from services.deposit_flow import DepositFlowService
 
 def get_bot_instance():
@@ -2823,7 +2823,16 @@ async def api_create_bank_invoice(request: Request):
         session.add(order)
         await session_commit(session)
 
+        # Ưu tiên sinh mã Napas VietQR EMVCo cục bộ trực tiếp (base64) để không bao giờ bị đơ/chậm do bên thứ 3
         qr_url = f"https://img.vietqr.io/image/{bank_code}-{account_number}-compact2.png?amount={amount_vnd}&addInfo={quote(memo)}&accountName={quote(account_name)}"
+        try:
+            bin_code = BANK_BINS.get(bank_code, "970418")
+            qr_file = BankDepositService.generate_vietqr_image(bin_code, account_number, amount_vnd, memo, bank_code)
+            if qr_file and hasattr(qr_file, "data") and qr_file.data:
+                b64 = base64.b64encode(qr_file.data).decode("ascii")
+                qr_url = f"data:image/png;base64,{b64}"
+        except Exception as e:
+            logger.debug(f"Could not generate local VietQR image: {e}")
 
         return JSONResponse({
             "status": "success",
@@ -2974,7 +2983,10 @@ async def api_check_recharge_status(request: Request):
             except Exception as e:
                 logger.debug(f"Check bank status error: {e}")
 
-            stmt = select(BankDepositOrder).where(BankDepositOrder.id == int(order_id))
+            stmt = select(BankDepositOrder).where(
+                BankDepositOrder.id == int(order_id),
+                or_(BankDepositOrder.user_id == user.id, BankDepositOrder.telegram_id == user.telegram_id, BankDepositOrder.telegram_id == user.id)
+            )
             bk_order = (await session.execute(stmt)).scalar_one_or_none()
             if bk_order and bk_order.status in ("COMPLETED", "PAID"):
                 stmt_u = select(User).where(User.id == user.id)
